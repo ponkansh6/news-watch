@@ -1,6 +1,7 @@
 import { getScoredArticles, getAllArticles } from "@/lib/db/actions";
 import { KEYWORDS } from "@/lib/config";
 import ArticleList from "./article-list";
+import FetchButton from "./fetch-button";
 
 export const dynamic = "force-dynamic";
 
@@ -39,23 +40,8 @@ export default async function Home() {
         )}
       </section>
 
-      {/* fetch button using a form */}
       <section className="mb-12">
-        <form
-          action="/api/fetch-news"
-          method="POST"
-          className="flex items-center gap-3"
-        >
-          <button
-            type="submit"
-            className="rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-700"
-          >
-            ニュースを取得してスコアリング
-          </button>
-          <span className="text-xs text-neutral-400">
-            GNews / NewsAPI から取得 → LLMでスコアリング
-          </span>
-        </form>
+        <FetchButton />
       </section>
 
       {all.length > 0 && (
