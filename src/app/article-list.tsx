@@ -1,5 +1,4 @@
 "use client";
-import { useState } from "react";
 
 interface Article {
   id: number;
@@ -111,34 +110,9 @@ function getKeywordColor(keyword: string): string {
 }
 
 export default function ArticleList({ articles }: { articles: Article[] }) {
-  const [showZeroScore, setShowZeroScore] = useState(false);
-  
-  const filteredArticles = articles.filter((article) => {
-    if (article.score === 0) return showZeroScore;
-    return true;
-  });
-  
-  const hiddenZeroScoreCount = articles.filter((a) => a.score === 0).length;
-  
   return (
     <div className="space-y-3">
-      {articles.length > 0 && articles.some(a => a.score === 0) && (
-        <div className="mb-4 flex items-center justify-between">
-          <button
-            onClick={() => setShowZeroScore(!showZeroScore)}
-            className="text-sm font-medium text-neutral-600 hover:text-neutral-900 transition-colors"
-          >
-            {showZeroScore ? "非表示" : `低スコアの記事も表示`}
-          </button>
-          {!showZeroScore && hiddenZeroScoreCount > 0 && (
-            <span className="text-xs text-neutral-400">
-              {hiddenZeroScoreCount}件 非表示
-            </span>
-          )}
-        </div>
-      )}
-      
-      {filteredArticles.map((article) => (
+      {articles.map((article) => (
         <article
           key={article.id}
           className="group flex items-start gap-4 rounded-lg border border-neutral-200 bg-white p-4 transition-all duration-200 hover:shadow-sm hover:border-neutral-300"

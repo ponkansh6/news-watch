@@ -1,6 +1,6 @@
 import { db } from "./index";
 import { articles } from "./schema";
-import { desc, isNotNull, notInArray } from "drizzle-orm";
+import { desc, isNotNull, notInArray, and, lt } from "drizzle-orm";
 
 export interface ArticleInsert {
   title: string;
@@ -74,6 +74,17 @@ export async function deleteOrphanedArticles(activeKeywords: string[]) {
     return result;
   } catch (err) {
     console.warn(`[db] delete error:`, err);
+  }
+}
+
+/** Delete articles with composite score below minScore. */
+export async function deleteLowScoredArticles(minScore = 5) {
+  try {
+    return await db
+      .delete(articles)
+      .where(and(isNotNull(articles.score), lt(articles.score, minScore)));
+  } catch (err) {
+    console.warn(`[db] delete low-score error:`, err);
   }
 }
 

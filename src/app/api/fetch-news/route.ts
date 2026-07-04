@@ -6,7 +6,7 @@ import { searchNewsApi, type NewsApiArticle } from "@/lib/news/newsapi";
 import { searchHackerNews, type HackerNewsArticle } from "@/lib/news/hackernews";
 import { searchQiita, type QiitaArticle } from "@/lib/news/qiita";
 import { scoreArticle } from "@/lib/llm/openrouter";
-import { upsertArticle, deleteOrphanedArticles } from "@/lib/db/actions";
+import { upsertArticle, deleteOrphanedArticles, deleteLowScoredArticles } from "@/lib/db/actions";
 
 // Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
@@ -170,6 +170,9 @@ export async function POST() {
 
     results.push(result);
   }
+
+  // Remove low-scored articles after each batch
+  await deleteLowScoredArticles(5);
 
   return NextResponse.json({ ok: true, results });
 }

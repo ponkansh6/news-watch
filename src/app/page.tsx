@@ -1,4 +1,4 @@
-import { getScoredArticles, getAllArticles } from "@/lib/db/actions";
+import { getScoredArticles } from "@/lib/db/actions";
 import { KEYWORDS } from "@/lib/config";
 import ArticleList from "./article-list";
 import FetchButton from "./fetch-button";
@@ -7,7 +7,6 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const scored = await getScoredArticles(100);
-  const all = await getAllArticles(100);
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
@@ -17,6 +16,10 @@ export default async function Home() {
           監視キーワード: {KEYWORDS.join(", ")}
         </p>
       </header>
+
+      <section className="mb-12">
+        <FetchButton />
+      </section>
 
       <section className="mb-12">
         <div className="flex items-center justify-between mb-4">
@@ -39,18 +42,6 @@ export default async function Home() {
           <ArticleList articles={scored} />
         )}
       </section>
-
-      <section className="mb-12">
-        <FetchButton />
-      </section>
-
-      {all.length > 0 && (
-        <section className="border-t border-neutral-200 pt-8">
-          <h2 className="mb-2 text-sm font-medium text-neutral-400">
-            最終更新: {all[0]?.createdAt ?? "N/A"}
-          </h2>
-        </section>
-      )}
     </main>
   );
 }
