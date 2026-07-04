@@ -1,6 +1,6 @@
 import { db } from "./index";
 import { articles } from "./schema";
-import { desc, isNotNull } from "drizzle-orm";
+import { desc, isNotNull, notInArray } from "drizzle-orm";
 
 export interface ArticleInsert {
   title: string;
@@ -56,6 +56,18 @@ export async function getScoredArticles(limit = 50) {
   } catch (err) {
     console.warn(`[db] query error:`, err);
     return [];
+  }
+}
+
+/** Delete articles whose keyword is not in the active set. */
+export async function deleteOrphanedArticles(activeKeywords: string[]) {
+  try {
+    const result = await db
+      .delete(articles)
+      .where(notInArray(articles.keyword, activeKeywords));
+    return result;
+  } catch (err) {
+    console.warn(`[db] delete error:`, err);
   }
 }
 

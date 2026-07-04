@@ -4,7 +4,7 @@ import { KEYWORDS } from "@/lib/config";
 import { searchGNews, type GNewsArticle } from "@/lib/news/gnews";
 import { searchNewsApi, type NewsApiArticle } from "@/lib/news/newsapi";
 import { scoreArticle } from "@/lib/llm/openrouter";
-import { upsertArticle } from "@/lib/db/actions";
+import { upsertArticle, deleteOrphanedArticles } from "@/lib/db/actions";
 
 // Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
@@ -94,6 +94,9 @@ async function scoreAndSave(
 /* ---------- POST handler ---------- */
 
 export async function POST() {
+  // Remove articles for keywords no longer in config
+  await deleteOrphanedArticles([...KEYWORDS]);
+
   const results: {
     keyword: string;
     fetched: number;
