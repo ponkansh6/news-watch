@@ -39,6 +39,7 @@
     "oxlint": "^1.72.0",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vercel": "^54.20.0"
+    "vercel": "^54.20.0",
+    "vitest": "^4.1.9"
   }
 }
