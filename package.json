@@ -9,7 +9,11 @@
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "lint:fast": "oxlint --nextjs-plugin --react-plugin --react-perf-plugin",
+    "format:fast": "oxfmt --write .",
+    "type-check:fast": "tsgo --noEmit",
+    "prepare": "husky"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
@@ -21,14 +25,18 @@
     "react-dom": "19.2.4",
     "zod": "^4.4.3"
   },
-
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@typescript/native-preview": "7.0.0-dev.20260703.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
+    "oxfmt": "^0.57.0",
+    "oxlint": "^1.72.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vercel": "^54.20.0"

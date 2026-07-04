@@ -3,7 +3,8 @@ import { SCORING_PROMPT } from "./prompts";
 
 const LLMResponseSchema = z.object({
   summary: z.string().min(1).max(100),
-  score: z.number().min(0).max(10),
+  relevance: z.number().min(0).max(10),
+  usefulness: z.number().min(0).max(10),
   reason: z.string().min(1).max(200),
 });
 

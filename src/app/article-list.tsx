@@ -12,6 +12,9 @@ interface Article {
   author: string | null;
   keyword: string;
   summary: string | null;
+  relevance: number | null;
+  usefulness: number | null;
+  recency: number | null;
   score: number | null;
   reason: string | null;
   scoredAt: string | null;
@@ -30,7 +33,17 @@ function formatDate(iso: string): string {
   }
 }
 
-function ScoreBadge({ score }: { score: number | null }) {
+function ScoreBadge({ 
+  score, 
+  relevance, 
+  usefulness, 
+  recency 
+}: { 
+  score: number | null; 
+  relevance: number | null; 
+  usefulness: number | null; 
+  recency: number | null; 
+}) {
   if (score === null) {
     return (
       <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-xs font-bold text-neutral-400">
@@ -49,11 +62,14 @@ function ScoreBadge({ score }: { score: number | null }) {
   return (
     <span
       className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${color}`}
+      title={`関連性: ${relevance?.toFixed(1) || 'N/A'} (30%)\n有用性: ${usefulness?.toFixed(1) || 'N/A'} (40%)\n新しさ: ${recency?.toFixed(1) || 'N/A'} (30%)\n━━━━━━━━━━━━━━━\n合成: ${score.toFixed(1)}`}
     >
       {score}
     </span>
   );
 }
+
+
 
 function NewspaperIcon() {
   return (
@@ -174,7 +190,12 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
           </div>
           
           <div className="ml-4">
-            <ScoreBadge score={article.score} />
+            <ScoreBadge 
+              score={article.score} 
+              relevance={article.relevance} 
+              usefulness={article.usefulness} 
+              recency={article.recency} 
+            />
           </div>
         </article>
       ))}

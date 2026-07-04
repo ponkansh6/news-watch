@@ -12,9 +12,12 @@ export interface ArticleInsert {
   author: string | null;
   keyword: string;
   summary: string | null;
-  score: number | null;
+  relevance: number | null;
+  usefulness: number | null;
+  recency: number | null;
   reason: string | null;
   scoredAt: string | null;
+  score: number | null;
 }
 
 /** Insert or update article by URL. On conflict, refresh score/summary/reason. */
@@ -33,10 +36,13 @@ export async function upsertArticle(data: ArticleInsert) {
           sourceName: data.sourceName,
           author: data.author,
           keyword: data.keyword,
-          score: data.score,
+          relevance: data.relevance,
+          usefulness: data.usefulness,
+          recency: data.recency,
           summary: data.summary,
           reason: data.reason,
           scoredAt: data.scoredAt,
+          score: data.score,
         },
       });
   } catch (err) {
@@ -44,7 +50,7 @@ export async function upsertArticle(data: ArticleInsert) {
   }
 }
 
-/** Articles with LLM score, ordered by score then date. */
+/** Articles with composite score, ordered by score then date. */
 export async function getScoredArticles(limit = 50) {
   try {
     return await db

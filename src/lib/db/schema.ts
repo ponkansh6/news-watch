@@ -19,16 +19,20 @@ export const articles = sqliteTable(
     author: text("author"),
     keyword: text("keyword").notNull(),
     summary: text("summary"),
-    score: real("score"),
+    relevance: real("relevance"),
+    usefulness: real("usefulness"),
+    recency: real("recency"),
     reason: text("reason"),
     scoredAt: text("scored_at"),
+    score: real("score"),
     createdAt: text("created_at")
       .notNull()
       .$defaultFn(() => new Date().toISOString()),
   },
   (table) => ({
     keywordIdx: index("idx_keyword").on(table.keyword),
-    scorePubIdx: index("idx_score_pub").on(table.score, table.publishedAt),
+    relevancePubIdx: index("idx_relevance_pub").on(table.relevance, table.publishedAt),
+    recencyPubIdx: index("idx_recency_pub").on(table.recency, table.publishedAt),
     createdAtIdx: index("idx_created_at").on(table.createdAt),
   }),
 );

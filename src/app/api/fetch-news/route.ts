@@ -62,6 +62,20 @@ function deduplicate(
   });
 }
 
+/* ---------- recency score (algorithmic, 0-10) ---------- */
+
+function calcRecencyScore(publishedAt: string): number {
+  const now = Date.now();
+  const pub = new Date(publishedAt).getTime();
+  const days = (now - pub) / (1000 * 60 * 60 * 24);
+  if (days <= 1) return 10;
+  if (days <= 3) return 8;
+  if (days <= 7) return 6;
+  if (days <= 14) return 4;
+  if (days <= 30) return 2;
+  return 0;
+}
+
 /* ---------- score & save one article ---------- */
 
 async function scoreAndSave(
@@ -73,20 +87,30 @@ async function scoreAndSave(
     keyword,
   );
 
-  await upsertArticle({
-    title: article.title,
-    description: article.description,
-    url: article.url,
-    urlToImage: article.urlToImage,
-    publishedAt: article.publishedAt,
-    sourceName: article.sourceName,
-    author: article.author,
-    keyword,
-    summary: llmResult?.summary ?? null,
-    score: llmResult?.score ?? null,
-    reason: llmResult?.reason ?? null,
-    scoredAt: llmResult ? new Date().toISOString() : null,
-  });
+    const relevance = llmResult?.relevance ?? 5;
+    const usefulness = llmResult?.usefulness ?? 5;
+    const recency = calcRecencyScore(article.publishedAt);
+    // composite = relevance(30%) + usefulness(40%) + recency(30%)
+    const composite = Math.round((relevance * 0.3 + usefulness * 0.4 + recency * 0.3) * 10) / 10;
+
+    await upsertArticle({
+      title: article.title,
+      description: article.description,
+      url: article.url,
+      urlToImage: article.urlToImage,
+      publishedAt: article.publishedAt,
+      sourceName: article.sourceName,
+      author: article.author,
+      keyword,
+      summary: llmResult?.summary ?? null,
+      relevance,
+      usefulness,
+      recency,
+      // composite score stored in `score` field (backward-compatible)
+      score: composite,
+      reason: llmResult?.reason ?? null,
+      scoredAt: llmResult ? new Date().toISOString() : null,
+    });
 
   return llmResult !== null;
 }
