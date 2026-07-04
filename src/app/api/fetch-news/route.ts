@@ -161,9 +161,19 @@ async function scoreAndSave(
 
 /* ---------- POST handler ---------- */
 
-export async function POST() {
+export async function POST(request: Request) {
   // Remove articles for keywords no longer in config
   await deleteOrphanedArticles([...KEYWORDS]);
+
+  // Parse request body to get selected sources
+  let selectedSources: string[] = [];
+  try {
+    const body = await request.json();
+    selectedSources = body.sources || [];
+  } catch {
+    // If parsing fails or no sources provided, default to all sources
+    selectedSources = ["gnews", "newsapi", "hackernews", "qiita", "github", "yamadashy"];
+  }
 
   const results: {
     keyword: string;
@@ -176,25 +186,27 @@ export async function POST() {
     const result = { keyword, fetched: 0, scored: 0, errors: [] as string[] };
 
     try {
-      // 1. Fetch from all six APIs
-      const [gnewsRaw, newsApiRaw, hnRaw, qiitaRaw, githubRaw, yamadashyRaw] = await Promise.all([
-        searchGNews(keyword),
-        searchNewsApi(keyword),
-        searchHackerNews(keyword),
-        searchQiita(keyword),
-        searchGitHub(keyword),
-        searchYamadashy(keyword),
-      ]);
+      // 1. Fetch from selected sources only
+      const fetchPromises = [];
+      
+      if (selectedSources.includes("gnews")) fetchPromises.push(searchGNews(keyword));
+      if (selectedSources.includes("newsapi")) fetchPromises.push(searchNewsApi(keyword));
+      if (selectedSources.includes("hackernews")) fetchPromises.push(searchHackerNews(keyword));
+      if (selectedSources.includes("qiita")) fetchPromises.push(searchQiita(keyword));
+      if (selectedSources.includes("github")) fetchPromises.push(searchGitHub(keyword));
+      if (selectedSources.includes("yamadashy")) fetchPromises.push(searchYamadashy(keyword));
+
+      const fetchedResults = await Promise.all(fetchPromises);
 
       // 2. Normalise + deduplicate + limit
       // HN self-posts (Ask HN / Show HN) may have url=null → filter them out
       const all = deduplicate([
-        ...gnewsRaw.map(normalize),
-        ...newsApiRaw.map(normalize),
-        ...hnRaw.map(normalize).filter((a) => a.url),
-        ...qiitaRaw.map(normalize),
-        ...githubRaw.map(normalize),
-        ...yamadashyRaw.map(normalize),
+        ...(selectedSources.includes("gnews") ? fetchedResults[0].map(normalize) : []),
+        ...(selectedSources.includes("newsapi") ? fetchedResults[1].map(normalize) : []),
+        ...(selectedSources.includes("hackernews") ? fetchedResults[2].map(normalize).filter((a) => a.url) : []),
+        ...(selectedSources.includes("qiita") ? fetchedResults[3].map(normalize) : []),
+        ...(selectedSources.includes("github") ? fetchedResults[4].map(normalize) : []),
+        ...(selectedSources.includes("yamadashy") ? fetchedResults[5].map(normalize) : []),
       ]).slice(0, MAX_ARTICLES_PER_KEYWORD);
 
       result.fetched = all.length;
