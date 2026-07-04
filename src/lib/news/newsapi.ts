@@ -20,7 +20,7 @@ export async function searchNewsApi(keyword: string): Promise<NewsApiArticle[]> 
   const apiKey = process.env.NEWS_API_KEY;
   if (!apiKey) return [];
 
-  const url = `${BASE_URL}/everything?q=${encodeURIComponent(keyword)}&apiKey=${apiKey}&pageSize=30&language=en&sortBy=publishedAt`;
+  const url = `${BASE_URL}/everything?q=${encodeURIComponent(keyword)}&apiKey=${apiKey}&pageSize=30&language=ja&sortBy=publishedAt`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
