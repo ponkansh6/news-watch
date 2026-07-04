@@ -187,26 +187,51 @@ export async function POST(request: Request) {
 
     try {
       // 1. Fetch from selected sources only
-      const fetchPromises = [];
+      const fetchPromises: Array<Promise<any>> = [];
+      const sourceOrder: string[] = [];
       
-      if (selectedSources.includes("gnews")) fetchPromises.push(searchGNews(keyword));
-      if (selectedSources.includes("newsapi")) fetchPromises.push(searchNewsApi(keyword));
-      if (selectedSources.includes("hackernews")) fetchPromises.push(searchHackerNews(keyword));
-      if (selectedSources.includes("qiita")) fetchPromises.push(searchQiita(keyword));
-      if (selectedSources.includes("github")) fetchPromises.push(searchGitHub(keyword));
-      if (selectedSources.includes("yamadashy")) fetchPromises.push(searchYamadashy(keyword));
+      if (selectedSources.includes("gnews")) {
+        fetchPromises.push(searchGNews(keyword));
+        sourceOrder.push("gnews");
+      }
+      if (selectedSources.includes("newsapi")) {
+        fetchPromises.push(searchNewsApi(keyword));
+        sourceOrder.push("newsapi");
+      }
+      if (selectedSources.includes("hackernews")) {
+        fetchPromises.push(searchHackerNews(keyword));
+        sourceOrder.push("hackernews");
+      }
+      if (selectedSources.includes("qiita")) {
+        fetchPromises.push(searchQiita(keyword));
+        sourceOrder.push("qiita");
+      }
+      if (selectedSources.includes("github")) {
+        fetchPromises.push(searchGitHub(keyword));
+        sourceOrder.push("github");
+      }
+      if (selectedSources.includes("yamadashy")) {
+        fetchPromises.push(searchYamadashy(keyword));
+        sourceOrder.push("yamadashy");
+      }
 
       const fetchedResults = await Promise.all(fetchPromises);
 
       // 2. Normalise + deduplicate + limit
+      // Map results by source name to avoid index mismatch
+      const resultsBySource: Record<string, any[]> = {};
+      sourceOrder.forEach((source, index) => {
+        resultsBySource[source] = fetchedResults[index];
+      });
+
       // HN self-posts (Ask HN / Show HN) may have url=null → filter them out
       const all = deduplicate([
-        ...(selectedSources.includes("gnews") ? fetchedResults[0].map(normalize) : []),
-        ...(selectedSources.includes("newsapi") ? fetchedResults[1].map(normalize) : []),
-        ...(selectedSources.includes("hackernews") ? fetchedResults[2].map(normalize).filter((a) => a.url) : []),
-        ...(selectedSources.includes("qiita") ? fetchedResults[3].map(normalize) : []),
-        ...(selectedSources.includes("github") ? fetchedResults[4].map(normalize) : []),
-        ...(selectedSources.includes("yamadashy") ? fetchedResults[5].map(normalize) : []),
+        ...(resultsBySource.gnews ? resultsBySource.gnews.map(normalize) : []),
+        ...(resultsBySource.newsapi ? resultsBySource.newsapi.map(normalize) : []),
+        ...(resultsBySource.hackernews ? resultsBySource.hackernews.map(normalize).filter((a) => a.url) : []),
+        ...(resultsBySource.qiita ? resultsBySource.qiita.map(normalize) : []),
+        ...(resultsBySource.github ? resultsBySource.github.map(normalize) : []),
+        ...(resultsBySource.yamadashy ? resultsBySource.yamadashy.map(normalize) : []),
       ]).slice(0, MAX_ARTICLES_PER_KEYWORD);
 
       result.fetched = all.length;
