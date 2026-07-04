@@ -5,6 +5,7 @@ import { searchGNews, type GNewsArticle } from "@/lib/news/gnews";
 import { searchNewsApi, type NewsApiArticle } from "@/lib/news/newsapi";
 import { searchHackerNews, type HackerNewsArticle } from "@/lib/news/hackernews";
 import { searchQiita, type QiitaArticle } from "@/lib/news/qiita";
+import { searchGitHub, type GitHubRepo } from "@/lib/news/github";
 import { scoreArticle } from "@/lib/llm/openrouter";
 import { upsertArticle, deleteOrphanedArticles, deleteLowScoredArticles } from "@/lib/db/actions";
 
@@ -26,24 +27,50 @@ interface NormalizedArticle {
   author: string | null;
 }
 
-function normalize(article: GNewsArticle | NewsApiArticle | HackerNewsArticle | QiitaArticle): NormalizedArticle {
+function normalize(article: GNewsArticle | NewsApiArticle | HackerNewsArticle | QiitaArticle | GitHubRepo): NormalizedArticle {
   // GNews: .image, .source.name+.url
   // NewsAPI: .urlToImage, .source.name
   // HackerNews: .story_text, .sourceName = "Hacker News"
   // Qiita: .created_at, no description/urlToImage, sourceName = "Qiita"
+  // GitHub: .html_url, .owner.login, sourceName = "GitHub"
   const g = article as GNewsArticle;
   const n = article as NewsApiArticle;
   const hn = article as HackerNewsArticle;
   const q = article as QiitaArticle;
+  const gh = article as GitHubRepo;
+  
+  // Determine source name
+  let sourceName: string | null = null;
+  let author: string | null = null;
+  let title = "";
+  let url = "";
+  let publishedAt = "";
+  
+  if ("name" in gh) {
+    // GitHub repo
+    title = gh.name;
+    url = gh.html_url;
+    publishedAt = gh.created_at;
+    sourceName = "GitHub";
+    author = gh.owner.login;
+  } else if ("title" in article) {
+    // GNews, NewsAPI, HackerNews, Qiita
+    title = article.title;
+    url = article.url ?? "";
+    publishedAt = "publishedAt" in article ? article.publishedAt : ("created_at" in article ? article.created_at : hn.created_at);
+    sourceName = "source" in article && article.source?.name ? article.source.name : ("user" in article ? "Qiita" : "Hacker News");
+    author = (article as any).author ?? hn.author ?? ("user" in article ? article.user.name : null);
+  }
+  
   return {
-    title: article.title,
+    title,
     description:
       "description" in article ? (article.description ?? null) : null,
-    url: article.url ?? "",
+    url,
     urlToImage: g.image ?? n.urlToImage ?? null,
-    publishedAt: "publishedAt" in article ? article.publishedAt : ("created_at" in article ? article.created_at : hn.created_at),
-    sourceName: "source" in article && article.source?.name ? article.source.name : ("user" in article ? "Qiita" : "Hacker News"),
-    author: (article as any).author ?? hn.author ?? ("user" in article ? article.user.name : null),
+    publishedAt,
+    sourceName,
+    author,
   };
 }
 
@@ -138,12 +165,13 @@ export async function POST() {
     const result = { keyword, fetched: 0, scored: 0, errors: [] as string[] };
 
     try {
-      // 1. Fetch from all four APIs
-      const [gnewsRaw, newsApiRaw, hnRaw, qiitaRaw] = await Promise.all([
+      // 1. Fetch from all five APIs
+      const [gnewsRaw, newsApiRaw, hnRaw, qiitaRaw, githubRaw] = await Promise.all([
         searchGNews(keyword),
         searchNewsApi(keyword),
         searchHackerNews(keyword),
         searchQiita(keyword),
+        searchGitHub(keyword),
       ]);
 
       // 2. Normalise + deduplicate + limit
@@ -153,6 +181,7 @@ export async function POST() {
         ...newsApiRaw.map(normalize),
         ...hnRaw.map(normalize).filter((a) => a.url),
         ...qiitaRaw.map(normalize),
+        ...githubRaw.map(normalize),
       ]).slice(0, MAX_ARTICLES_PER_KEYWORD);
 
       result.fetched = all.length;
