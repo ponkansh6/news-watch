@@ -20,7 +20,7 @@ export async function searchGNews(keyword: string): Promise<GNewsArticle[]> {
   const apiKey = process.env.GNEWS_API_KEY;
   if (!apiKey) return [];
 
-  const url = `${BASE_URL}/search?q=${encodeURIComponent(keyword)}&apikey=${apiKey}&max=30&lang=ja&sortby=publishedAt`;
+  const url = `${BASE_URL}/search?q=${encodeURIComponent(keyword)}&apikey=${apiKey}&max=30&lang=en&sortby=publishedAt`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);

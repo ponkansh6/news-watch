@@ -2,9 +2,9 @@
 export const KEYWORDS = [
   "Anthropic",
   "OpenAI",
-  "ソフトバンク",
+  "Softbank",
   "KDDI",
-  "ドコモビジネス",
+  "NTT",
 ] as const;
 
 export type Keyword = (typeof KEYWORDS)[number];

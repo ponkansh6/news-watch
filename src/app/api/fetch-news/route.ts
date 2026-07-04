@@ -3,6 +3,7 @@ import pLimit from "p-limit";
 import { KEYWORDS } from "@/lib/config";
 import { searchGNews, type GNewsArticle } from "@/lib/news/gnews";
 import { searchNewsApi, type NewsApiArticle } from "@/lib/news/newsapi";
+import { searchHackerNews, type HackerNewsArticle } from "@/lib/news/hackernews";
 import { scoreArticle } from "@/lib/llm/openrouter";
 import { upsertArticle, deleteOrphanedArticles } from "@/lib/db/actions";
 
@@ -24,20 +25,22 @@ interface NormalizedArticle {
   author: string | null;
 }
 
-function normalize(article: GNewsArticle | NewsApiArticle): NormalizedArticle {
+function normalize(article: GNewsArticle | NewsApiArticle | HackerNewsArticle): NormalizedArticle {
   // GNews: .image, .source.name+.url
   // NewsAPI: .urlToImage, .source.name
+  // HackerNews: .story_text, .sourceName = "Hacker News"
   const g = article as GNewsArticle;
   const n = article as NewsApiArticle;
+  const hn = article as HackerNewsArticle;
   return {
     title: article.title,
     description:
       "description" in article ? (article.description ?? null) : null,
-    url: article.url,
+    url: article.url ?? "",
     urlToImage: g.image ?? n.urlToImage ?? null,
-    publishedAt: article.publishedAt,
-    sourceName: article.source?.name ?? null,
-    author: (article as any).author ?? null,
+    publishedAt: "publishedAt" in article ? article.publishedAt : hn.created_at,
+    sourceName: "source" in article && article.source?.name ? article.source.name : "Hacker News",
+    author: (article as any).author ?? hn.author ?? null,
   };
 }
 
@@ -132,16 +135,19 @@ export async function POST() {
     const result = { keyword, fetched: 0, scored: 0, errors: [] as string[] };
 
     try {
-      // 1. Fetch from both APIs
-      const [gnewsRaw, newsApiRaw] = await Promise.all([
+      // 1. Fetch from all three APIs
+      const [gnewsRaw, newsApiRaw, hnRaw] = await Promise.all([
         searchGNews(keyword),
         searchNewsApi(keyword),
+        searchHackerNews(keyword),
       ]);
 
       // 2. Normalise + deduplicate + limit
+      // HN self-posts (Ask HN / Show HN) may have url=null → filter them out
       const all = deduplicate([
         ...gnewsRaw.map(normalize),
         ...newsApiRaw.map(normalize),
+        ...hnRaw.map(normalize).filter((a) => a.url),
       ]).slice(0, MAX_ARTICLES_PER_KEYWORD);
 
       result.fetched = all.length;
