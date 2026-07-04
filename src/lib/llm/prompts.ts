@@ -13,12 +13,12 @@ Score two dimensions 0-10:
    - 1-3: Keyword tangential, minor mention
    - 0: Irrelevant / false match
 
-2. usefulness (技術者視点の有用性): How valuable is this article for an engineer/technologist?
-   - 10: Deep technical insight, novel approach, benchmark data
-   - 7-9: Technical details, architecture decisions, performance comparisons
-   - 4-6: Product announcements with some technical context
-   - 1-3: General news, business-only perspective
-   - 0: No technical value
+2. usefulness (技術者・CTO視点の有用性): How valuable is this article for an engineer or CTO?
+   - 10: Deep technical insight + strategic impact, novel approach, benchmark data
+   - 7-9: Technical details, architecture decisions, or significant business/technology strategy
+   - 4-6: Product announcements with technical or competitive context
+   - 1-3: General news, purely operational or niche detail
+   - 0: No value for either technical or strategic perspective
 
 Output format (no markdown, no extra text):
 {
