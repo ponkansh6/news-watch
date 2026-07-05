@@ -1,0 +1,60 @@
+schema: spec-driven
+
+# Project context — shown to AI when creating artifacts
+context: |
+  ## 技術スタック
+  - Framework: Next.js 16 (App Router)
+  - Language: TypeScript 6 (strict mode)
+  - Runtime: Node.js (package manager: pnpm)
+  - UI: React 19, Tailwind CSS v4
+  - Database: SQLite (Turso/libSQL)
+  - ORM: Drizzle ORM + Drizzle Kit
+  - 外部API: NewsAPI, GNews
+  - LLM: Gemini 3.1 Flash Lite (relevance/usefulness scoring + summary)
+  - Testing: Vitest
+  - Lint/Format: ESLint, Oxlint, Oxfmt, Prettier
+  - Pre-commit: Husky + lint-staged
+  - デプロイ: Vercel
+
+  ## プロジェクト構造
+  - src/app/ — App Router pages/layouts (RSC)
+  - src/app/api/fetch-news/ — News fetch API route
+  - src/lib/news/ — News source fetchers (NewsAPI, GNews, etc.)
+  - src/lib/llm/ — LLM integration (Gemini via OpenRouter)
+  - src/lib/db/ — Drizzle schema + DB actions
+  - tests/ — Test suites
+
+  ## ドメイン知識
+  - News Watch: ニュースアグリゲーション・スコアリングアプリ
+  - 複数のニュースソースから記事を取得、LLMでスコアリング（relevance + usefulness）+ 機械判定（recency）の3軸加重合成スコア
+  - スコアリング式: composite = relevance×0.3 + usefulness×0.4 + recency×0.3
+  - 20-40文字の日本語要約をLLMが生成
+  - 記事はキーワード単位でフィルタリング・ソート可能
+  - デプロイ先は Vercel、データベースは Turso (libSQL)
+
+  ## コーディング規約
+  - TypeScript strict mode、any 禁止
+  - 関数コンポーネント、明示的な戻り値の型
+  - Tailwind CSS でスタイリング
+  - サーバーコンポーネント優先、クライアントコンポーネントは "use client" を明示
+  - テストは Vitest
+  - import パスは @/*（src/）のエイリアスを使用
+
+# Per-artifact rules
+rules:
+  proposal:
+    - Write in Japanese or English based on request language
+    - Include "Purpose", "Requirements" with concrete scenarios (Gherkin形式)
+    - Include "Data Model" section when adding/modifying data structures
+    - Include "Non-goals" section to clarify scope boundaries
+    - Keep proposals under 1000 words unless complexity demands more
+  tasks:
+    - Break tasks into chunks of max 2 hours
+    - Each task must have a clear acceptance criterion
+    - Prefer small, independent PRs over large monolithic changes
+    - Include test considerations in each task
+  spec:
+    - Each requirement must have at least one Scenario (WHEN/THEN)
+    - Non-functional requirements (performance, accessibility) should be explicitly stated
+    - Data models should reference actual Drizzle schema types in src/lib/db/schema.ts
+    - UI specifications should reference component names in src/app/

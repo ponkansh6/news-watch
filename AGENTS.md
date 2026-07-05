@@ -41,7 +41,7 @@
 
 ## プロジェクト知識
 
-- 仕様書: `ARCHITECTURE.md`
+- OpenSpec 仕様書: `openspec/specs/news-watch/spec.md`
 - スコアリング: LLM (relevance + usefulness) + 機械判定 (recency) の3軸加重合成スコア
 - データベース: SQLite (Drizzle ORM)
 - ニュースソース: NewsAPI, GNews
