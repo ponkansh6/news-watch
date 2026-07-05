@@ -25,10 +25,11 @@ interface NormalizedArticle {
   urlToImage: string | null;
   publishedAt: string;
   sourceName: string | null;
+  sourceId: string;
   author: string | null;
 }
 
-function normalize(article: GNewsArticle | NewsApiArticle | HackerNewsArticle | QiitaArticle | GitHubRepo | YamadashyItem): NormalizedArticle {
+function normalize(article: GNewsArticle | NewsApiArticle | HackerNewsArticle | QiitaArticle | GitHubRepo | YamadashyItem, sourceId: string): NormalizedArticle {
   // GNews: .image, .source.name+.url
   // NewsAPI: .urlToImage, .source.name
   // HackerNews: .story_text, .sourceName = "Hacker News"
@@ -81,6 +82,7 @@ function normalize(article: GNewsArticle | NewsApiArticle | HackerNewsArticle | 
     urlToImage: g.image ?? n.urlToImage ?? null,
     publishedAt,
     sourceName,
+    sourceId,
     author,
   };
 }
@@ -144,6 +146,7 @@ async function scoreAndSave(
       urlToImage: article.urlToImage,
       publishedAt: article.publishedAt,
       sourceName: article.sourceName,
+      sourceId: article.sourceId,
       author: article.author,
       keyword,
       summary: llmResult?.summary ?? null,
@@ -226,12 +229,12 @@ export async function POST(request: Request) {
 
       // HN self-posts (Ask HN / Show HN) may have url=null → filter them out
       const all = deduplicate([
-        ...(resultsBySource.gnews ? resultsBySource.gnews.map(normalize) : []),
-        ...(resultsBySource.newsapi ? resultsBySource.newsapi.map(normalize) : []),
-        ...(resultsBySource.hackernews ? resultsBySource.hackernews.map(normalize).filter((a) => a.url) : []),
-        ...(resultsBySource.qiita ? resultsBySource.qiita.map(normalize) : []),
-        ...(resultsBySource.github ? resultsBySource.github.map(normalize) : []),
-        ...(resultsBySource.yamadashy ? resultsBySource.yamadashy.map(normalize) : []),
+        ...(resultsBySource.gnews ? resultsBySource.gnews.map((a) => normalize(a, "gnews")) : []),
+        ...(resultsBySource.newsapi ? resultsBySource.newsapi.map((a) => normalize(a, "newsapi")) : []),
+        ...(resultsBySource.hackernews ? resultsBySource.hackernews.map((a) => normalize(a, "hackernews")).filter((a) => a.url) : []),
+        ...(resultsBySource.qiita ? resultsBySource.qiita.map((a) => normalize(a, "qiita")) : []),
+        ...(resultsBySource.github ? resultsBySource.github.map((a) => normalize(a, "github")) : []),
+        ...(resultsBySource.yamadashy ? resultsBySource.yamadashy.map((a) => normalize(a, "yamadashy")) : []),
       ]).slice(0, MAX_ARTICLES_PER_KEYWORD);
 
       result.fetched = all.length;

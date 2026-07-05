@@ -39,21 +39,40 @@ export default function FetchButton() {
     localStorage.setItem("selectedSources", JSON.stringify(selectedSources));
   }, [selectedSources]);
 
-  const handleSourceToggle = useCallback((sourceId: string) => {
-    setSelectedSources((prev) =>
-      prev.includes(sourceId)
-        ? prev.filter((id) => id !== sourceId)
-        : [...prev, sourceId]
-    );
+  // Mount effect: sync URL with localStorage (initial load from localStorage may have saved state)
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (selectedSources.length > 0) {
+      params.set("sources", selectedSources.join(","));
+    }
+    router.replace(`?${params.toString()}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleSourceToggle = useCallback((sourceId: string) => {
+    setSelectedSources((prev) => {
+      const next = prev.includes(sourceId)
+        ? prev.filter((id) => id !== sourceId)
+        : [...prev, sourceId];
+      // Update URL search params
+      const params = new URLSearchParams();
+      if (next.length > 0) params.set("sources", next.join(","));
+      router.replace(`?${params.toString()}`, { scroll: false });
+      return next;
+    });
+  }, [router]);
 
   const handleSelectAll = useCallback(() => {
     setSelectedSources(SOURCES.map((s) => s.id));
-  }, []);
+    const params = new URLSearchParams();
+    params.set("sources", SOURCES.map((s) => s.id).join(","));
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [router]);
 
   const handleSelectNone = useCallback(() => {
     setSelectedSources([]);
-  }, []);
+    router.replace("?", { scroll: false });
+  }, [router]);
 
   const handleFetch = useCallback(async () => {
     setLoading(true);

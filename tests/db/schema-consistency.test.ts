@@ -26,6 +26,7 @@ describe("Test Case 1: 新カラムを含むarticlesテーブルのCRUD正常系
         url_to_image TEXT,
         published_at TEXT NOT NULL,
         source_name TEXT,
+        source_id TEXT,
         author TEXT,
         keyword TEXT NOT NULL,
         summary TEXT,

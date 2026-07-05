@@ -16,6 +16,7 @@ export const articles = sqliteTable(
     urlToImage: text("url_to_image"),
     publishedAt: text("published_at").notNull(),
     sourceName: text("source_name"),
+    sourceId: text("source_id"),
     author: text("author"),
     keyword: text("keyword").notNull(),
     summary: text("summary"),

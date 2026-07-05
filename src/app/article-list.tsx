@@ -8,6 +8,7 @@ interface Article {
   urlToImage: string | null;
   publishedAt: string;
   sourceName: string | null;
+  sourceId: string | null;
   author: string | null;
   keyword: string;
   summary: string | null;

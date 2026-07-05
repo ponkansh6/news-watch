@@ -1,6 +1,6 @@
 import { db } from "./index";
 import { articles } from "./schema";
-import { desc, isNotNull, notInArray, and, lt } from "drizzle-orm";
+import { desc, isNotNull, notInArray, and, lt, inArray } from "drizzle-orm";
 
 export interface ArticleInsert {
   title: string;
@@ -9,6 +9,7 @@ export interface ArticleInsert {
   urlToImage: string | null;
   publishedAt: string;
   sourceName: string | null;
+  sourceId: string | null;
   author: string | null;
   keyword: string;
   summary: string | null;
@@ -34,6 +35,7 @@ export async function upsertArticle(data: ArticleInsert) {
           urlToImage: data.urlToImage,
           publishedAt: data.publishedAt,
           sourceName: data.sourceName,
+          sourceId: data.sourceId,
           author: data.author,
           keyword: data.keyword,
           relevance: data.relevance,
@@ -51,12 +53,16 @@ export async function upsertArticle(data: ArticleInsert) {
 }
 
 /** Articles with composite score, ordered by score then date. */
-export async function getScoredArticles(limit = 50) {
+export async function getScoredArticles(limit = 50, sourceIds?: string[]) {
   try {
+    const conditions = [isNotNull(articles.score)];
+    if (sourceIds && sourceIds.length > 0) {
+      conditions.push(inArray(articles.sourceId, sourceIds));
+    }
     return await db
       .select()
       .from(articles)
-      .where(isNotNull(articles.score))
+      .where(and(...conditions))
       .orderBy(desc(articles.score), desc(articles.publishedAt))
       .limit(limit);
   } catch (err) {
