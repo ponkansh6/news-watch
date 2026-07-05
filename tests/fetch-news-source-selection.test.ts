@@ -4,96 +4,94 @@ import { POST } from "@/app/api/fetch-news/route";
 
 // Mock all external dependencies
 vi.mock("@/lib/news/gnews", () => ({
-  searchGNews: vi
-    .fn()
-    .mockResolvedValue([
-      {
-        title: "GNews Article",
-        url: "https://gnews.com/1",
-        description: "desc",
-        image: "img.jpg",
-        source: { name: "GNews" },
-        publishedAt: new Date().toISOString(),
-      },
-    ]),
+  searchGNews: vi.fn().mockResolvedValue([
+    {
+      title: "GNews Article",
+      url: "https://gnews.com/1",
+      description: "desc",
+      image: "img.jpg",
+      source: { name: "GNews" },
+      publishedAt: new Date().toISOString(),
+    },
+  ]),
 }));
 
 vi.mock("@/lib/news/newsapi", () => ({
-  searchNewsApi: vi
-    .fn()
-    .mockResolvedValue([
-      {
-        title: "NewsAPI Article",
-        url: "https://newsapi.com/1",
-        description: "desc",
-        urlToImage: "img.jpg",
-        source: { name: "NewsAPI" },
-        publishedAt: new Date().toISOString(),
-      },
-    ]),
+  searchNewsApi: vi.fn().mockResolvedValue([
+    {
+      title: "NewsAPI Article",
+      url: "https://newsapi.com/1",
+      description: "desc",
+      urlToImage: "img.jpg",
+      source: { name: "NewsAPI" },
+      publishedAt: new Date().toISOString(),
+    },
+  ]),
 }));
 
 vi.mock("@/lib/news/hackernews", () => ({
-  searchHackerNews: vi
-    .fn()
-    .mockResolvedValue([
-      {
-        title: "HN Article",
-        url: "https://hn.com/1",
-        story_text: "desc",
-        created_at: new Date().toISOString(),
-        author: "user1",
-      },
-    ]),
+  searchHackerNews: vi.fn().mockResolvedValue([
+    {
+      title: "HN Article",
+      url: "https://hn.com/1",
+      story_text: "desc",
+      created_at: new Date().toISOString(),
+      author: "user1",
+    },
+  ]),
 }));
 
 vi.mock("@/lib/news/qiita", () => ({
-  searchQiita: vi
-    .fn()
-    .mockResolvedValue([
-      {
-        title: "Qiita Article",
-        url: "https://qiita.com/1",
-        body: "desc",
-        created_at: new Date().toISOString(),
-        user: { name: "user1" },
-      },
-    ]),
+  searchQiita: vi.fn().mockResolvedValue([
+    {
+      title: "Qiita Article",
+      url: "https://qiita.com/1",
+      body: "desc",
+      created_at: new Date().toISOString(),
+      user: { name: "user1" },
+    },
+  ]),
 }));
 
 vi.mock("@/lib/news/github", () => ({
-  searchGitHub: vi
-    .fn()
-    .mockResolvedValue([
-      {
-        name: "GitHub Repo",
-        html_url: "https://github.com/1",
-        description: "desc",
-        created_at: new Date().toISOString(),
-        owner: { login: "user1" },
-      },
-    ]),
+  searchGitHub: vi.fn().mockResolvedValue([
+    {
+      name: "GitHub Repo",
+      html_url: "https://github.com/1",
+      description: "desc",
+      created_at: new Date().toISOString(),
+      owner: { login: "user1" },
+    },
+  ]),
 }));
 
 vi.mock("@/lib/news/yamadashy", () => ({
-  searchYamadashy: vi
-    .fn()
-    .mockResolvedValue([
-      {
-        title: "Tech Blog Article",
-        link: "https://techblog.com/1",
-        description: "desc",
-        pubDate: new Date().toISOString(),
-        author: "author1",
-      },
-    ]),
+  searchYamadashy: vi.fn().mockResolvedValue([
+    {
+      title: "Tech Blog Article",
+      link: "https://techblog.com/1",
+      description: "desc",
+      pubDate: new Date().toISOString(),
+      author: "author1",
+    },
+  ]),
 }));
 
 vi.mock("@/lib/llm/gemini", () => ({
+  scoreArticles: vi.fn().mockImplementation(
+    (articles: { title: string; description: string | null }[]) =>
+      Promise.resolve(
+        articles.map(() => ({
+          relevance: 8,
+          usefulness: 7,
+          summary: "Test summary",
+          reason: "Test reason",
+        })),
+      ),
+  ),
   scoreArticle: vi.fn().mockResolvedValue({
     relevance: 8,
     usefulness: 7,
-    recency: 6,
     summary: "Test summary",
     reason: "Test reason",
   }),

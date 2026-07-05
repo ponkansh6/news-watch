@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import pLimit from "p-limit";
 import { KEYWORDS } from "@/lib/config";
 import { searchGNews, type GNewsArticle } from "@/lib/news/gnews";
 import { searchNewsApi, type NewsApiArticle } from "@/lib/news/newsapi";
@@ -7,14 +6,14 @@ import { searchHackerNews, type HackerNewsArticle } from "@/lib/news/hackernews"
 import { searchQiita, type QiitaArticle } from "@/lib/news/qiita";
 import { searchGitHub, type GitHubRepo } from "@/lib/news/github";
 import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
-import { scoreArticle } from "@/lib/llm/gemini";
+import { scoreArticles } from "@/lib/llm/gemini";
+import type { LLMResponse } from "@/lib/llm/gemini";
 import { upsertArticle, deleteOrphanedArticles, deleteLowScoredArticles } from "@/lib/db/actions";
 
 // Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
 
 const MAX_ARTICLES_PER_KEYWORD = 15;
-const LLM_CONCURRENCY = 3;
 
 /* ---------- normalize differences between GNews / NewsAPI ---------- */
 
@@ -132,12 +131,11 @@ function calcRecencyScore(publishedAt: string): number {
 
 /* ---------- score & save one article ---------- */
 
-async function scoreAndSave(article: NormalizedArticle, keyword: string): Promise<boolean> {
-  const llmResult = await scoreArticle(
-    { title: article.title, description: article.description },
-    keyword,
-  );
-
+async function scoreAndSave(
+  article: NormalizedArticle,
+  keyword: string,
+  llmResult: LLMResponse | null,
+): Promise<boolean> {
   const relevance = llmResult?.relevance ?? 5;
   const usefulness = llmResult?.usefulness ?? 5;
   const recency = calcRecencyScore(article.publishedAt);
@@ -252,11 +250,19 @@ export async function POST(request: Request) {
 
       result.fetched = all.length;
 
-      // 3. Score with limited concurrency
-      const limit = pLimit(LLM_CONCURRENCY);
-      const scoreResults = await Promise.all(all.map((a) => limit(() => scoreAndSave(a, keyword))));
+      // 3. Batch score: one LLM call per keyword
+      const llmResults = await scoreArticles(
+        all.map((a) => ({ title: a.title, description: a.description })),
+        keyword,
+      );
 
-      result.scored = scoreResults.filter(Boolean).length;
+      let scoredCount = 0;
+      for (let i = 0; i < all.length; i++) {
+        const llmResult = llmResults[i] ?? null;
+        const saved = await scoreAndSave(all[i], keyword, llmResult);
+        if (saved) scoredCount++;
+      }
+      result.scored = scoredCount;
     } catch (err) {
       result.errors.push(String(err));
     }

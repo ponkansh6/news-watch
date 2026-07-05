@@ -17,20 +17,14 @@ import type { Client } from "@libsql/client";
 // ============================================================
 
 // コントローラブルな mock 関数: 各テストで mockResolvedValue を差し替える
-const mockScoreArticle = vi.fn();
+const mockScoreArticles = vi.fn();
 
 // DB actions はモックして、実際の DB 操作を検証しやすくする
 const mockUpsertArticle = vi.fn();
 const mockDeleteOrphanedArticles = vi.fn();
 const mockDeleteLowScoredArticles = vi.fn();
 
-const MOCK_KEYWORDS = [
-  "Next.js",
-  "TypeScript",
-  "React",
-  "AI",
-  "database",
-];
+const MOCK_KEYWORDS = ["Next.js", "TypeScript", "React", "AI", "database"];
 
 function buildQiitaArticles(count: number, keyword: string, date?: string) {
   const dt = date ?? new Date(Date.now() - 3600_000).toISOString();
@@ -58,9 +52,13 @@ vi.mock("@/lib/news/qiita", () => ({
   }),
 }));
 
-vi.mock("@/lib/llm/gemini", () => ({
-  scoreArticle: mockScoreArticle,
-}));
+vi.mock("@/lib/llm/gemini", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/llm/gemini")>();
+  return {
+    ...actual,
+    scoreArticles: mockScoreArticles,
+  };
+});
 
 vi.mock("@/lib/db/actions", () => ({
   upsertArticle: mockUpsertArticle,
@@ -81,8 +79,11 @@ vi.mock("@/lib/config", () => ({
 describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // デフォルトで全件成功しないダミー（各テストで上書き）
-    mockScoreArticle.mockResolvedValue(null);
+    // デフォルトで全件失敗（各テストで上書き）
+    mockScoreArticles.mockImplementation(
+      (articles: { title: string; description: string | null }[]) =>
+        Promise.resolve(articles.map(() => null)),
+    );
     mockUpsertArticle.mockResolvedValue(undefined);
     mockDeleteOrphanedArticles.mockResolvedValue(undefined);
     mockDeleteLowScoredArticles.mockResolvedValue(undefined);
@@ -96,7 +97,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
    * このテストでそのシナリオを再現する。
    */
   test("should report scored=0 when LLM returns null for all articles", async () => {
-    mockScoreArticle.mockResolvedValue(null);
+    mockScoreArticles.mockResolvedValue(MOCK_KEYWORDS.map(() => null));
 
     const { POST } = await import("@/app/api/fetch-news/route");
 
@@ -135,12 +136,18 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
    * 正常系の確認。Qiita 記事も正しくスコアリングされることを確認する。
    */
   test("should score all articles when LLM works correctly", async () => {
-    mockScoreArticle.mockResolvedValue({
-      summary: "テスト記事の要約",
-      relevance: 8,
-      usefulness: 7,
-      reason: "キーワード関連性が高く技術的価値があるため",
-    });
+    mockScoreArticles.mockImplementation(
+      (articles: { title: string; description: string | null }[]) => {
+        return Promise.resolve(
+          articles.map(() => ({
+            summary: "テスト記事の要約",
+            relevance: 8,
+            usefulness: 7,
+            reason: "キーワード関連性が高く技術的価値があるため",
+          })),
+        );
+      },
+    );
 
     const { POST } = await import("@/app/api/fetch-news/route");
 
@@ -174,16 +181,24 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
    */
   test("should report partial scoring when LLM sometimes fails", async () => {
     let callCount = 0;
-    mockScoreArticle.mockImplementation(() => {
-      callCount++;
-      // 3回に1回失敗する
-      return Promise.resolve(callCount % 3 === 0 ? null : {
-        summary: "部分的な要約",
-        relevance: 7,
-        usefulness: 6,
-        reason: "部分的な理由",
-      });
-    });
+    mockScoreArticles.mockImplementation(
+      (articles: { title: string; description: string | null }[]) => {
+        return Promise.resolve(
+          articles.map((_, i) => {
+            callCount++;
+            // 3回に1回失敗する
+            return callCount % 3 === 0
+              ? null
+              : {
+                  summary: "部分的な要約",
+                  relevance: 7,
+                  usefulness: 6,
+                  reason: "部分的な理由",
+                };
+          }),
+        );
+      },
+    );
 
     const { POST } = await import("@/app/api/fetch-news/route");
 
@@ -223,7 +238,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
    * 古い記事（recency=0）: 1.5 + 2.0 + 0 = 3.5 < 5 → 削除される
    */
   test("should keep fresh articles and delete old ones when LLM fails", async () => {
-    mockScoreArticle.mockResolvedValue(null);
+    mockScoreArticles.mockResolvedValue([]);
 
     // old articles 用に古い日付データを上書き
     const oldDate = "2024-01-01T00:00:00.000Z";
@@ -275,27 +290,38 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     expect("description" in mockQiitaArticle).toBe(false);
 
     // scoreArticle に description=null が渡されても "(no description)" に置換されることを確認
-    mockScoreArticle.mockImplementation((article: { title: string; description: string | null }) => {
-      // description が null の場合は "(no description)" で置換されるはず
-      const desc = article.description ?? "(no description)";
-      expect(article.title).toBe("Test Qiita Article");
-      expect(desc).toBe("(no description)");
-      return Promise.resolve({
-        summary: "テスト",
-        relevance: 5,
-        usefulness: 5,
-        reason: "テスト理由",
-      });
+    // テスト5ではscoreArticleを直接呼び出すため、scoreArticlesは使用しない
+    // APIキーとfetchをモックして実際のAPIを叩かないようにする
+    const origKey = process.env.GOOGLE_API_KEY;
+    process.env.GOOGLE_API_KEY = "test-key";
+
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: '{"summary":"テスト","relevance":5,"usefulness":5,"reason":"テスト理由"}' }],
+              },
+            },
+          ],
+        }),
     });
 
-    // scoreArticle を直接呼んで検証
-    const { scoreArticle } = await import("@/lib/llm/gemini");
-    const result = await scoreArticle(
-      { title: "Test Qiita Article", description: null },
-      "test-keyword",
-    );
+    try {
+      const { scoreArticle } = await import("@/lib/llm/gemini");
+      const result = await scoreArticle(
+        { title: "Test Qiita Article", description: null },
+        "test-keyword",
+      );
 
-    expect(result).not.toBeNull();
-    expect(result!.relevance).toBe(5);
+      expect(result).not.toBeNull();
+      expect(result!.relevance).toBe(5);
+    } finally {
+      process.env.GOOGLE_API_KEY = origKey;
+      globalThis.fetch = origFetch;
+    }
   });
 });
