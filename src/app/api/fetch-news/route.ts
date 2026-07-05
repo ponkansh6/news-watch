@@ -13,7 +13,7 @@ import { upsertArticle, deleteOrphanedArticles, deleteLowScoredArticles } from "
 // Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
 
-const MAX_ARTICLES_PER_KEYWORD = 15;
+const MAX_ARTICLES_PER_KEYWORD = 10;
 
 /* ---------- normalize differences between GNews / NewsAPI ---------- */
 

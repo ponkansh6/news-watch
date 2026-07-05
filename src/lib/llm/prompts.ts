@@ -28,23 +28,9 @@ Output format (no markdown, no extra text):
   "reason": "Brief reason in Japanese explaining both scores"
 }`;
 
-export const BATCH_SCORING_PROMPT = `You are a news relevance and usefulness scorer. Given a list of news articles and a keyword, score each article by its relevance and usefulness.
+export const BATCH_SCORING_PROMPT = `Score {{articleCount}} articles for keyword "{{keyword}}".
+Output ONLY a JSON array, one object per article in the same order, no extra text.
 
-Output a JSON array where each element corresponds to one article in the same order.
-
-Articles:
 {{articles}}
 
-Scoring dimensions:
-1. relevance (関連性): 0-10 (10 = directly about keyword)
-2. usefulness (技術者・CTO視点の有用性): 0-10 (10 = deep technical/strategic insight)
-
-Output format (no markdown, no extra text, valid JSON array):
-[
-  {
-    "summary": "Japanese 20-40 chars concise summary",
-    "relevance": <0-10>,
-    "usefulness": <0-10>,
-    "reason": "Brief reason in Japanese explaining both scores"
-  }
-]`;
+Format: [{"summary":"Japanese 20-40 chars","relevance":0-10,"usefulness":0-10,"reason":"Brief Japanese reason"}]`;

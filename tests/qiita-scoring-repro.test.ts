@@ -123,12 +123,12 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       totalScored += result.scored;
     }
 
-    // 5 keywords × 15 articles each = 75 total
-    expect(totalFetched).toBe(75);
+    // 5 keywords × 10 articles each = 50 total
+    expect(totalFetched).toBe(50);
     expect(totalScored).toBe(0);
 
-    // upsertArticle は全75件呼ばれていること（保存はされている）
-    expect(mockUpsertArticle).toHaveBeenCalledTimes(75);
+    // upsertArticle は全50件呼ばれていること（保存はされている）
+    expect(mockUpsertArticle).toHaveBeenCalledTimes(50);
   });
 
   /**
@@ -173,7 +173,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       expect(result.errors).toHaveLength(0);
     }
     expect(totalFetched).toBe(totalScored);
-    expect(totalScored).toBe(75);
+    expect(totalScored).toBe(50);
   });
 
   /**
@@ -224,10 +224,10 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       expect(result.errors).toHaveLength(0);
     }
 
-    // 75 articles, 1/3 fail → scored should be ~50
-    expect(totalFetched).toBe(75);
+    // 50 articles, 1/3 fail → scored should be ~33
+    expect(totalFetched).toBe(50);
     expect(totalScored).toBeGreaterThan(0);
-    expect(totalScored).toBeLessThan(75);
+    expect(totalScored).toBeLessThan(50);
   });
 
   /**
@@ -303,7 +303,11 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
           candidates: [
             {
               content: {
-                parts: [{ text: '{"summary":"テスト","relevance":5,"usefulness":5,"reason":"テスト理由"}' }],
+                parts: [
+                  {
+                    text: '{"summary":"テスト","relevance":5,"usefulness":5,"reason":"テスト理由"}',
+                  },
+                ],
               },
             },
           ],

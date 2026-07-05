@@ -122,13 +122,18 @@ export async function scoreArticles(
 
   // Build the articles block: numbered list with title | description
   const articlesBlock = articles
-    .map((a, i) => `${i + 1}. Title: ${a.title} | Description: ${a.description ?? "(no description)"}`)
+    .map(
+      (a, i) => `${i + 1}. Title: ${a.title} | Description: ${a.description ?? "(no description)"}`,
+    )
     .join("\n");
 
-  const prompt = BATCH_SCORING_PROMPT.replace("{{keyword}}", keyword).replace("{{articles}}", articlesBlock);
+  const prompt = BATCH_SCORING_PROMPT
+    .replace("{{articleCount}}", String(articles.length))
+    .replace("{{keyword}}", keyword)
+    .replace("{{articles}}", articlesBlock);
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60_000);
+  const timer = setTimeout(() => controller.abort(), 55_000);
 
   try {
     const res = await fetch(
@@ -141,7 +146,7 @@ export async function scoreArticles(
           generationConfig: {
             response_mime_type: "application/json",
             temperature: 0.1,
-            max_output_tokens: 2000,
+            max_output_tokens: 4000,
           },
         }),
         signal: controller.signal,
