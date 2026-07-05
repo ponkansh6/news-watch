@@ -2,11 +2,6 @@
   "name": "news-watch",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@11.9.0",
-  "engines": {
-    "node": "^22.14.0",
-    "pnpm": "^11.9.0"
-  },
   "scripts": {
     "preinstall": "pnpm dlx only-allow pnpm",
     "dev": "next dev",
@@ -54,8 +49,14 @@
     "prettier": "^3.9.3",
     "secretlint": "12.0.0",
     "tailwindcss": "^4",
+    "tsc-files": "^1.1.4",
     "typescript": "^6.0.3",
     "vercel": "^54.20.0",
     "vitest": "^4.1.9"
-  }
+  },
+  "engines": {
+    "node": "^22.14.0",
+    "pnpm": "^11.9.0"
+  },
+  "packageManager": "pnpm@11.9.0"
 }

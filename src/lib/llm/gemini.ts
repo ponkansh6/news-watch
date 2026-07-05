@@ -15,12 +15,12 @@ export interface ArticleInput {
   description: string | null;
 }
 
-/** Score a single article via OpenRouter (Gemini 3.1 Flash Lite). */
+/** Score a single article via Google Gemini/Gemma API (free tier). */
 export async function scoreArticle(
   article: ArticleInput,
   keyword: string,
 ): Promise<LLMResponse | null> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) return null;
 
   const prompt = SCORING_PROMPT.replace("{{keyword}}", keyword)
@@ -32,41 +32,57 @@ export async function scoreArticle(
 
   try {
     const res = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
+      `https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:generateContent?key=${apiKey}`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "google/gemini-3.1-flash-lite",
-          messages: [{ role: "user", content: prompt }],
-          response_format: { type: "json_object" },
-          max_tokens: 200,
-          temperature: 0.1,
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            response_mime_type: "application/json",
+            temperature: 0.1,
+            max_output_tokens: 500,
+          },
         }),
         signal: controller.signal,
       },
     );
 
     if (!res.ok) {
-      console.warn(`[llm] HTTP ${res.status}`);
+      console.warn(`[llm] Gemini HTTP ${res.status}`);
       return null;
     }
 
     const data = (await res.json()) as {
-      choices: { message: { content: string } }[];
+      candidates?: {
+        content?: {
+          parts?: { text?: string; thought?: boolean }[];
+        };
+      }[];
+      promptFeedback?: { blockReason?: string };
     };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
 
-    // Parse JSON first, then validate with Zod
+    if (data.promptFeedback?.blockReason) {
+      console.warn(`[llm] blocked:`, data.promptFeedback.blockReason);
+      return null;
+    }
+
+    // Pick the last non-thought part (handles thinking models like Gemma 4)
+    const parts = data.candidates?.[0]?.content?.parts ?? [];
+    const text =
+      parts
+        .filter((p) => !p.thought)
+        .at(-1)
+        ?.text?.trim() ??
+      parts.at(-1)?.text?.trim() ??
+      null;
+    if (!text) return null;
+
     let parsed: unknown;
     try {
-      parsed = JSON.parse(content) as unknown;
+      parsed = JSON.parse(text) as unknown;
     } catch {
-      console.warn(`[llm] invalid JSON:`, content.slice(0, 100));
+      console.warn(`[llm] invalid JSON:`, text.slice(0, 100));
       return null;
     }
 

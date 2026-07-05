@@ -1,3 +1,3 @@
 export default {
-  "*.{ts,tsx}": ["tsc --noEmit"],
+  "*.{ts,tsx}": ["tsc-files --noEmit"],
 };

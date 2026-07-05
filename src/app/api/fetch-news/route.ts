@@ -7,7 +7,7 @@ import { searchHackerNews, type HackerNewsArticle } from "@/lib/news/hackernews"
 import { searchQiita, type QiitaArticle } from "@/lib/news/qiita";
 import { searchGitHub, type GitHubRepo } from "@/lib/news/github";
 import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
-import { scoreArticle } from "@/lib/llm/openrouter";
+import { scoreArticle } from "@/lib/llm/gemini";
 import { upsertArticle, deleteOrphanedArticles, deleteLowScoredArticles } from "@/lib/db/actions";
 
 // Vercel Hobby = 60s, Pro = 900s
@@ -29,7 +29,16 @@ interface NormalizedArticle {
   author: string | null;
 }
 
-function normalize(article: GNewsArticle | NewsApiArticle | HackerNewsArticle | QiitaArticle | GitHubRepo | YamadashyItem, sourceId: string): NormalizedArticle {
+function normalize(
+  article:
+    | GNewsArticle
+    | NewsApiArticle
+    | HackerNewsArticle
+    | QiitaArticle
+    | GitHubRepo
+    | YamadashyItem,
+  sourceId: string,
+): NormalizedArticle {
   // GNews: .image, .source.name+.url
   // NewsAPI: .urlToImage, .source.name
   // HackerNews: .story_text, .sourceName = "Hacker News"
@@ -42,14 +51,14 @@ function normalize(article: GNewsArticle | NewsApiArticle | HackerNewsArticle | 
   const q = article as QiitaArticle;
   const gh = article as GitHubRepo;
   const yd = article as YamadashyItem;
-  
+
   // Determine source name
   let sourceName: string | null = null;
   let author: string | null = null;
   let title = "";
   let url = "";
   let publishedAt = "";
-  
+
   if ("name" in gh) {
     // GitHub repo
     title = gh.name;
@@ -69,15 +78,16 @@ function normalize(article: GNewsArticle | NewsApiArticle | HackerNewsArticle | 
     const a = article as GNewsArticle | NewsApiArticle | HackerNewsArticle | QiitaArticle;
     title = a.title;
     url = a.url ?? "";
-    publishedAt = "publishedAt" in a ? a.publishedAt : ("created_at" in a ? a.created_at : hn.created_at);
-    sourceName = "source" in a && a.source?.name ? a.source.name : ("user" in a ? "Qiita" : "Hacker News");
+    publishedAt =
+      "publishedAt" in a ? a.publishedAt : "created_at" in a ? a.created_at : hn.created_at;
+    sourceName =
+      "source" in a && a.source?.name ? a.source.name : "user" in a ? "Qiita" : "Hacker News";
     author = (a as any).author ?? hn.author ?? ("user" in a ? a.user.name : null);
   }
-  
+
   return {
     title,
-    description:
-      "description" in article ? (article.description ?? null) : null,
+    description: "description" in article ? (article.description ?? null) : null,
     url,
     urlToImage: g.image ?? n.urlToImage ?? null,
     publishedAt,
@@ -89,9 +99,7 @@ function normalize(article: GNewsArticle | NewsApiArticle | HackerNewsArticle | 
 
 /* ---------- deduplicate by normalised URL ---------- */
 
-function deduplicate(
-  articles: NormalizedArticle[],
-): NormalizedArticle[] {
+function deduplicate(articles: NormalizedArticle[]): NormalizedArticle[] {
   const seen = new Set<string>();
   return articles.filter((a) => {
     try {
@@ -124,40 +132,37 @@ function calcRecencyScore(publishedAt: string): number {
 
 /* ---------- score & save one article ---------- */
 
-async function scoreAndSave(
-  article: NormalizedArticle,
-  keyword: string,
-): Promise<boolean> {
+async function scoreAndSave(article: NormalizedArticle, keyword: string): Promise<boolean> {
   const llmResult = await scoreArticle(
     { title: article.title, description: article.description },
     keyword,
   );
 
-    const relevance = llmResult?.relevance ?? 5;
-    const usefulness = llmResult?.usefulness ?? 5;
-    const recency = calcRecencyScore(article.publishedAt);
-    // composite = relevance(30%) + usefulness(40%) + recency(30%)
-    const composite = Math.round((relevance * 0.3 + usefulness * 0.4 + recency * 0.3) * 10) / 10;
+  const relevance = llmResult?.relevance ?? 5;
+  const usefulness = llmResult?.usefulness ?? 5;
+  const recency = calcRecencyScore(article.publishedAt);
+  // composite = relevance(30%) + usefulness(40%) + recency(30%)
+  const composite = Math.round((relevance * 0.3 + usefulness * 0.4 + recency * 0.3) * 10) / 10;
 
-    await upsertArticle({
-      title: article.title,
-      description: article.description,
-      url: article.url,
-      urlToImage: article.urlToImage,
-      publishedAt: article.publishedAt,
-      sourceName: article.sourceName,
-      sourceId: article.sourceId,
-      author: article.author,
-      keyword,
-      summary: llmResult?.summary ?? null,
-      relevance,
-      usefulness,
-      recency,
-      // composite score stored in `score` field (backward-compatible)
-      score: composite,
-      reason: llmResult?.reason ?? null,
-      scoredAt: llmResult ? new Date().toISOString() : null,
-    });
+  await upsertArticle({
+    title: article.title,
+    description: article.description,
+    url: article.url,
+    urlToImage: article.urlToImage,
+    publishedAt: article.publishedAt,
+    sourceName: article.sourceName,
+    sourceId: article.sourceId,
+    author: article.author,
+    keyword,
+    summary: llmResult?.summary ?? null,
+    relevance,
+    usefulness,
+    recency,
+    // composite score stored in `score` field (backward-compatible)
+    score: composite,
+    reason: llmResult?.reason ?? null,
+    scoredAt: llmResult ? new Date().toISOString() : null,
+  });
 
   return llmResult !== null;
 }
@@ -192,7 +197,7 @@ export async function POST(request: Request) {
       // 1. Fetch from selected sources only
       const fetchPromises: Array<Promise<any>> = [];
       const sourceOrder: string[] = [];
-      
+
       if (selectedSources.includes("gnews")) {
         fetchPromises.push(searchGNews(keyword));
         sourceOrder.push("gnews");
@@ -230,20 +235,26 @@ export async function POST(request: Request) {
       // HN self-posts (Ask HN / Show HN) may have url=null → filter them out
       const all = deduplicate([
         ...(resultsBySource.gnews ? resultsBySource.gnews.map((a) => normalize(a, "gnews")) : []),
-        ...(resultsBySource.newsapi ? resultsBySource.newsapi.map((a) => normalize(a, "newsapi")) : []),
-        ...(resultsBySource.hackernews ? resultsBySource.hackernews.map((a) => normalize(a, "hackernews")).filter((a) => a.url) : []),
+        ...(resultsBySource.newsapi
+          ? resultsBySource.newsapi.map((a) => normalize(a, "newsapi"))
+          : []),
+        ...(resultsBySource.hackernews
+          ? resultsBySource.hackernews.map((a) => normalize(a, "hackernews")).filter((a) => a.url)
+          : []),
         ...(resultsBySource.qiita ? resultsBySource.qiita.map((a) => normalize(a, "qiita")) : []),
-        ...(resultsBySource.github ? resultsBySource.github.map((a) => normalize(a, "github")) : []),
-        ...(resultsBySource.yamadashy ? resultsBySource.yamadashy.map((a) => normalize(a, "yamadashy")) : []),
+        ...(resultsBySource.github
+          ? resultsBySource.github.map((a) => normalize(a, "github"))
+          : []),
+        ...(resultsBySource.yamadashy
+          ? resultsBySource.yamadashy.map((a) => normalize(a, "yamadashy"))
+          : []),
       ]).slice(0, MAX_ARTICLES_PER_KEYWORD);
 
       result.fetched = all.length;
 
       // 3. Score with limited concurrency
       const limit = pLimit(LLM_CONCURRENCY);
-      const scoreResults = await Promise.all(
-        all.map((a) => limit(() => scoreAndSave(a, keyword))),
-      );
+      const scoreResults = await Promise.all(all.map((a) => limit(() => scoreAndSave(a, keyword))));
 
       result.scored = scoreResults.filter(Boolean).length;
     } catch (err) {
@@ -261,7 +272,6 @@ export async function POST(request: Request) {
 
 export async function GET() {
   return NextResponse.json({
-    message:
-      "POST to fetch & score news. Configure KEYWORDS, API keys, and Turso DB.",
+    message: "POST to fetch & score news. Configure KEYWORDS, API keys, and Turso DB.",
   });
 }
