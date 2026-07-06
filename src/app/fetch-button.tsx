@@ -93,12 +93,16 @@ export default function FetchButton() {
 
       if (data.ok && Array.isArray(data.results)) {
         // Start polling for scoring status
+        const since = new Date().toISOString();
         const pollInterval = setInterval(async () => {
           try {
             const statusRes = await fetch("/api/scoring-status", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ keywords: data.results.map((r: FetchResult) => r.keyword) }),
+              body: JSON.stringify({
+                keywords: data.results.map((r: FetchResult) => r.keyword),
+                since,
+              }),
             });
             const statusData = await statusRes.json();
 
@@ -109,8 +113,14 @@ export default function FetchButton() {
               });
               setResults(updatedResults);
 
-              const totalFetched = data.results.reduce((acc: number, r: FetchResult) => acc + r.fetched, 0);
-              const totalScored = updatedResults.reduce((acc: number, r: FetchResult) => acc + r.scored, 0);
+              const totalFetched = data.results.reduce(
+                (acc: number, r: FetchResult) => acc + r.fetched,
+                0,
+              );
+              const totalScored = updatedResults.reduce(
+                (acc: number, r: FetchResult) => acc + r.scored,
+                0,
+              );
 
               if (totalScored >= totalFetched && totalFetched > 0) {
                 clearInterval(pollInterval);
