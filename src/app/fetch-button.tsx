@@ -92,26 +92,48 @@ export default function FetchButton() {
       const data = await res.json();
 
       if (data.ok && Array.isArray(data.results)) {
-        setResults(data.results as FetchResult[]);
-        const total = (data.results as FetchResult[]).reduce(
-          (acc: number, r: FetchResult) => acc + r.scored,
-          0,
-        );
-        const allFailed = (data.results as FetchResult[]).every((r) => r.errors.length > 0);
-        if (allFailed) {
-          setFetchError(
-            "すべてのキーワードで取得に失敗しました。GNews / NewsAPI のAPIキーを確認してください。",
-          );
-        }
+        // Start polling for scoring status
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusRes = await fetch("/api/scoring-status", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ keywords: data.results.map((r: FetchResult) => r.keyword) }),
+            });
+            const statusData = await statusRes.json();
+
+            if (statusData.ok) {
+              const updatedResults = data.results.map((r: FetchResult) => {
+                const status = statusData.status.find((s: any) => s.keyword === r.keyword);
+                return { ...r, scored: status?.scored ?? 0 };
+              });
+              setResults(updatedResults);
+
+              const totalFetched = data.results.reduce((acc: number, r: FetchResult) => acc + r.fetched, 0);
+              const totalScored = updatedResults.reduce((acc: number, r: FetchResult) => acc + r.scored, 0);
+
+              if (totalScored >= totalFetched && totalFetched > 0) {
+                clearInterval(pollInterval);
+                setLoading(false);
+                router.refresh();
+              }
+            }
+          } catch (err) {
+            console.error("Polling error", err);
+          }
+        }, 3000);
+
+        // Timeout polling after 120s
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          setLoading(false);
+        }, 120000);
       } else {
         setFetchError("ニュース取得に失敗しました");
+        setLoading(false);
       }
-
-      // 少し待ってからページをリフレッシュ
-      setTimeout(() => router.refresh(), 1500);
     } catch {
       setFetchError("通信エラーが発生しました");
-    } finally {
       setLoading(false);
     }
   }, [router, selectedSources]);

@@ -23,15 +23,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing signature" }, { status: 401 });
     }
 
-      try {
-        await receiver.verify({
-          signature,
-          body: rawBody,
-        });
-      } catch (verifyError) {
-        console.error(`[score-articles] Signature verification failed:`, String(verifyError));
-        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-      }
+    try {
+      await receiver.verify({
+        signature,
+        body: rawBody,
+      });
+    } catch (verifyError) {
+      console.error(`[score-articles] Signature verification failed:`, String(verifyError));
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
 
     // Parse body
     const parsedBody = JSON.parse(rawBody);

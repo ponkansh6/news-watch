@@ -138,13 +138,13 @@ describe("e2e pipeline (local dev mode)", () => {
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
     expect(data.results[0].saved).toBeGreaterThan(0);
-    
+
     // Verify scoreArticles was called
     expect(gemini.scoreArticles).toHaveBeenCalled();
-    
+
     // Verify upsertArticle was called
     expect(db.upsertArticle).toHaveBeenCalled();
-    
+
     // Verify cleanup functions were called
     expect(db.deleteLowScoredArticles).toHaveBeenCalled();
     expect(db.deleteOrphanedArticles).toHaveBeenCalled();

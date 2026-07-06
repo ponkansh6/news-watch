@@ -40,16 +40,18 @@ vi.mock("@/lib/db/actions", () => ({
 // Test helpers
 // ============================================================
 
-function makeArticle(overrides: Partial<{
-  title: string;
-  description: string | null;
-  url: string;
-  urlToImage: string | null;
-  publishedAt: string;
-  sourceName: string | null;
-  sourceId: string;
-  author: string | null;
-}> = {}) {
+function makeArticle(
+  overrides: Partial<{
+    title: string;
+    description: string | null;
+    url: string;
+    urlToImage: string | null;
+    publishedAt: string;
+    sourceName: string | null;
+    sourceId: string;
+    author: string | null;
+  }> = {},
+) {
   return {
     title: "Test Article",
     description: "Test description",
@@ -223,7 +225,11 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     mockScoreArticles.mockResolvedValue([{ ...LLM_OK }, null, { ...LLM_OK, relevance: 6 }]);
 
     const { POST } = await import("@/app/api/score-articles/route");
-    const articles = [makeArticle(), makeArticle({ title: "Article 2" }), makeArticle({ title: "Article 3" })];
+    const articles = [
+      makeArticle(),
+      makeArticle({ title: "Article 2" }),
+      makeArticle({ title: "Article 3" }),
+    ];
     const request = makeRequest({ articles, keyword: "test" }, "valid-sig");
 
     const response = await POST(request);
@@ -261,10 +267,10 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     const oneMonthAgo = new Date(FROZEN_NOW - 31 * 86400_000).toISOString();
 
     const articles = [
-      makeArticle({ publishedAt: oneHourAgo }),  // days <= 1  → recency = 10
-      makeArticle({ publishedAt: twoDaysAgo }),    // days <= 3  → recency = 8
-      makeArticle({ publishedAt: oneWeekAgo }),    // days <= 7  → recency = 6
-      makeArticle({ publishedAt: oneMonthAgo }),   // days > 30  → recency = 0
+      makeArticle({ publishedAt: oneHourAgo }), // days <= 1  → recency = 10
+      makeArticle({ publishedAt: twoDaysAgo }), // days <= 3  → recency = 8
+      makeArticle({ publishedAt: oneWeekAgo }), // days <= 7  → recency = 6
+      makeArticle({ publishedAt: oneMonthAgo }), // days > 30  → recency = 0
     ];
     const request = makeRequest({ articles, keyword: "test" }, "valid-sig");
 
@@ -273,9 +279,9 @@ describe("score-articles endpoint (QStash Receiver)", () => {
 
     const calls = mockUpsertArticle.mock.calls;
     expect(calls[0][0].recency).toBe(10); // 1 hour → recency=10
-    expect(calls[1][0].recency).toBe(8);  // 2 days → recency=8
-    expect(calls[2][0].recency).toBe(6);  // 7 days → recency=6
-    expect(calls[3][0].recency).toBe(0);  // 31 days → recency=0
+    expect(calls[1][0].recency).toBe(8); // 2 days → recency=8
+    expect(calls[2][0].recency).toBe(6); // 7 days → recency=6
+    expect(calls[3][0].recency).toBe(0); // 31 days → recency=0
 
     vi.useRealTimers();
   });

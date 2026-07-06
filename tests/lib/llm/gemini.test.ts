@@ -32,7 +32,16 @@ describe("gemini llm module", () => {
         candidates: [
           {
             content: {
-              parts: [{ text: JSON.stringify({ summary: "test", relevance: 5, usefulness: 5, reason: "test" }) }],
+              parts: [
+                {
+                  text: JSON.stringify({
+                    summary: "test",
+                    relevance: 5,
+                    usefulness: 5,
+                    reason: "test",
+                  }),
+                },
+              ],
             },
           },
         ],
@@ -41,14 +50,14 @@ describe("gemini llm module", () => {
         new Response(JSON.stringify(mockResponse), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
       );
 
       const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
       expect(result).toEqual({ summary: "test", relevance: 5, usefulness: 5, reason: "test" });
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining(LLM_MODEL),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -63,7 +72,7 @@ describe("gemini llm module", () => {
         new Response(JSON.stringify({ promptFeedback: { blockReason: "Safety" } }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
       );
       const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
       expect(result).toBeNull();
@@ -71,10 +80,13 @@ describe("gemini llm module", () => {
 
     it("returns null on invalid JSON", async () => {
       mockFetch.mockResolvedValue(
-        new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "invalid" }] } }] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        })
+        new Response(
+          JSON.stringify({ candidates: [{ content: { parts: [{ text: "invalid" }] } }] }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
       );
       const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
       expect(result).toBeNull();
@@ -98,7 +110,14 @@ describe("gemini llm module", () => {
             content: {
               parts: [
                 { text: "thinking...", thought: true },
-                { text: JSON.stringify({ summary: "test", relevance: 5, usefulness: 5, reason: "test" }) },
+                {
+                  text: JSON.stringify({
+                    summary: "test",
+                    relevance: 5,
+                    usefulness: 5,
+                    reason: "test",
+                  }),
+                },
               ],
             },
           },
@@ -108,7 +127,7 @@ describe("gemini llm module", () => {
         new Response(JSON.stringify(mockResponse), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
       );
 
       const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
@@ -144,7 +163,7 @@ describe("gemini llm module", () => {
         new Response(JSON.stringify(mockResponse), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
       );
 
       const result = await scoreArticles(
@@ -152,7 +171,7 @@ describe("gemini llm module", () => {
           { title: "t1", description: "d1" },
           { title: "t2", description: "d2" },
         ],
-        "keyword"
+        "keyword",
       );
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({ summary: "s1", relevance: 1, usefulness: 1, reason: "r1" });
@@ -179,7 +198,7 @@ describe("gemini llm module", () => {
         new Response(JSON.stringify(mockResponse), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        })
+        }),
       );
 
       const result = await scoreArticles(
@@ -187,7 +206,7 @@ describe("gemini llm module", () => {
           { title: "t1", description: "d1" },
           { title: "t2", description: "d2" },
         ],
-        "keyword"
+        "keyword",
       );
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({ summary: "s1", relevance: 1, usefulness: 1, reason: "r1" });
