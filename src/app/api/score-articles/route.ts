@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Receiver } from "@upstash/qstash";
 import { scoreArticles } from "@/lib/llm/gemini";
 import { upsertArticle } from "@/lib/db/actions";
+import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
 import type { NormalizedArticle } from "@/lib/types";
 
 export const maxDuration = 60;
@@ -10,19 +11,6 @@ const receiver = new Receiver({
   currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY || "",
   nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY || "",
 });
-
-/** Algorithmic recency score (0-10) based on publishedAt freshness. */
-function calcRecencyScore(publishedAt: string): number {
-  const now = Date.now();
-  const pub = new Date(publishedAt).getTime();
-  const days = (now - pub) / (1000 * 60 * 60 * 24);
-  if (days <= 1) return 10;
-  if (days <= 3) return 8;
-  if (days <= 7) return 6;
-  if (days <= 14) return 4;
-  if (days <= 30) return 2;
-  return 0;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,15 +23,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing signature" }, { status: 401 });
     }
 
-    try {
-      await receiver.verify({
-        signature,
-        body: rawBody,
-        url: request.url,
-      });
-    } catch {
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-    }
+      try {
+        await receiver.verify({
+          signature,
+          body: rawBody,
+        });
+      } catch (verifyError) {
+        console.error(`[score-articles] Signature verification failed:`, String(verifyError));
+        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+      }
 
     // Parse body
     const parsedBody = JSON.parse(rawBody);
@@ -74,12 +62,7 @@ export async function POST(request: NextRequest) {
       const relevance = llmResult?.relevance ?? null;
       const usefulness = llmResult?.usefulness ?? null;
       const recency = calcRecencyScore(article.publishedAt);
-
-      // composite = relevance(30%) + usefulness(40%) + recency(30%)
-      const composite =
-        relevance !== null && usefulness !== null
-          ? Math.round((relevance * 0.3 + usefulness * 0.4 + recency * 0.3) * 10) / 10
-          : null;
+      const composite = calcCompositeScore(relevance, usefulness, recency);
 
       await upsertArticle({
         title: article.title,

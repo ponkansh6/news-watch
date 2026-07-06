@@ -1,6 +1,9 @@
 import { z } from "zod/v4";
 import { SCORING_PROMPT, BATCH_SCORING_PROMPT } from "./prompts";
 
+/** Gemini API model name used for article scoring. */
+export const LLM_MODEL = "gemma-4-31b-it";
+
 const LLMResponseSchema = z.object({
   summary: z.string().min(1).max(100),
   relevance: z.number().min(0).max(10),
@@ -34,7 +37,7 @@ export async function scoreArticle(
 
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${LLM_MODEL}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -136,7 +139,7 @@ export async function scoreArticles(
 
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${LLM_MODEL}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

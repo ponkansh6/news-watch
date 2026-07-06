@@ -109,9 +109,12 @@ vi.mock("@/lib/config", () => ({
 }));
 
 vi.mock("@upstash/qstash", () => ({
-  Client: vi.fn().mockImplementation(() => ({
-    publishJSON: vi.fn().mockResolvedValue({ messageId: "test-msg" }),
-  })),
+  Client: class {
+    publishJSON = vi.fn().mockResolvedValue({ messageId: "test-msg" });
+  } as any,
+  Receiver: class {
+    verify = vi.fn().mockResolvedValue(undefined);
+  } as any,
 }));
 
 describe("fetch-news route source selection", () => {

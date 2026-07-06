@@ -85,6 +85,8 @@ vi.mock("@upstash/qstash", () => ({
 describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // QStash path（production パス）でテストするためダミー token を設定
+    process.env.QSTASH_TOKEN = "test-token";
     // デフォルトで全件失敗（各テストで上書き）
     mockScoreArticles.mockImplementation(
       (articles: { title: string; description: string | null }[]) =>

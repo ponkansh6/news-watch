@@ -6,9 +6,11 @@ import { searchHackerNews, type HackerNewsArticle } from "@/lib/news/hackernews"
 import { searchQiita, type QiitaArticle } from "@/lib/news/qiita";
 import { searchGitHub, type GitHubRepo } from "@/lib/news/github";
 import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
-import { deleteOrphanedArticles, deleteLowScoredArticles } from "@/lib/db/actions";
+import { deleteOrphanedArticles, deleteLowScoredArticles, upsertArticle } from "@/lib/db/actions";
 import { type NormalizedArticle } from "@/lib/types";
 import { Client } from "@upstash/qstash";
+import { scoreArticles } from "@/lib/llm/gemini";
+import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
 
 // Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
@@ -135,11 +137,17 @@ export async function POST(request: Request) {
   const results: {
     keyword: string;
     fetched: number;
+    saved?: number;
     errors: string[];
   }[] = [];
 
   for (const keyword of KEYWORDS) {
-    const result = { keyword, fetched: 0, errors: [] as string[] };
+    const result = { keyword, fetched: 0, errors: [] as string[] } as {
+      keyword: string;
+      fetched: number;
+      saved?: number;
+      errors: string[];
+    };
 
     try {
       // 1. Fetch from selected sources only
@@ -202,20 +210,62 @@ export async function POST(request: Request) {
 
       // 3. Queue scoring tasks for each keyword
       if (all.length > 0) {
-        try {
-          const scoreUrl = resolveScoreUrl(request);
-          await qstash.publishJSON({
-            url: scoreUrl,
-            body: {
-              articles: all,
+        if (process.env.QSTASH_TOKEN) {
+          try {
+            const scoreUrl = resolveScoreUrl(request);
+            await qstash.publishJSON({
+              url: scoreUrl,
+              body: {
+                articles: all,
+                keyword,
+              },
+              retries: 3,
+            });
+          } catch (queueError) {
+            console.error(`[fetch-news] Failed to queue scoring task for ${keyword}:`, queueError);
+            result.errors.push(`Failed to queue scoring task: ${queueError}`);
+          }
+        } else {
+          // Local dev: score directly
+          try {
+            const llmResults = await scoreArticles(
+              all.map((a: NormalizedArticle) => ({ title: a.title, description: a.description })),
               keyword,
-            },
-            retries: 3,
-            timeout: 30000,
-          });
-        } catch (queueError) {
-          console.error(`[fetch-news] Failed to queue scoring task for ${keyword}:`, queueError);
-          result.errors.push(`Failed to queue scoring task: ${queueError}`);
+            );
+            let savedCount = 0;
+            for (let i = 0; i < all.length; i++) {
+              const llmResult = llmResults[i] ?? null;
+              const article = all[i];
+              const relevance = llmResult?.relevance ?? null;
+              const usefulness = llmResult?.usefulness ?? null;
+              const recency = calcRecencyScore(article.publishedAt);
+              const composite = calcCompositeScore(relevance, usefulness, recency);
+
+              await upsertArticle({
+                title: article.title,
+                description: article.description,
+                url: article.url,
+                urlToImage: article.urlToImage,
+                publishedAt: article.publishedAt,
+                sourceName: article.sourceName,
+                sourceId: article.sourceId,
+                author: article.author,
+                keyword,
+                summary: llmResult?.summary ?? null,
+                relevance,
+                usefulness,
+                recency,
+                score: composite,
+                reason: llmResult?.reason ?? null,
+                scoredAt: llmResult ? new Date().toISOString() : null,
+              });
+              if (llmResult) savedCount++;
+            }
+            result.saved = savedCount;
+          } catch (scoringError) {
+            console.error(`[fetch-news] Local scoring failed for ${keyword}:`, scoringError);
+            result.errors.push(`Local scoring failed: ${scoringError}`);
+          }
         }
       }
     } catch (err) {
