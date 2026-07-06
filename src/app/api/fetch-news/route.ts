@@ -7,6 +7,7 @@ import { searchQiita, type QiitaArticle } from "@/lib/news/qiita";
 import { searchGitHub, type GitHubRepo } from "@/lib/news/github";
 import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
 import { searchITmedia, type ItmediaItem } from "@/lib/news/itmedia";
+import { searchCodeZine, type CodeZineItem } from "@/lib/news/codezine";
 import { deleteOrphanedArticles, deleteLowScoredArticles, upsertArticle } from "@/lib/db/actions";
 import { type NormalizedArticle } from "@/lib/types";
 import { Client } from "@upstash/qstash";
@@ -40,7 +41,8 @@ function normalize(
     | QiitaArticle
     | GitHubRepo
     | YamadashyItem
-    | ItmediaItem,
+    | ItmediaItem
+    | CodeZineItem,
   sourceId: string,
 ): NormalizedArticle {
   // GNews: .image, .source.name+.url
@@ -50,6 +52,7 @@ function normalize(
   // GitHub: .html_url, .owner.login, sourceName = "GitHub"
   // Yamadashy: .link, .pubDate, sourceName = "Tech Blog"
   // ITmedia: .link, .pubDate, sourceName = "ITmedia"
+  // CodeZine: .link, .pubDate, sourceName = "CodeZine"
   const g = article as GNewsArticle;
   const n = article as NewsApiArticle;
   const hn = article as HackerNewsArticle;
@@ -57,6 +60,7 @@ function normalize(
   const gh = article as GitHubRepo;
   const yd = article as YamadashyItem;
   const it = article as ItmediaItem;
+  const cz = article as CodeZineItem;
 
   // Determine source name
   let sourceName: string | null = null;
@@ -78,6 +82,13 @@ function normalize(
     url = it.link;
     publishedAt = it.pubDate ?? new Date().toISOString();
     sourceName = "ITmedia";
+    author = null;
+  } else if ("guid" in cz) {
+    // CodeZine RSS item
+    title = cz.title;
+    url = cz.link;
+    publishedAt = cz.pubDate ?? new Date().toISOString();
+    sourceName = "CodeZine";
     author = null;
   } else if ("link" in yd) {
     // Yamadashy RSS item
@@ -142,7 +153,7 @@ export async function POST(request: Request) {
     selectedSources = body.sources || [];
   } catch {
     // If parsing fails or no sources provided, default to all sources
-    selectedSources = ["gnews", "newsapi", "hackernews", "qiita", "github", "yamadashy", "itmedia"];
+    selectedSources = ["gnews", "newsapi", "hackernews", "qiita", "github", "yamadashy", "itmedia", "codezine"];
   }
 
   const results: {
@@ -193,6 +204,10 @@ export async function POST(request: Request) {
         fetchPromises.push(searchITmedia(keyword));
         sourceOrder.push("itmedia");
       }
+      if (selectedSources.includes("codezine")) {
+        fetchPromises.push(searchCodeZine(keyword));
+        sourceOrder.push("codezine");
+      }
 
       const fetchedResults = await Promise.all(fetchPromises);
 
@@ -221,6 +236,9 @@ export async function POST(request: Request) {
           : []),
         ...(resultsBySource.itmedia
           ? resultsBySource.itmedia.map((a) => normalize(a, "itmedia"))
+          : []),
+        ...(resultsBySource.codezine
+          ? resultsBySource.codezine.map((a) => normalize(a, "codezine"))
           : []),
       ]).slice(0, MAX_ARTICLES_PER_KEYWORD);
 
