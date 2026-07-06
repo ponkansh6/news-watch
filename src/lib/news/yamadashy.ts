@@ -35,9 +35,7 @@ export async function searchYamadashy(keyword: string): Promise<YamadashyItem[]>
     const channel = parsed?.rss?.channel;
     if (!channel?.item) return [];
 
-    const items: YamadashyItem[] = Array.isArray(channel.item)
-      ? channel.item
-      : [channel.item];
+    const items: YamadashyItem[] = Array.isArray(channel.item) ? channel.item : [channel.item];
 
     // Filter by keyword match in title (case-insensitive)
     const kw = keyword.toLowerCase();

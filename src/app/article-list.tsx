@@ -33,16 +33,16 @@ function formatDate(iso: string): string {
   }
 }
 
-function ScoreBadge({ 
-  score, 
-  relevance, 
-  usefulness, 
-  recency 
-}: { 
-  score: number | null; 
-  relevance: number | null; 
-  usefulness: number | null; 
-  recency: number | null; 
+function ScoreBadge({
+  score,
+  relevance,
+  usefulness,
+  recency,
+}: {
+  score: number | null;
+  relevance: number | null;
+  usefulness: number | null;
+  recency: number | null;
 }) {
   if (score === null) {
     return (
@@ -62,23 +62,16 @@ function ScoreBadge({
   return (
     <span
       className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${color}`}
-      title={`関連性: ${relevance?.toFixed(1) || 'N/A'} (30%)\n有用性: ${usefulness?.toFixed(1) || 'N/A'} (40%)\n新しさ: ${recency?.toFixed(1) || 'N/A'} (30%)\n━━━━━━━━━━━━━━━\n合成: ${score.toFixed(1)}`}
+      title={`関連性: ${relevance?.toFixed(1) || "N/A"} (30%)\n有用性: ${usefulness?.toFixed(1) || "N/A"} (40%)\n新しさ: ${recency?.toFixed(1) || "N/A"} (30%)\n━━━━━━━━━━━━━━━\n合成: ${score.toFixed(1)}`}
     >
       {score}
     </span>
   );
 }
 
-
-
 function NewspaperIcon() {
   return (
-    <svg
-      className="h-6 w-6"
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
+    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -92,7 +85,7 @@ function NewspaperIcon() {
 function getKeywordColor(keyword: string): string {
   const colors = [
     "bg-rose-50 text-rose-600 border-rose-200",
-    "bg-blue-50 text-blue-600 border-blue-200", 
+    "bg-blue-50 text-blue-600 border-blue-200",
     "bg-green-50 text-green-600 border-green-200",
     "bg-purple-50 text-purple-600 border-purple-200",
     "bg-orange-50 text-orange-600 border-orange-200",
@@ -100,12 +93,12 @@ function getKeywordColor(keyword: string): string {
     "bg-indigo-50 text-indigo-600 border-indigo-200",
     "bg-pink-50 text-pink-600 border-pink-200",
   ];
-  
+
   let hash = 0;
   for (let i = 0; i < keyword.length; i++) {
     hash = keyword.charCodeAt(i) + ((hash << 5) - hash);
   }
-  
+
   const index = Math.abs(hash) % colors.length;
   return colors[index];
 }
@@ -129,7 +122,7 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
               <NewspaperIcon />
             </div>
           )}
-          
+
           <div className="min-w-0 flex-1">
             <a
               href={article.url}
@@ -153,23 +146,23 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
               <time dateTime={article.publishedAt} className="text-neutral-500">
                 {formatDate(article.publishedAt)}
               </time>
-              <span className={`rounded border px-2 py-0.5 ${getKeywordColor(article.keyword)}`}>{article.keyword}</span>
+              <span className={`rounded border px-2 py-0.5 ${getKeywordColor(article.keyword)}`}>
+                {article.keyword}
+              </span>
               {article.reason && (
                 <span className="italic text-neutral-400" title={article.reason}>
-                  {article.reason.length > 30
-                    ? article.reason.slice(0, 30) + "…"
-                    : article.reason}
+                  {article.reason.length > 30 ? article.reason.slice(0, 30) + "…" : article.reason}
                 </span>
               )}
             </div>
           </div>
-          
+
           <div className="ml-4">
-            <ScoreBadge 
-              score={article.score} 
-              relevance={article.relevance} 
-              usefulness={article.usefulness} 
-              recency={article.recency} 
+            <ScoreBadge
+              score={article.score}
+              relevance={article.relevance}
+              usefulness={article.usefulness}
+              recency={article.recency}
             />
           </div>
         </article>
@@ -182,19 +175,19 @@ function SkeletonCard() {
   return (
     <article className="group flex items-start gap-4 rounded-lg border border-neutral-200 bg-white p-4">
       <div className="h-[120px] w-[120px] shrink-0 rounded-lg bg-neutral-200 animate-pulse" />
-      
+
       <div className="min-w-0 flex-1">
         <div className="h-4 w-3/4 rounded bg-neutral-200 animate-pulse mb-2" />
         <div className="h-3 w-full rounded bg-neutral-200 animate-pulse mb-1" />
         <div className="h-3 w-5/6 rounded bg-neutral-200 animate-pulse mb-3" />
-        
+
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <div className="h-3 w-16 rounded bg-neutral-200 animate-pulse" />
           <div className="h-3 w-20 rounded bg-neutral-200 animate-pulse" />
           <div className="h-3 w-12 rounded bg-neutral-200 animate-pulse" />
         </div>
       </div>
-      
+
       <div className="ml-4">
         <div className="h-12 w-12 rounded-lg bg-neutral-200 animate-pulse" />
       </div>

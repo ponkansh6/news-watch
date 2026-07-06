@@ -31,10 +31,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": [
-    "node_modules",
-    ".next",
-    "vitest.config.ts",
-    "tests"
-  ]
+  "exclude": ["node_modules", ".next", "vitest.config.ts", "tests"]
 }

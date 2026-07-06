@@ -74,9 +74,7 @@ export async function getScoredArticles(limit = 50, sourceIds?: string[]) {
 /** Delete articles whose keyword is not in the active set. */
 export async function deleteOrphanedArticles(activeKeywords: string[]) {
   try {
-    const result = await db
-      .delete(articles)
-      .where(notInArray(articles.keyword, activeKeywords));
+    const result = await db.delete(articles).where(notInArray(articles.keyword, activeKeywords));
     return result;
   } catch (err) {
     console.warn(`[db] delete error:`, err);
@@ -97,11 +95,7 @@ export async function deleteLowScoredArticles(minScore = 5) {
 /** All articles, newest first (for "last updated" timestamp). */
 export async function getAllArticles(limit = 10) {
   try {
-    return await db
-      .select()
-      .from(articles)
-      .orderBy(desc(articles.createdAt))
-      .limit(limit);
+    return await db.select().from(articles).orderBy(desc(articles.createdAt)).limit(limit);
   } catch (err) {
     console.warn(`[db] query error:`, err);
     return [];

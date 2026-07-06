@@ -17,7 +17,7 @@ export async function searchGitHub(keyword: string): Promise<GitHubRepo[]> {
   const timer = setTimeout(() => controller.abort(), 10_000);
 
   const headers: HeadersInit = {
-    "Accept": "application/vnd.github+json",
+    Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
   };
   const token = process.env.GITHUB_TOKEN;

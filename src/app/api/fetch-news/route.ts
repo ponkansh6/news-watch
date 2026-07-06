@@ -6,26 +6,27 @@ import { searchHackerNews, type HackerNewsArticle } from "@/lib/news/hackernews"
 import { searchQiita, type QiitaArticle } from "@/lib/news/qiita";
 import { searchGitHub, type GitHubRepo } from "@/lib/news/github";
 import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
-import { scoreArticles } from "@/lib/llm/gemini";
-import type { LLMResponse } from "@/lib/llm/gemini";
-import { upsertArticle, deleteOrphanedArticles, deleteLowScoredArticles } from "@/lib/db/actions";
+import { deleteOrphanedArticles, deleteLowScoredArticles } from "@/lib/db/actions";
+import { type NormalizedArticle } from "@/lib/types";
+import { Client } from "@upstash/qstash";
 
 // Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
 
 const MAX_ARTICLES_PER_KEYWORD = 10;
 
-/* ---------- normalize differences between GNews / NewsAPI ---------- */
+// Initialize QStash client
+const qstash = new Client({
+  token: process.env.QSTASH_TOKEN || "",
+});
 
-interface NormalizedArticle {
-  title: string;
-  description: string | null;
-  url: string;
-  urlToImage: string | null;
-  publishedAt: string;
-  sourceName: string | null;
-  sourceId: string;
-  author: string | null;
+/** Resolve the callback URL for QStash, trying env var, Vercel URL, and fallback. */
+function resolveScoreUrl(request: Request): string {
+  const base =
+    process.env.SCORE_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
+    `https://${request.headers.get("host") ?? "news-watch.vercel.app"}`;
+  return `${base}/api/score-articles`;
 }
 
 function normalize(
@@ -115,56 +116,6 @@ function deduplicate(articles: NormalizedArticle[]): NormalizedArticle[] {
   });
 }
 
-/* ---------- recency score (algorithmic, 0-10) ---------- */
-
-function calcRecencyScore(publishedAt: string): number {
-  const now = Date.now();
-  const pub = new Date(publishedAt).getTime();
-  const days = (now - pub) / (1000 * 60 * 60 * 24);
-  if (days <= 1) return 10;
-  if (days <= 3) return 8;
-  if (days <= 7) return 6;
-  if (days <= 14) return 4;
-  if (days <= 30) return 2;
-  return 0;
-}
-
-/* ---------- score & save one article ---------- */
-
-async function scoreAndSave(
-  article: NormalizedArticle,
-  keyword: string,
-  llmResult: LLMResponse | null,
-): Promise<boolean> {
-  const relevance = llmResult?.relevance ?? 5;
-  const usefulness = llmResult?.usefulness ?? 5;
-  const recency = calcRecencyScore(article.publishedAt);
-  // composite = relevance(30%) + usefulness(40%) + recency(30%)
-  const composite = Math.round((relevance * 0.3 + usefulness * 0.4 + recency * 0.3) * 10) / 10;
-
-  await upsertArticle({
-    title: article.title,
-    description: article.description,
-    url: article.url,
-    urlToImage: article.urlToImage,
-    publishedAt: article.publishedAt,
-    sourceName: article.sourceName,
-    sourceId: article.sourceId,
-    author: article.author,
-    keyword,
-    summary: llmResult?.summary ?? null,
-    relevance,
-    usefulness,
-    recency,
-    // composite score stored in `score` field (backward-compatible)
-    score: composite,
-    reason: llmResult?.reason ?? null,
-    scoredAt: llmResult ? new Date().toISOString() : null,
-  });
-
-  return llmResult !== null;
-}
-
 /* ---------- POST handler ---------- */
 
 export async function POST(request: Request) {
@@ -184,12 +135,11 @@ export async function POST(request: Request) {
   const results: {
     keyword: string;
     fetched: number;
-    scored: number;
     errors: string[];
   }[] = [];
 
   for (const keyword of KEYWORDS) {
-    const result = { keyword, fetched: 0, scored: 0, errors: [] as string[] };
+    const result = { keyword, fetched: 0, errors: [] as string[] };
 
     try {
       // 1. Fetch from selected sources only
@@ -250,19 +200,24 @@ export async function POST(request: Request) {
 
       result.fetched = all.length;
 
-      // 3. Batch score: one LLM call per keyword
-      const llmResults = await scoreArticles(
-        all.map((a) => ({ title: a.title, description: a.description })),
-        keyword,
-      );
-
-      let scoredCount = 0;
-      for (let i = 0; i < all.length; i++) {
-        const llmResult = llmResults[i] ?? null;
-        const saved = await scoreAndSave(all[i], keyword, llmResult);
-        if (saved) scoredCount++;
+      // 3. Queue scoring tasks for each keyword
+      if (all.length > 0) {
+        try {
+          const scoreUrl = resolveScoreUrl(request);
+          await qstash.publishJSON({
+            url: scoreUrl,
+            body: {
+              articles: all,
+              keyword,
+            },
+            retries: 3,
+            timeout: 30000,
+          });
+        } catch (queueError) {
+          console.error(`[fetch-news] Failed to queue scoring task for ${keyword}:`, queueError);
+          result.errors.push(`Failed to queue scoring task: ${queueError}`);
+        }
       }
-      result.scored = scoredCount;
     } catch (err) {
       result.errors.push(String(err));
     }
@@ -273,7 +228,7 @@ export async function POST(request: Request) {
   // Remove low-scored articles after each batch
   await deleteLowScoredArticles(5);
 
-  return NextResponse.json({ ok: true, results });
+  return NextResponse.json({ ok: true, message: "Scoring queued", results });
 }
 
 export async function GET() {

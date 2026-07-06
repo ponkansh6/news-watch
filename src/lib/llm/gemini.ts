@@ -127,8 +127,7 @@ export async function scoreArticles(
     )
     .join("\n");
 
-  const prompt = BATCH_SCORING_PROMPT
-    .replace("{{articleCount}}", String(articles.length))
+  const prompt = BATCH_SCORING_PROMPT.replace("{{articleCount}}", String(articles.length))
     .replace("{{keyword}}", keyword)
     .replace("{{articles}}", articlesBlock);
 

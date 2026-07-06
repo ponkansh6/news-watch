@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
+    "@upstash/qstash": "^2.11.1",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "fast-xml-parser": "^5.9.3",

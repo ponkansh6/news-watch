@@ -78,8 +78,9 @@ vi.mock("@/lib/news/yamadashy", () => ({
 }));
 
 vi.mock("@/lib/llm/gemini", () => ({
-  scoreArticles: vi.fn().mockImplementation(
-    (articles: { title: string; description: string | null }[]) =>
+  scoreArticles: vi
+    .fn()
+    .mockImplementation((articles: { title: string; description: string | null }[]) =>
       Promise.resolve(
         articles.map(() => ({
           relevance: 8,
@@ -88,7 +89,7 @@ vi.mock("@/lib/llm/gemini", () => ({
           reason: "Test reason",
         })),
       ),
-  ),
+    ),
   scoreArticle: vi.fn().mockResolvedValue({
     relevance: 8,
     usefulness: 7,
@@ -107,6 +108,12 @@ vi.mock("@/lib/config", () => ({
   KEYWORDS: ["test-keyword"],
 }));
 
+vi.mock("@upstash/qstash", () => ({
+  Client: vi.fn().mockImplementation(() => ({
+    publishJSON: vi.fn().mockResolvedValue({ messageId: "test-msg" }),
+  })),
+}));
+
 describe("fetch-news route source selection", () => {
   test("should work when only hackernews is selected (GNews and NewsAPI unchecked)", async () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
@@ -123,7 +130,6 @@ describe("fetch-news route source selection", () => {
     expect(data.results).toHaveLength(1);
     expect(data.results[0].keyword).toBe("test-keyword");
     expect(data.results[0].fetched).toBeGreaterThan(0);
-    expect(data.results[0].scored).toBeGreaterThan(0);
     expect(data.results[0].errors).toHaveLength(0);
   });
 

@@ -8,15 +8,16 @@ export const dynamic = "force-dynamic";
 export default async function Home(props: { searchParams: Promise<{ sources?: string }> }) {
   const searchParams = await props.searchParams;
   const selectedSources = searchParams.sources?.split(",").filter(Boolean) ?? [];
-  const scored = await getScoredArticles(100, selectedSources.length > 0 ? selectedSources : undefined);
+  const scored = await getScoredArticles(
+    100,
+    selectedSources.length > 0 ? selectedSources : undefined,
+  );
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
       <header className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight">News Watch</h1>
-        <p className="mt-1 text-neutral-500">
-          監視キーワード: {KEYWORDS.join(", ")}
-        </p>
+        <p className="mt-1 text-neutral-500">監視キーワード: {KEYWORDS.join(", ")}</p>
       </header>
 
       <section className="mb-12">
@@ -27,9 +28,7 @@ export default async function Home(props: { searchParams: Promise<{ sources?: st
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">
             スコアリング済み記事
-            <span className="ml-2 text-sm font-normal text-neutral-400">
-              ({scored.length}件)
-            </span>
+            <span className="ml-2 text-sm font-normal text-neutral-400">({scored.length}件)</span>
           </h2>
         </div>
 

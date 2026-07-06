@@ -70,6 +70,12 @@ vi.mock("@/lib/config", () => ({
   KEYWORDS: MOCK_KEYWORDS,
 }));
 
+vi.mock("@upstash/qstash", () => ({
+  Client: class {
+    publishJSON = vi.fn().mockResolvedValue({ messageId: "test-msg" });
+  },
+}));
+
 // ルートモジュールはトップレベルでインポックしない（テスト内で動的インポートする）
 
 // ============================================================
@@ -112,23 +118,20 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
 
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
+    expect(data.message).toBe("Scoring queued");
 
     let totalFetched = 0;
-    let totalScored = 0;
     for (const result of data.results) {
       expect(result.fetched).toBeGreaterThan(0);
-      expect(result.scored).toBe(0);
       expect(result.errors).toHaveLength(0);
       totalFetched += result.fetched;
-      totalScored += result.scored;
     }
 
     // 5 keywords × 10 articles each = 50 total
     expect(totalFetched).toBe(50);
-    expect(totalScored).toBe(0);
 
-    // upsertArticle は全50件呼ばれていること（保存はされている）
-    expect(mockUpsertArticle).toHaveBeenCalledTimes(50);
+    // upsertArticle は呼ばれていないこと（score-articles で呼ばれるため）
+    expect(mockUpsertArticle).not.toHaveBeenCalled();
   });
 
   /**
@@ -162,18 +165,15 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
 
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
+    expect(data.message).toBe("Scoring queued");
 
     let totalFetched = 0;
-    let totalScored = 0;
     for (const result of data.results) {
       totalFetched += result.fetched;
-      totalScored += result.scored;
       expect(result.fetched).toBeGreaterThan(0);
-      expect(result.scored).toBeGreaterThan(0);
       expect(result.errors).toHaveLength(0);
     }
-    expect(totalFetched).toBe(totalScored);
-    expect(totalScored).toBe(50);
+    expect(totalFetched).toBe(50);
   });
 
   /**
@@ -213,21 +213,16 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
 
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
+    expect(data.message).toBe("Scoring queued");
 
     let totalFetched = 0;
-    let totalScored = 0;
     for (const result of data.results) {
       totalFetched += result.fetched;
-      totalScored += result.scored;
-      expect(result.fetched).toBeGreaterThanOrEqual(result.scored);
-      expect(result.scored).toBeGreaterThan(0);
       expect(result.errors).toHaveLength(0);
     }
 
-    // 50 articles, 1/3 fail → scored should be ~33
+    // 50 articles
     expect(totalFetched).toBe(50);
-    expect(totalScored).toBeGreaterThan(0);
-    expect(totalScored).toBeLessThan(50);
   });
 
   /**
@@ -259,10 +254,11 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
 
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
+    expect(data.message).toBe("Scoring queued");
 
-    // scored = 0 を確認
+    // fetched > 0 を確認
     for (const result of data.results) {
-      expect(result.scored).toBe(0);
+      expect(result.fetched).toBeGreaterThan(0);
     }
 
     // deleteLowScoredArticles が呼ばれていること

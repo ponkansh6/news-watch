@@ -107,16 +107,13 @@ describe("Source filtering tests for articles", () => {
     ]);
 
     // Drizzle ORM で score IS NOT NULL のみの条件でSELECT
-    const rows = await db
-      .select()
-      .from(articles)
-      .where(isNotNull(articles.score));
+    const rows = await db.select().from(articles).where(isNotNull(articles.score));
 
     // 全3件が返ってくることを確認
     expect(rows).toHaveLength(3);
-    expect(rows.map(r => r.sourceId)).toContain("qiita");
-    expect(rows.map(r => r.sourceId)).toContain("github");
-    expect(rows.map(r => r.sourceId)).toContain("hackernews");
+    expect(rows.map((r) => r.sourceId)).toContain("qiita");
+    expect(rows.map((r) => r.sourceId)).toContain("github");
+    expect(rows.map((r) => r.sourceId)).toContain("hackernews");
   });
 
   test("should filter articles by specific source IDs", async () => {
@@ -185,9 +182,9 @@ describe("Source filtering tests for articles", () => {
 
     // 2件（qiita, github）のみ返ってくることを確認
     expect(rows).toHaveLength(2);
-    expect(rows.map(r => r.sourceId)).toContain("qiita");
-    expect(rows.map(r => r.sourceId)).toContain("github");
-    expect(rows.map(r => r.sourceId)).not.toContain("hackernews");
+    expect(rows.map((r) => r.sourceId)).toContain("qiita");
+    expect(rows.map((r) => r.sourceId)).toContain("github");
+    expect(rows.map((r) => r.sourceId)).not.toContain("hackernews");
   });
 
   test("should apply AND condition when both score and sourceId filters are used", async () => {
@@ -250,9 +247,9 @@ describe("Source filtering tests for articles", () => {
 
     // score=nullのhackernewsは含めず2件のみ
     expect(rows).toHaveLength(2);
-    expect(rows.map(r => r.sourceId)).toContain("qiita");
-    expect(rows.map(r => r.sourceId)).toContain("github");
-    expect(rows.map(r => r.sourceId)).not.toContain("hackernews");
+    expect(rows.map((r) => r.sourceId)).toContain("qiita");
+    expect(rows.map((r) => r.sourceId)).toContain("github");
+    expect(rows.map((r) => r.sourceId)).not.toContain("hackernews");
   });
 
   test("should return zero articles when filtering by non-existent source ID", async () => {

@@ -49,18 +49,21 @@ export default function FetchButton() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSourceToggle = useCallback((sourceId: string) => {
-    setSelectedSources((prev) => {
-      const next = prev.includes(sourceId)
-        ? prev.filter((id) => id !== sourceId)
-        : [...prev, sourceId];
-      // Update URL search params
-      const params = new URLSearchParams();
-      if (next.length > 0) params.set("sources", next.join(","));
-      router.replace(`?${params.toString()}`, { scroll: false });
-      return next;
-    });
-  }, [router]);
+  const handleSourceToggle = useCallback(
+    (sourceId: string) => {
+      setSelectedSources((prev) => {
+        const next = prev.includes(sourceId)
+          ? prev.filter((id) => id !== sourceId)
+          : [...prev, sourceId];
+        // Update URL search params
+        const params = new URLSearchParams();
+        if (next.length > 0) params.set("sources", next.join(","));
+        router.replace(`?${params.toString()}`, { scroll: false });
+        return next;
+      });
+    },
+    [router],
+  );
 
   const handleSelectAll = useCallback(() => {
     setSelectedSources(SOURCES.map((s) => s.id));
@@ -94,11 +97,11 @@ export default function FetchButton() {
           (acc: number, r: FetchResult) => acc + r.scored,
           0,
         );
-        const allFailed = (data.results as FetchResult[]).every(
-          (r) => r.errors.length > 0,
-        );
+        const allFailed = (data.results as FetchResult[]).every((r) => r.errors.length > 0);
         if (allFailed) {
-          setFetchError("すべてのキーワードで取得に失敗しました。GNews / NewsAPI のAPIキーを確認してください。");
+          setFetchError(
+            "すべてのキーワードで取得に失敗しました。GNews / NewsAPI のAPIキーを確認してください。",
+          );
         }
       } else {
         setFetchError("ニュース取得に失敗しました");
@@ -119,76 +122,70 @@ export default function FetchButton() {
 
   return (
     <div className="flex flex-col gap-3">
-    {/* Source Selection */}
-    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-medium text-neutral-600">データソースを選択</span>
-        <div className="flex gap-1.5">
-          <button
-            type="button"
-            onClick={handleSelectAll}
-            className="text-xs text-neutral-500 hover:text-neutral-700"
-          >
-            すべて選択
-          </button>
-          <span className="text-xs text-neutral-300">|</span>
-          <button
-            type="button"
-            onClick={handleSelectNone}
-            className="text-xs text-neutral-500 hover:text-neutral-700"
-          >
-            選択解除
-          </button>
+      {/* Source Selection */}
+      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs font-medium text-neutral-600">データソースを選択</span>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={handleSelectAll}
+              className="text-xs text-neutral-500 hover:text-neutral-700"
+            >
+              すべて選択
+            </button>
+            <span className="text-xs text-neutral-300">|</span>
+            <button
+              type="button"
+              onClick={handleSelectNone}
+              className="text-xs text-neutral-500 hover:text-neutral-700"
+            >
+              選択解除
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {SOURCES.map((source) => (
+            <label
+              key={source.id}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-neutral-100"
+            >
+              <div className="relative flex items-center">
+                <input
+                  type="checkbox"
+                  checked={selectedSources.includes(source.id)}
+                  onChange={() => handleSourceToggle(source.id)}
+                  className="h-4 w-4 rounded border-neutral-300 text-blue-600 focus:ring-blue-500"
+                />
+                <div
+                  className={`absolute inset-0 rounded-full ${source.color} opacity-20 ${selectedSources.includes(source.id) ? "block" : "hidden"}`}
+                />
+              </div>
+              <span className="text-xs font-medium text-neutral-700">{source.name}</span>
+            </label>
+          ))}
+        </div>
+        <div className="mt-2 text-xs text-neutral-500">
+          {selectedSources.length} / {SOURCES.length} を選択中
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {SOURCES.map((source) => (
-          <label
-            key={source.id}
-            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-neutral-100"
-          >
-            <div className="relative flex items-center">
-              <input
-                type="checkbox"
-                checked={selectedSources.includes(source.id)}
-                onChange={() => handleSourceToggle(source.id)}
-                className="h-4 w-4 rounded border-neutral-300 text-blue-600 focus:ring-blue-500"
-              />
-              <div
-                className={`absolute inset-0 rounded-full ${source.color} opacity-20 ${selectedSources.includes(source.id) ? "block" : "hidden"}`}
-              />
-            </div>
-            <span className="text-xs font-medium text-neutral-700">{source.name}</span>
-          </label>
-        ))}
-      </div>
-      <div className="mt-2 text-xs text-neutral-500">
-        {selectedSources.length} / {SOURCES.length} を選択中
-      </div>
-    </div>
 
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <button
-        type="button"
-        onClick={handleFetch}
-        disabled={loading || selectedSources.length === 0}
-        className="rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {loading ? "取得・スコアリング中..." : "ニュースを取得してスコアリング"}
-      </button>
-      <span className="text-xs text-neutral-400">
-        GNews / NewsAPI → LLMスコアリング
-      </span>
-    </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <button
+          type="button"
+          onClick={handleFetch}
+          disabled={loading || selectedSources.length === 0}
+          className="rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? "取得・スコアリング中..." : "ニュースを取得してスコアリング"}
+        </button>
+        <span className="text-xs text-neutral-400">GNews / NewsAPI → LLMスコアリング</span>
+      </div>
 
       {fetchError && (
         <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
           {fetchError}
-          <button
-            type="button"
-            onClick={handleFetch}
-            className="ml-2 underline hover:no-underline"
-          >
+          <button type="button" onClick={handleFetch} className="ml-2 underline hover:no-underline">
             リトライ
           </button>
         </div>

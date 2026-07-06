@@ -14,9 +14,7 @@ export default function Loading() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">
             スコアリング済み記事
-            <span className="ml-2 text-sm font-normal text-neutral-400">
-              (読み込み中...)
-            </span>
+            <span className="ml-2 text-sm font-normal text-neutral-400">(読み込み中...)</span>
           </h2>
         </div>
 
@@ -30,9 +28,7 @@ export default function Loading() {
       </section>
 
       <section className="border-t border-neutral-200 pt-8">
-        <h2 className="mb-2 text-sm font-medium text-neutral-400">
-          最終更新: --
-        </h2>
+        <h2 className="mb-2 text-sm font-medium text-neutral-400">最終更新: --</h2>
       </section>
     </main>
   );

@@ -10,6 +10,7 @@ authors: [shunki]
 # Specification: News Watch
 
 ## 1. Executive Summary
+
 - **Problem Statement**: Users need a centralized way to aggregate, score, and browse news articles from multiple sources, filtered by keyword relevance and technical usefulness.
 - **Target Users**: Engineers and tech enthusiasts tracking news by keyword.
 - **Success Metrics**: Articles are scored along three dimensions (relevance, usefulness, recency) with a composite score, and users can browse sorted/filtered results.
@@ -17,6 +18,7 @@ authors: [shunki]
 ## 2. Scope
 
 ### 2.1 In Scope
+
 - Fetching news from multiple external providers (NewsAPI, GNews)
 - LLM-based scoring (relevance + usefulness) + algorithmic recency scoring
 - Japanese summary generation (20-40 characters)
@@ -24,6 +26,7 @@ authors: [shunki]
 - SQLite persistence via Drizzle ORM
 
 ### 2.2 Out of Scope
+
 - Real-time streaming of news (polling/scheduled fetch is used instead)
 - User accounts or personalized feeds (currently global)
 - Complex user interactions with article content (read-only display)
@@ -34,6 +37,7 @@ authors: [shunki]
 ### 3.1 News Fetching & Processing
 
 #### FR-001: Trigger Fetching
+
 - **Priority**: Must
 - **Acceptance Criteria**:
   - Given the user is on the dashboard page
@@ -42,6 +46,7 @@ authors: [shunki]
   - AND the fetch status is indicated to the user
 
 #### FR-002: Data Processing with Scoring
+
 - **Priority**: Must
 - **Acceptance Criteria**:
   - WHEN news is fetched from NewsAPI or GNews
@@ -56,6 +61,7 @@ authors: [shunki]
 ### 3.2 Article Display
 
 #### FR-003: Dashboard View
+
 - **Priority**: Must
 - **Acceptance Criteria**:
   - WHEN the user visits the home page
@@ -63,6 +69,7 @@ authors: [shunki]
   - AND each article shows title, source, score breakdown, and summary
 
 #### FR-004: Loading State
+
 - **Priority**: Should
 - **Acceptance Criteria**:
   - WHEN data is being fetched or loaded
@@ -71,12 +78,14 @@ authors: [shunki]
 ### 3.3 API & Data Access
 
 #### FR-005: Client-side Trigger
+
 - **Priority**: Must
 - **Acceptance Criteria**:
   - WHEN a client-side component needs to initiate a server-side action (like fetching news)
   - THEN it communicates via a REST API route
 
 #### FR-006: Server-side Rendering
+
 - **Priority**: Must
 - **Acceptance Criteria**:
   - WHEN the page is requested
@@ -84,38 +93,39 @@ authors: [shunki]
 
 ## 4. Non-Functional Requirements
 
-| Category | Requirement | Target |
-|----------|-------------|--------|
-| Performance | Dashboard load time | <2s |
-| Performance | News fetch + score pipeline | <30s per source |
-| Accessibility | Keyboard navigation | Supported |
-| Reliability | LLM API failure handling | Graceful degradation with cached scores |
+| Category      | Requirement                 | Target                                  |
+| ------------- | --------------------------- | --------------------------------------- |
+| Performance   | Dashboard load time         | <2s                                     |
+| Performance   | News fetch + score pipeline | <30s per source                         |
+| Accessibility | Keyboard navigation         | Supported                               |
+| Reliability   | LLM API failure handling    | Graceful degradation with cached scores |
 
 ## 5. Data Model
 
 ### articles (SQLite via Drizzle ORM — `src/lib/db/schema.ts`)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | integer | Primary key (auto-increment) |
-| `title` | text | The headline of the article |
-| `description` | text | A brief description or snippet from the source |
-| `url` | text | Unique URL for deduplication |
-| `urlToImage` | text | URL to the article's main image |
-| `publishedAt` | text | Publication timestamp |
-| `sourceName` | text | Name of the news source (e.g., BBC, CNN) |
-| `author` | text | Author of the article |
-| `keyword` | text | Primary keyword/category for the article |
-| `summary` | text | AI-generated summary (20-40 chars, Japanese) |
-| `relevance` | real | LLM-scored relevance to the keyword (0-10) |
-| `usefulness` | real | LLM-scored technical usefulness (0-10) |
-| `recency` | real | Algorithmic score based on publication freshness (0-10) |
-| `score` | real | Composite score = relevance×0.3 + usefulness×0.4 + recency×0.3 |
-| `reason` | text | LLM-generated explanation (Japanese) |
-| `scoredAt` | text | Timestamp when scoring occurred |
-| `createdAt` | text | Timestamp when the record was created in the local DB |
+| Field         | Type    | Description                                                    |
+| ------------- | ------- | -------------------------------------------------------------- |
+| `id`          | integer | Primary key (auto-increment)                                   |
+| `title`       | text    | The headline of the article                                    |
+| `description` | text    | A brief description or snippet from the source                 |
+| `url`         | text    | Unique URL for deduplication                                   |
+| `urlToImage`  | text    | URL to the article's main image                                |
+| `publishedAt` | text    | Publication timestamp                                          |
+| `sourceName`  | text    | Name of the news source (e.g., BBC, CNN)                       |
+| `author`      | text    | Author of the article                                          |
+| `keyword`     | text    | Primary keyword/category for the article                       |
+| `summary`     | text    | AI-generated summary (20-40 chars, Japanese)                   |
+| `relevance`   | real    | LLM-scored relevance to the keyword (0-10)                     |
+| `usefulness`  | real    | LLM-scored technical usefulness (0-10)                         |
+| `recency`     | real    | Algorithmic score based on publication freshness (0-10)        |
+| `score`       | real    | Composite score = relevance×0.3 + usefulness×0.4 + recency×0.3 |
+| `reason`      | text    | LLM-generated explanation (Japanese)                           |
+| `scoredAt`    | text    | Timestamp when scoring occurred                                |
+| `createdAt`   | text    | Timestamp when the record was created in the local DB          |
 
 **Indexes:**
+
 - `idx_keyword`: On `keyword` for fast filtering
 - `idx_relevance_pub`: On `relevance` and `publishedAt` for sorted retrieval
 - `idx_recency_pub`: On `recency` and `publishedAt` for freshness-based queries
@@ -156,6 +166,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 ```
 
 ### Technology Stack
+
 - **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript 6 (strict mode)
 - **Database**: SQLite via Turso (libSQL)
@@ -167,12 +178,13 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 
 ## 7. Test Strategy
 
-| Test Type | Coverage Target |
-|-----------|-----------------|
-| Unit (data processing, scoring) | >80% |
-| Component (UI rendering) | Key components |
+| Test Type                       | Coverage Target |
+| ------------------------------- | --------------- |
+| Unit (data processing, scoring) | >80%            |
+| Component (UI rendering)        | Key components  |
 
 ## 8. Non-Goals
+
 - Real-time streaming of news (polling/scheduled fetch is used instead)
 - User accounts or personalized feeds (currently global)
 - Complex user interactions with article content (read-only display)
