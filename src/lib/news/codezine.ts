@@ -15,7 +15,7 @@ const parser = new XMLParser({
   attributeNamePrefix: "@_",
 });
 
-export async function searchCodeZine(keyword: string): Promise<CodeZineItem[]> {
+export async function searchCodeZine(limit = 50): Promise<CodeZineItem[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
 
@@ -35,12 +35,7 @@ export async function searchCodeZine(keyword: string): Promise<CodeZineItem[]> {
 
     const items: CodeZineItem[] = Array.isArray(channel.item) ? channel.item : [channel.item];
 
-    // Filter by keyword match in title (case-insensitive)
-    const kw = keyword.toLowerCase();
-    return items.filter((item) => {
-      const title = item.title ?? "";
-      return title.toLowerCase().includes(kw);
-    });
+    return items.slice(0, limit);
   } catch (err) {
     console.warn(`[codezine] fetch/parse error:`, err);
     return [];

@@ -13,18 +13,13 @@ import { type NormalizedArticle } from "@/lib/types";
 import { Client } from "@upstash/qstash";
 import { scoreArticles } from "@/lib/llm/gemini";
 import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
-import {
-  embedAndFilterArticles,
-  SIMILARITY_THRESHOLD,
-  resolveThreshold,
-  filterByThreshold,
-  logFilterStats,
-} from "@/lib/vector-filter";
+import { tagArticlesByKeyword } from "@/lib/vector-filter";
+import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 
 // Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
 
-const MAX_ARTICLES_PER_KEYWORD = 10;
+const MAX_ARTICLES = 50;
 
 // Initialize QStash client
 const qstash = new Client({
@@ -179,175 +174,103 @@ export async function POST(request: Request) {
     errors: string[];
   }[] = [];
 
-  for (const keyword of KEYWORDS) {
-    const result = { keyword, fetched: 0, errors: [] as string[] } as {
-      keyword: string;
-      fetched: number;
-      saved?: number;
-      errors: string[];
-    };
+  // Build fetchPromises and sourceOrder for all selected sources
+  const fetchPromises: Array<Promise<any>> = [];
+  const sourceOrder: string[] = [];
 
-    try {
-      // 1. Fetch from selected sources only
-      const fetchPromises: Array<Promise<any>> = [];
-      const sourceOrder: string[] = [];
-
-      if (selectedSources.includes("gnews")) {
-        fetchPromises.push(searchGNews(keyword));
-        sourceOrder.push("gnews");
-      }
-      if (selectedSources.includes("newsapi")) {
-        fetchPromises.push(searchNewsApi(keyword));
-        sourceOrder.push("newsapi");
-      }
-      if (selectedSources.includes("hackernews")) {
-        fetchPromises.push(searchHackerNews(keyword));
-        sourceOrder.push("hackernews");
-      }
-      if (selectedSources.includes("qiita")) {
-        fetchPromises.push(searchQiita(keyword));
-        sourceOrder.push("qiita");
-      }
-      if (selectedSources.includes("github")) {
-        fetchPromises.push(searchGitHub(keyword));
-        sourceOrder.push("github");
-      }
-      if (selectedSources.includes("yamadashy")) {
-        fetchPromises.push(searchYamadashy(keyword));
-        sourceOrder.push("yamadashy");
-      }
-      if (selectedSources.includes("itmedia")) {
-        fetchPromises.push(searchITmedia(keyword));
-        sourceOrder.push("itmedia");
-      }
-      if (selectedSources.includes("codezine")) {
-        fetchPromises.push(searchCodeZine(keyword));
-        sourceOrder.push("codezine");
-      }
-
-      const fetchedResults = await Promise.all(fetchPromises);
-
-      // 2. Normalise + deduplicate + limit
-      // Map results by source name to avoid index mismatch
-      const resultsBySource: Record<string, any[]> = {};
-      sourceOrder.forEach((source, index) => {
-        resultsBySource[source] = fetchedResults[index];
-      });
-
-      // HN self-posts (Ask HN / Show HN) may have url=null → filter them out
-      const all = deduplicate([
-        ...(resultsBySource.gnews ? resultsBySource.gnews.map((a) => normalize(a, "gnews")) : []),
-        ...(resultsBySource.newsapi
-          ? resultsBySource.newsapi.map((a) => normalize(a, "newsapi"))
-          : []),
-        ...(resultsBySource.hackernews
-          ? resultsBySource.hackernews.map((a) => normalize(a, "hackernews")).filter((a) => a.url)
-          : []),
-        ...(resultsBySource.qiita ? resultsBySource.qiita.map((a) => normalize(a, "qiita")) : []),
-        ...(resultsBySource.github
-          ? resultsBySource.github.map((a) => normalize(a, "github"))
-          : []),
-        ...(resultsBySource.yamadashy
-          ? resultsBySource.yamadashy.map((a) => normalize(a, "yamadashy"))
-          : []),
-        ...(resultsBySource.itmedia
-          ? resultsBySource.itmedia.map((a) => normalize(a, "itmedia"))
-          : []),
-        ...(resultsBySource.codezine
-          ? resultsBySource.codezine.map((a) => normalize(a, "codezine"))
-          : []),
-      ]).slice(0, MAX_ARTICLES_PER_KEYWORD);
-
-      result.fetched = all.length;
-
-      // 3. Queue scoring tasks for each keyword
-      if (all.length > 0) {
-        if (process.env.QSTASH_TOKEN) {
-          try {
-            const scoreUrl = resolveScoreUrl(request);
-            await qstash.publishJSON({
-              url: scoreUrl,
-              body: {
-                articles: all,
-                keyword,
-              },
-              retries: 3,
-            });
-          } catch (queueError) {
-            console.error(`[fetch-news] Failed to queue scoring task for ${keyword}:`, queueError);
-            result.errors.push(`Failed to queue scoring task: ${queueError}`);
-          }
-        } else {
-          // Local dev: score directly
-          try {
-            const articlesWithEmbeddings = await embedAndFilterArticles(all, keyword);
-            const relevantArticles = filterByThreshold(
-              articlesWithEmbeddings,
-              SIMILARITY_THRESHOLD,
-            );
-            logFilterStats({
-              keyword,
-              threshold: SIMILARITY_THRESHOLD,
-              total: articlesWithEmbeddings.length,
-              passed: relevantArticles.length,
-            });
-            const llmResults = await scoreArticles(
-              relevantArticles.map((item) => ({
-                title: item.article.title,
-                description: item.article.description,
-              })),
-              keyword,
-            );
-            let savedCount = 0;
-            for (let i = 0; i < articlesWithEmbeddings.length; i++) {
-              const { article, embedding, similarity } = articlesWithEmbeddings[i];
-
-              // Find if this article was scored
-              const relevantIndex = relevantArticles.findIndex(
-                (item) => item.article.url === article.url,
-              );
-              const llmResult = relevantIndex !== -1 ? llmResults[relevantIndex] : null;
-
-              const relevance =
-                llmResult?.relevance ?? (similarity >= SIMILARITY_THRESHOLD ? 0 : null);
-              const usefulness = llmResult?.usefulness ?? null;
-              const recency = calcRecencyScore(article.publishedAt);
-              const composite = calcCompositeScore(relevance, usefulness, recency);
-
-              await upsertArticle({
-                title: article.title,
-                description: article.description,
-                url: article.url,
-                urlToImage: article.urlToImage,
-                publishedAt: article.publishedAt,
-                sourceName: article.sourceName,
-                sourceId: article.sourceId,
-                author: article.author,
-                keyword,
-                summary: llmResult?.summary ?? null,
-                relevance,
-                usefulness,
-                recency,
-                score: composite,
-                reason: llmResult?.reason ?? null,
-                scoredAt: llmResult ? new Date().toISOString() : null,
-                embedding: JSON.stringify(embedding),
-              });
-              if (llmResult) savedCount++;
-            }
-            result.saved = savedCount;
-          } catch (scoringError) {
-            console.error(`[fetch-news] Local scoring failed for ${keyword}:`, scoringError);
-            result.errors.push(`Local scoring failed: ${scoringError}`);
-          }
-        }
-      }
-    } catch (err) {
-      result.errors.push(String(err));
-    }
-
-    results.push(result);
+  if (selectedSources.includes("gnews")) {
+    fetchPromises.push(searchGNews(50));
+    sourceOrder.push("gnews");
   }
+  if (selectedSources.includes("newsapi")) {
+    fetchPromises.push(searchNewsApi(50));
+    sourceOrder.push("newsapi");
+  }
+  if (selectedSources.includes("hackernews")) {
+    fetchPromises.push(searchHackerNews(50));
+    sourceOrder.push("hackernews");
+  }
+  if (selectedSources.includes("qiita")) {
+    fetchPromises.push(searchQiita(50));
+    sourceOrder.push("qiita");
+  }
+  if (selectedSources.includes("github")) {
+    fetchPromises.push(searchGitHub(50));
+    sourceOrder.push("github");
+  }
+  if (selectedSources.includes("yamadashy")) {
+    fetchPromises.push(searchYamadashy(50));
+    sourceOrder.push("yamadashy");
+  }
+  if (selectedSources.includes("itmedia")) {
+    fetchPromises.push(searchITmedia(50));
+    sourceOrder.push("itmedia");
+  }
+  if (selectedSources.includes("codezine")) {
+    fetchPromises.push(searchCodeZine(50));
+    sourceOrder.push("codezine");
+  }
+
+  const fetchedResults = await Promise.all(fetchPromises);
+
+  // Normalize + deduplicate + slice to 50 total articles
+  const resultsBySource: Record<string, any[]> = {};
+  sourceOrder.forEach((source, index) => {
+    resultsBySource[source] = fetchedResults[index];
+  });
+
+  // HN self-posts (Ask HN / Show HN) may have url=null → filter them out
+  const all = deduplicate([
+    ...(resultsBySource.gnews ? resultsBySource.gnews.map((a) => normalize(a, "gnews")) : []),
+    ...(resultsBySource.newsapi ? resultsBySource.newsapi.map((a) => normalize(a, "newsapi")) : []),
+    ...(resultsBySource.hackernews
+      ? resultsBySource.hackernews.map((a) => normalize(a, "hackernews")).filter((a) => a.url)
+      : []),
+    ...(resultsBySource.qiita ? resultsBySource.qiita.map((a) => normalize(a, "qiita")) : []),
+    ...(resultsBySource.github ? resultsBySource.github.map((a) => normalize(a, "github")) : []),
+    ...(resultsBySource.yamadashy
+      ? resultsBySource.yamadashy.map((a) => normalize(a, "yamadashy"))
+      : []),
+    ...(resultsBySource.itmedia ? resultsBySource.itmedia.map((a) => normalize(a, "itmedia")) : []),
+    ...(resultsBySource.codezine
+      ? resultsBySource.codezine.map((a) => normalize(a, "codezine"))
+      : []),
+  ]).slice(0, MAX_ARTICLES);
+
+  // Build a single result with keyword "latest"
+  const result = { keyword: "latest", fetched: all.length, errors: [] as string[] } as {
+    keyword: string;
+    fetched: number;
+    saved?: number;
+    errors: string[];
+  };
+
+  if (all.length > 0) {
+    if (process.env.QSTASH_TOKEN) {
+      try {
+        const scoreUrl = resolveScoreUrl(request);
+        await qstash.publishJSON({
+          url: scoreUrl,
+          body: { articles: all },
+          retries: 3,
+        });
+      } catch (queueError) {
+        console.error(`[fetch-news] Failed to queue scoring task:`, queueError);
+        result.errors.push(`Failed to queue scoring task: ${queueError}`);
+      }
+    } else {
+      // Local dev: tag and score directly
+      try {
+        const tagged = await tagArticlesByKeyword(all, KEYWORDS);
+        result.saved = await scoreAndSaveTagged(tagged);
+      } catch (scoringError) {
+        console.error(`[fetch-news] Local scoring failed:`, scoringError);
+        result.errors.push(`Local scoring failed: ${scoringError}`);
+      }
+    }
+  }
+
+  results.push(result);
 
   // Remove low-scored articles after each batch
   await deleteLowScoredArticles(5);

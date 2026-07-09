@@ -11,8 +11,8 @@ export interface QiitaArticle {
   page_views_count: number;
 }
 
-export async function searchQiita(keyword: string): Promise<QiitaArticle[]> {
-  const url = `${BASE_URL}/items?query=${encodeURIComponent(keyword)}&page=1&per_page=30`;
+export async function searchQiita(limit = 50): Promise<QiitaArticle[]> {
+  const url = `${BASE_URL}/items?page=1&per_page=${limit}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);

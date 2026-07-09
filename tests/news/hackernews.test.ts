@@ -43,13 +43,13 @@ describe("searchHackerNews", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchHackerNews("test keyword");
+    const result = await searchHackerNews(50);
 
     expect(result).toHaveLength(2);
     expect(result[0].title).toBe("Test Hacker News Article 1");
     expect(result[1].title).toBe("Test Hacker News Article 2");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://hn.algolia.com/api/v1/search?query=test%20keyword&tags=story&hitsPerPage=30",
+      "https://hn.algolia.com/api/v1/search?tags=story&hitsPerPage=50",
       { signal: expect.any(Object) },
     );
   });
@@ -61,7 +61,7 @@ describe("searchHackerNews", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchHackerNews("test keyword");
+    const result = await searchHackerNews(50);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalled();
@@ -71,7 +71,7 @@ describe("searchHackerNews", () => {
     const error = new Error("Network error");
     fetchMock.mockRejectedValue(error);
 
-    const result = await searchHackerNews("test keyword");
+    const result = await searchHackerNews(50);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalled();

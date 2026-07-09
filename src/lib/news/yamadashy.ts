@@ -17,7 +17,7 @@ const parser = new XMLParser({
   attributeNamePrefix: "@_",
 });
 
-export async function searchYamadashy(keyword: string): Promise<YamadashyItem[]> {
+export async function searchYamadashy(limit = 50): Promise<YamadashyItem[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
 
@@ -37,12 +37,7 @@ export async function searchYamadashy(keyword: string): Promise<YamadashyItem[]>
 
     const items: YamadashyItem[] = Array.isArray(channel.item) ? channel.item : [channel.item];
 
-    // Filter by keyword match in title (case-insensitive)
-    const kw = keyword.toLowerCase();
-    return items.filter((item) => {
-      const title = item.title ?? "";
-      return title.toLowerCase().includes(kw);
-    });
+    return items.slice(0, limit);
   } catch (err) {
     console.warn(`[yamadashy] fetch/parse error:`, err);
     return [];

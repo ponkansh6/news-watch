@@ -139,7 +139,7 @@ describe("fetch-news route source selection", () => {
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
     expect(data.results).toHaveLength(1);
-    expect(data.results[0].keyword).toBe("test-keyword");
+    expect(data.results[0].keyword).toBe("latest");
     expect(data.results[0].fetched).toBeGreaterThan(0);
     expect(data.results[0].errors).toHaveLength(0);
   });

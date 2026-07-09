@@ -44,13 +44,13 @@ describe("searchNewsApi", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchNewsApi("test keyword");
+    const result = await searchNewsApi(50);
 
     expect(result).toHaveLength(2);
     expect(result[0].title).toBe("Test Article 1");
     expect(result[1].title).toBe("Test Article 2");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://newsapi.org/v2/everything?q=test%20keyword&apiKey=test-key&pageSize=30&language=en&sortBy=publishedAt",
+      "https://newsapi.org/v2/top-headlines?country=us&apiKey=test-key&pageSize=50&language=en",
       { signal: expect.any(Object) },
     );
   });
@@ -63,7 +63,7 @@ describe("searchNewsApi", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchNewsApi("test keyword");
+    const result = await searchNewsApi(50);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalled();
@@ -74,7 +74,7 @@ describe("searchNewsApi", () => {
     const error = new Error("Network error");
     fetchMock.mockRejectedValue(error);
 
-    const result = await searchNewsApi("test keyword");
+    const result = await searchNewsApi(50);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalled();
@@ -83,7 +83,7 @@ describe("searchNewsApi", () => {
   test("API key not set - returns empty array without calling fetch", async () => {
     process.env.NEWS_API_KEY = "";
 
-    const result = await searchNewsApi("test keyword");
+    const result = await searchNewsApi(50);
 
     expect(result).toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();

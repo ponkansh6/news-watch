@@ -1,54 +1,46 @@
 import type { NormalizedArticle } from "@/lib/types";
 import { embedArticle, embedQuery, cosineSimilarity } from "@/lib/embeddings";
 
-export interface ArticleWithEmbedding {
+export interface ArticleWithTag {
   article: NormalizedArticle;
   embedding: number[];
-  similarity: number;
+  keyword: string; // best-matching term (highest vector similarity)
+  similarity: number; // cosine similarity to the best-matching term
 }
 
-export const SIMILARITY_THRESHOLD = Number(process.env.SIMILARITY_THRESHOLD ?? "0.75");
-
-export async function embedAndFilterArticles(
+/**
+ * Tag each article with the keyword (from the provided vocabulary) that has the
+ * highest vector similarity. Every article is assigned a tag — there is no
+ * threshold filtering. Keyword embeddings are computed once and reused.
+ */
+export async function tagArticlesByKeyword(
   articles: NormalizedArticle[],
-  keyword: string,
-): Promise<ArticleWithEmbedding[]> {
-  const keywordEmbedding = await embedQuery(keyword);
+  keywords: readonly string[],
+): Promise<ArticleWithTag[]> {
+  if (keywords.length === 0) {
+    return articles.map((article) => ({ article, embedding: [], keyword: "", similarity: 0 }));
+  }
+
+  const keywordEmbeddings = await Promise.all(
+    keywords.map(async (keyword) => ({
+      keyword,
+      embedding: await embedQuery(keyword),
+    })),
+  );
+
   return Promise.all(
     articles.map(async (article) => {
       const embedding = await embedArticle(article.title, article.description);
-      const similarity = cosineSimilarity(keywordEmbedding, embedding);
-      return { article, embedding, similarity };
+      let bestKeyword = keywordEmbeddings[0].keyword;
+      let bestSim = -Infinity;
+      for (const { keyword, embedding: kwEmb } of keywordEmbeddings) {
+        const sim = cosineSimilarity(kwEmb, embedding);
+        if (sim > bestSim) {
+          bestSim = sim;
+          bestKeyword = keyword;
+        }
+      }
+      return { article, embedding, keyword: bestKeyword, similarity: bestSim };
     }),
-  );
-}
-
-// 閾値オーバーライドを解決。0<=v<=1 でない場合は SIMILARITY_THRESHOLD にフォールバック。
-export function resolveThreshold(override?: number): number {
-  if (typeof override === "number" && Number.isFinite(override) && override >= 0 && override <= 1) {
-    return override;
-  }
-  return SIMILARITY_THRESHOLD;
-}
-
-// 類似度閾値でフィルタ
-export function filterByThreshold(
-  items: ArticleWithEmbedding[],
-  threshold: number,
-): ArticleWithEmbedding[] {
-  return items.filter((item) => item.similarity >= threshold);
-}
-
-// フィルタ統計を構造化ログ出力
-export function logFilterStats(opts: {
-  keyword: string;
-  threshold: number;
-  total: number;
-  passed: number;
-}): void {
-  const filtered = opts.total - opts.passed;
-  const filterRate = opts.total > 0 ? filtered / opts.total : 0;
-  console.log(
-    `[vector-filter] keyword="${opts.keyword}" threshold=${opts.threshold} total=${opts.total} passed=${opts.passed} filtered=${filtered} filterRate=${filterRate.toFixed(2)}`,
   );
 }

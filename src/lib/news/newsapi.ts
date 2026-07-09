@@ -16,11 +16,11 @@ interface NewsApiResponse {
   articles: NewsApiArticle[];
 }
 
-export async function searchNewsApi(keyword: string): Promise<NewsApiArticle[]> {
+export async function searchNewsApi(limit = 50): Promise<NewsApiArticle[]> {
   const apiKey = process.env.NEWS_API_KEY;
   if (!apiKey) return [];
 
-  const url = `${BASE_URL}/everything?q=${encodeURIComponent(keyword)}&apiKey=${apiKey}&pageSize=30&language=en&sortBy=publishedAt`;
+  const url = `${BASE_URL}/top-headlines?country=us&apiKey=${apiKey}&pageSize=${limit}&language=en`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);

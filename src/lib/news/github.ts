@@ -10,8 +10,8 @@ export interface GitHubRepo {
   language: string | null;
 }
 
-export async function searchGitHub(keyword: string): Promise<GitHubRepo[]> {
-  const url = `${BASE_URL}?q=${encodeURIComponent(keyword)}&sort=stars&order=desc&per_page=30`;
+export async function searchGitHub(limit = 50): Promise<GitHubRepo[]> {
+  const url = `${BASE_URL}?q=stars:%3E1&sort=updated&order=desc&per_page=${limit}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);

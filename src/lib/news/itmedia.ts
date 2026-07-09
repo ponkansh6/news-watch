@@ -16,7 +16,7 @@ const parser = new XMLParser({
   attributeNamePrefix: "@_",
 });
 
-export async function searchITmedia(keyword: string): Promise<ItmediaItem[]> {
+export async function searchITmedia(limit = 50): Promise<ItmediaItem[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
 
@@ -36,12 +36,7 @@ export async function searchITmedia(keyword: string): Promise<ItmediaItem[]> {
 
     const items: ItmediaItem[] = Array.isArray(channel.item) ? channel.item : [channel.item];
 
-    // Filter by keyword match in title (case-insensitive)
-    const kw = keyword.toLowerCase();
-    return items.filter((item) => {
-      const title = item.title ?? "";
-      return title.toLowerCase().includes(kw);
-    });
+    return items.slice(0, limit);
   } catch (err) {
     console.warn(`[itmedia] fetch/parse error:`, err);
     return [];

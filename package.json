@@ -15,7 +15,6 @@
     "type-check": "tsc --noEmit",
     "type-check:fast": "tsgo --noEmit",
     "check-env": "tsx scripts/check-env.ts",
-    "tune": "tsx scripts/tune-threshold.ts",
     "e2e:qstash": "tsx scripts/e2e-qstash.ts",
     "check:deps": "depcheck",
     "security-check": "pnpm audit --audit-level=high && secretlint \"**/*\"",

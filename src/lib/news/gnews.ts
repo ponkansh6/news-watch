@@ -16,11 +16,11 @@ interface GNewsResponse {
   articles: GNewsArticle[];
 }
 
-export async function searchGNews(keyword: string): Promise<GNewsArticle[]> {
+export async function searchGNews(limit = 50): Promise<GNewsArticle[]> {
   const apiKey = process.env.GNEWS_API_KEY;
   if (!apiKey) return [];
 
-  const url = `${BASE_URL}/search?q=${encodeURIComponent(keyword)}&apikey=${apiKey}&max=30&lang=en&sortby=publishedAt`;
+  const url = `${BASE_URL}/top-headlines?country=us&apikey=${apiKey}&max=${limit}&lang=en`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);

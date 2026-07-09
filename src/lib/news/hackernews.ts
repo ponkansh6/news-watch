@@ -19,8 +19,8 @@ interface HackerNewsResponse {
   nbPages: number;
 }
 
-export async function searchHackerNews(keyword: string): Promise<HackerNewsArticle[]> {
-  const url = `${BASE_URL}/search?query=${encodeURIComponent(keyword)}&tags=story&hitsPerPage=30`;
+export async function searchHackerNews(limit = 50): Promise<HackerNewsArticle[]> {
+  const url = `${BASE_URL}/search?tags=story&hitsPerPage=${limit}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);

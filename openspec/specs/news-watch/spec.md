@@ -198,23 +198,14 @@ Hybrid scoring combines LLM-based relevance/usefulness scoring with a vector pre
 ### 9.2 Architecture
 
 - **Embeddings**: `src/lib/embeddings.ts` generates query and article embeddings using Google's gemini-embedding-001 model (uses `GOOGLE_API_KEY`)
-- **Vector Filter**: `src/lib/vector-filter.ts` implements `resolveThreshold()`, `filterByThreshold()`, and `logFilterStats()` for semantic filtering
-- **Threshold Evaluation**: `src/lib/threshold-eval.ts` provides pure evaluation logic with `evaluateThreshold()`, `sweepThresholds()`, and `recommendThreshold()`
+- **Vector Filter**: `src/lib/vector-filter.ts` implements `tagArticlesByKeyword()` which tags each article with the keyword (from the `KEYWORDS` vocabulary) that has the highest vector similarity via cosine similarity. Articles are then grouped by keyword before scoring.
+- **Scoring Pipeline**: `src/lib/score-pipeline.ts` exports `scoreAndSaveTagged()` which processes articles grouped by keyword and saves them to the database.
 
 ### 9.3 Environment Variables
 
 - `GOOGLE_API_KEY`: Google API key for article scoring (Gemini/Gemma) AND embeddings
-- `SIMILARITY_THRESHOLD`: Similarity threshold for vector pre-filter (default: 0.75)
 
-### 9.4 Tuning Commands
-
-- `pnpm tune --offline`: Offline validation using lexical proxy (no API key required)
-- `pnpm tune`: Real embeddings tuning (requires `GOOGLE_API_KEY`)
-- `pnpm tune --offline --json`: Machine-readable output for CI/CD pipelines
-- `pnpm tune --offline --write-env --dry-run`: Preview environment file changes without writing
-- `pnpm tune --write-env --policy recall-first`: Real tuning with recall-first policy and write to `.env.local`
-
-### 9.5 Phases
+### 9.4 Phases
 
 - **Phase 1-3**: Fetch/score separation, offline harness, threshold evaluation (completed)
 - **Phase 4**: Real data tuning + environment variable reflection (implemented)

@@ -45,6 +45,10 @@ vi.mock("@/lib/embeddings", () => ({
   cosineSimilarity: mockCosineSimilarity,
 }));
 
+vi.mock("@/lib/config", () => ({
+  KEYWORDS: ["Anthropic"],
+}));
+
 // ============================================================
 // Test helpers
 // ============================================================
@@ -153,21 +157,12 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     expect(data.error).toContain("Invalid request body");
   });
 
-  test("returns 400 when keyword is missing", async () => {
-    const { POST } = await import("@/app/api/score-articles/route");
-    const request = makeRequest({ articles: [makeArticle()] }, "valid-sig");
-    const response = await POST(request);
-    expect(response.status).toBe(400);
-    const data = await response.json();
-    expect(data.error).toContain("Invalid request body");
-  });
-
   // ---------- Happy path ----------
 
   test("returns 200 and scores all articles with valid request", async () => {
     const { POST } = await import("@/app/api/score-articles/route");
     const articles = [makeArticle(), makeArticle({ title: "Article 2" })];
-    const request = makeRequest({ articles, keyword: "test-keyword" }, "valid-sig");
+    const request = makeRequest({ articles }, "valid-sig");
 
     const response = await POST(request);
     expect(response.status).toBe(200);
@@ -175,17 +170,17 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     expect(data.ok).toBe(true);
     expect(data.saved).toBe(2);
     expect(data.total).toBe(2);
-    expect(data.message).toContain("test-keyword");
+    expect(data.message).toBe("Successfully scored and saved articles");
 
     // LLM scoring called with correct args
     expect(mockScoreArticles).toHaveBeenCalledWith(
       articles.map((a) => ({ title: a.title, description: a.description })),
-      "test-keyword",
+      "Anthropic", // keyword is "Anthropic" for tagged articles
     );
     // upsertArticle called for each article
     expect(mockUpsertArticle).toHaveBeenCalledTimes(2);
     expect(mockUpsertArticle).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Test Article", keyword: "test-keyword" }),
+      expect.objectContaining({ title: "Test Article", keyword: "Anthropic" }),
     );
   });
 
@@ -194,7 +189,7 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     const article = makeArticle({
       publishedAt: new Date().toISOString(), // < 1 day → recency = 10
     });
-    const request = makeRequest({ articles: [article], keyword: "kw" }, "valid-sig");
+    const request = makeRequest({ articles: [article] }, "valid-sig");
 
     const response = await POST(request);
     expect(response.status).toBe(200);
@@ -221,7 +216,7 @@ describe("score-articles endpoint (QStash Receiver)", () => {
 
     const { POST } = await import("@/app/api/score-articles/route");
     const articles = [makeArticle(), makeArticle({ title: "Article 2" })];
-    const request = makeRequest({ articles, keyword: "test" }, "valid-sig");
+    const request = makeRequest({ articles }, "valid-sig");
 
     const response = await POST(request);
     expect(response.status).toBe(200);
@@ -230,11 +225,9 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     expect(data.total).toBe(2);
 
     // upsertArticle still called for every article.
-    // Articles pass the similarity threshold (default cosine = 1.0) but LLM
-    // returned null, so relevance falls back to 0 (not null) per route logic.
     expect(mockUpsertArticle).toHaveBeenCalledTimes(2);
     expect(mockUpsertArticle).toHaveBeenCalledWith(
-      expect.objectContaining({ relevance: 0, usefulness: null, score: null, scoredAt: null }),
+      expect.objectContaining({ relevance: null, usefulness: null, score: null, scoredAt: null }),
     );
   });
 
@@ -247,7 +240,7 @@ describe("score-articles endpoint (QStash Receiver)", () => {
       makeArticle({ title: "Article 2", url: "https://example.com/a2" }),
       makeArticle({ title: "Article 3", url: "https://example.com/a3" }),
     ];
-    const request = makeRequest({ articles, keyword: "test" }, "valid-sig");
+    const request = makeRequest({ articles }, "valid-sig");
 
     const response = await POST(request);
     expect(response.status).toBe(200);
@@ -259,75 +252,15 @@ describe("score-articles endpoint (QStash Receiver)", () => {
 
   test("handles empty articles array", async () => {
     const { POST } = await import("@/app/api/score-articles/route");
-    const request = makeRequest({ articles: [], keyword: "test" }, "valid-sig");
+    const request = makeRequest({ articles: [] }, "valid-sig");
 
     const response = await POST(request);
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.saved).toBe(0);
     expect(data.total).toBe(0);
-    expect(mockScoreArticles).toHaveBeenCalledWith([], "test");
+    expect(mockScoreArticles).not.toHaveBeenCalled();
     expect(mockUpsertArticle).not.toHaveBeenCalled();
-  });
-
-  test("similarity filter works: only articles above threshold are LLM-scored", async () => {
-    // Mock cosineSimilarity to control similarity values (mockCosineSimilarity is hoisted)
-    // Setup: keyword embedding = [1, 0], article1 = [1, 0] (sim 1.0), article2 = [0, 1] (sim 0.0)
-    mockCosineSimilarity.mockImplementation((a: number[], b: number[]) => {
-      // Simple dot product for testing
-      let dot = 0;
-      for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
-      const normA = Math.sqrt(a.reduce((sum: number, v: number) => sum + v * v, 0));
-      const normB = Math.sqrt(b.reduce((sum: number, v: number) => sum + v * v, 0));
-      return dot / (normA * normB);
-    });
-
-    // Mock embedQuery to return keyword embedding [1, 0]
-    mockEmbedQuery.mockResolvedValue([1, 0]);
-    // Mock embedArticle to return different vectors for different articles
-    mockEmbedArticle.mockImplementation(async (title) => {
-      if (title === "Article 1") return [1, 0]; // identical to keyword
-      if (title === "Article 2") return [0, 1]; // orthogonal to keyword
-      return [0.1, 0.2];
-    });
-
-    const { POST } = await import("@/app/api/score-articles/route");
-    const articles = [
-      makeArticle({ title: "Article 1", url: "https://example.com/a1" }),
-      makeArticle({ title: "Article 2", url: "https://example.com/a2" }),
-    ];
-    const request = makeRequest({ articles, keyword: "test-keyword" }, "valid-sig");
-
-    const response = await POST(request);
-    expect(response.status).toBe(200);
-    const data = await response.json();
-
-    // Only Article 1 should be scored (similarity 1.0 >= 0.75)
-    expect(data.saved).toBe(1);
-    expect(data.total).toBe(2);
-
-    // Verify mockScoreArticles was called only once with Article 1
-    expect(mockScoreArticles).toHaveBeenCalledTimes(1);
-    expect(mockScoreArticles).toHaveBeenCalledWith(
-      [{ title: "Article 1", description: "Test description" }],
-      "test-keyword",
-    );
-
-    // Verify upsertArticle was called twice (both articles)
-    expect(mockUpsertArticle).toHaveBeenCalledTimes(2);
-
-    // Verify Article 1 was LLM-scored (passed the similarity threshold)
-    const calls = mockUpsertArticle.mock.calls;
-    const article1Call = calls.find((call) => call[0].title === "Article 1");
-    const article2Call = calls.find((call) => call[0].title === "Article 2");
-
-    expect(article1Call).toBeDefined();
-    expect(article1Call![0].relevance).toBe(8); // LLM_OK.relevance (scored article)
-    expect(article1Call![0].scoredAt).toBeDefined(); // has scoredAt
-
-    expect(article2Call).toBeDefined();
-    expect(article2Call![0].relevance).toBe(null); // filtered out article
-    expect(article2Call![0].scoredAt).toBe(null); // no scoredAt
   });
 
   test("calculates recency based on article publishedAt", async () => {
@@ -349,7 +282,7 @@ describe("score-articles endpoint (QStash Receiver)", () => {
       makeArticle({ publishedAt: oneWeekAgo }), // days <= 7  → recency = 6
       makeArticle({ publishedAt: oneMonthAgo }), // days > 30  → recency = 0
     ];
-    const request = makeRequest({ articles, keyword: "test" }, "valid-sig");
+    const request = makeRequest({ articles }, "valid-sig");
 
     const response = await POST(request);
     expect(response.status).toBe(200);
@@ -361,32 +294,5 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     expect(calls[3][0].recency).toBe(0); // 31 days → recency=0
 
     vi.useRealTimers();
-  });
-
-  test("dryRun returns filter stats without calling LLM or DB", async () => {
-    const { POST } = await import("@/app/api/score-articles/route");
-    const articles = [
-      makeArticle({ title: "Article 1", url: "https://example.com/a1" }),
-      makeArticle({ title: "Article 2", url: "https://example.com/a2" }),
-    ];
-    // dryRun: true, threshold override 0.5
-    const request = makeRequest(
-      { articles, keyword: "test-keyword", threshold: 0.5, dryRun: true },
-      "valid-sig",
-    );
-
-    const response = await POST(request);
-    expect(response.status).toBe(200);
-    const data = await response.json();
-
-    expect(data.dryRun).toBe(true);
-    expect(data.threshold).toBe(0.5);
-    expect(data.total).toBe(2);
-    expect(data.passed).toBe(2); // cosine mock = 1.0 >= 0.5
-    expect(data.filtered).toBe(0);
-
-    // LLM and DB must NOT be touched in dry-run mode
-    expect(mockScoreArticles).not.toHaveBeenCalled();
-    expect(mockUpsertArticle).not.toHaveBeenCalled();
   });
 });

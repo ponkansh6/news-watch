@@ -47,9 +47,9 @@ for (const kw of MOCK_KEYWORDS) {
 }
 
 vi.mock("@/lib/news/qiita", () => ({
-  searchQiita: vi.fn().mockImplementation((keyword: string) => {
-    return Promise.resolve(QIITA_ARTICLES[keyword] ?? []);
-  }),
+  searchQiita: vi
+    .fn()
+    .mockImplementation(() => Promise.resolve(Object.values(QIITA_ARTICLES).flat())),
 }));
 
 vi.mock("@/lib/llm/gemini", async (importOriginal) => {
