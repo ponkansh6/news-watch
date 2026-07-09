@@ -23,10 +23,7 @@ try {
   /* .env.local missing — use existing env */
 }
 
-const requiredEnv = [
-  "TURSO_DATABASE_URL",
-  "TURSO_AUTH_TOKEN",
-];
+const requiredEnv = ["TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN"];
 const missing = requiredEnv.filter((key) => !process.env[key]);
 
 if (missing.length > 0) {
@@ -86,14 +83,14 @@ async function run() {
 
   // 3. Verify Filtering
   console.log("--- Verifying Vector Filtering ---");
-  
+
   const startTime = Date.now();
   const timeout = 60000;
   let success = false;
 
   while (Date.now() - startTime < timeout) {
     const result = await db.execute(
-      "SELECT COUNT(*) as total, SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) as with_embedding, SUM(CASE WHEN score IS NOT NULL THEN 1 ELSE 0 END) as scored FROM articles"
+      "SELECT COUNT(*) as total, SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) as with_embedding, SUM(CASE WHEN score IS NOT NULL THEN 1 ELSE 0 END) as scored FROM articles",
     );
     const row = result.rows[0];
     const total = Number(row.total);
@@ -103,11 +100,13 @@ async function run() {
     console.log(`Stats: Total=${total}, WithEmbedding=${withEmbedding}, Scored=${scored}`);
 
     if (withEmbedding > 0 && scored > 0 && scored < withEmbedding) {
-      console.log("✅ Vector filtering appears to be working (some articles with embeddings were not scored)");
+      console.log(
+        "✅ Vector filtering appears to be working (some articles with embeddings were not scored)",
+      );
       success = true;
       break;
     }
-    
+
     await new Promise((resolve) => setTimeout(resolve, 5000));
   }
 

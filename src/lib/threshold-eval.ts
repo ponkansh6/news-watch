@@ -21,8 +21,8 @@ export interface ThresholdResult {
   fn: number;
   tn: number;
   precision: number; // 0除算時は 0
-  recall: number;    // 0除算時は 0
-  f1: number;        // 0除算時は 0
+  recall: number; // 0除算時は 0
+  f1: number; // 0除算時は 0
 }
 
 /**
@@ -66,7 +66,10 @@ export interface ThresholdRecommendation {
 /**
  * 推奨閾値を決定: maxF1 の閾値、および recall >= recallTarget を満たす最小の閾値
  */
-export function recommendThreshold(results: ThresholdResult[], recallTarget = 0.85): ThresholdRecommendation {
+export function recommendThreshold(
+  results: ThresholdResult[],
+  recallTarget = 0.85,
+): ThresholdRecommendation {
   // maxF1 を求める
   let maxF1 = -1;
   let maxF1Threshold = 0;

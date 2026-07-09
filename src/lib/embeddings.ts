@@ -4,7 +4,7 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 
 /**
  * Generates an embedding for an article using Google's gemini-embedding-001 model.
- * 
+ *
  * @param title - The title of the article.
  * @param description - The description of the article (optional).
  * @returns A promise that resolves to an array of numbers representing the embedding.
@@ -28,7 +28,7 @@ export async function embedArticle(title: string, description: string | null): P
 
 /**
  * Calculates the cosine similarity between two vectors.
- * 
+ *
  * @param vecA - The first vector.
  * @param vecB - The second vector.
  * @returns The cosine similarity between the two vectors.
@@ -51,7 +51,7 @@ export function cosineSimilarity(vecA: number[], vecB: number[]): number {
 
 /**
  * Generates an embedding for a query using Google's gemini-embedding-001 model.
- * 
+ *
  * @param query - The search query.
  * @returns A promise that resolves to an array of numbers representing the embedding.
  */

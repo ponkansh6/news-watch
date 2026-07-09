@@ -44,7 +44,7 @@ describe("searchQiita", () => {
     expect(result[1].title).toBe("Test Qiita Article 2");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://qiita.com/api/v2/items?query=test%20keyword&page=1&per_page=30",
-      expect.objectContaining({ signal: expect.any(Object) })
+      expect.objectContaining({ signal: expect.any(Object) }),
     );
   });
 
@@ -87,7 +87,7 @@ describe("searchQiita", () => {
       {
         signal: expect.any(Object),
         headers: { Authorization: "Bearer test-token" },
-      }
+      },
     );
   });
 });

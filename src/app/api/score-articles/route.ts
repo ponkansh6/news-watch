@@ -3,7 +3,13 @@ import { Receiver } from "@upstash/qstash";
 import { scoreArticles } from "@/lib/llm/gemini";
 import { upsertArticle } from "@/lib/db/actions";
 import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
-import { embedAndFilterArticles, SIMILARITY_THRESHOLD, resolveThreshold, filterByThreshold, logFilterStats } from "@/lib/vector-filter";
+import {
+  embedAndFilterArticles,
+  SIMILARITY_THRESHOLD,
+  resolveThreshold,
+  filterByThreshold,
+  logFilterStats,
+} from "@/lib/vector-filter";
 
 export const maxDuration = 60;
 
@@ -54,7 +60,12 @@ export async function POST(request: NextRequest) {
     const effectiveThreshold = resolveThreshold(thresholdOverride);
 
     const relevantArticles = filterByThreshold(articlesWithEmbeddings, effectiveThreshold);
-    logFilterStats({ keyword, threshold: effectiveThreshold, total: articlesWithEmbeddings.length, passed: relevantArticles.length });
+    logFilterStats({
+      keyword,
+      threshold: effectiveThreshold,
+      total: articlesWithEmbeddings.length,
+      passed: relevantArticles.length,
+    });
 
     // Dry-run mode: return filter stats without LLM/DB operations
     if (dryRun) {
@@ -71,7 +82,10 @@ export async function POST(request: NextRequest) {
 
     // Score relevant articles using Gemini
     const llmResults = await scoreArticles(
-      relevantArticles.map((item) => ({ title: item.article.title, description: item.article.description })),
+      relevantArticles.map((item) => ({
+        title: item.article.title,
+        description: item.article.description,
+      })),
       keyword,
     );
 
@@ -79,11 +93,9 @@ export async function POST(request: NextRequest) {
     let savedCount = 0;
     for (let i = 0; i < articlesWithEmbeddings.length; i++) {
       const { article, embedding, similarity } = articlesWithEmbeddings[i];
-      
+
       // Find if this article was scored
-      const relevantIndex = relevantArticles.findIndex(
-        (item) => item.article.url === article.url
-      );
+      const relevantIndex = relevantArticles.findIndex((item) => item.article.url === article.url);
       const llmResult = relevantIndex !== -1 ? llmResults[relevantIndex] : null;
 
       const relevance = llmResult?.relevance ?? (similarity >= effectiveThreshold ? 0 : null);
@@ -122,6 +134,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("[score-articles] Error:", error);
-    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error", details: String(error) },
+      { status: 500 },
+    );
   }
 }

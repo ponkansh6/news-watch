@@ -281,7 +281,7 @@ describe("score-articles endpoint (QStash Receiver)", () => {
       const normB = Math.sqrt(b.reduce((sum: number, v: number) => sum + v * v, 0));
       return dot / (normA * normB);
     });
-    
+
     // Mock embedQuery to return keyword embedding [1, 0]
     mockEmbedQuery.mockResolvedValue([1, 0]);
     // Mock embedArticle to return different vectors for different articles
@@ -290,7 +290,7 @@ describe("score-articles endpoint (QStash Receiver)", () => {
       if (title === "Article 2") return [0, 1]; // orthogonal to keyword
       return [0.1, 0.2];
     });
-    
+
     const { POST } = await import("@/app/api/score-articles/route");
     const articles = [
       makeArticle({ title: "Article 1", url: "https://example.com/a1" }),
@@ -301,25 +301,25 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     const response = await POST(request);
     expect(response.status).toBe(200);
     const data = await response.json();
-    
+
     // Only Article 1 should be scored (similarity 1.0 >= 0.75)
     expect(data.saved).toBe(1);
     expect(data.total).toBe(2);
-    
+
     // Verify mockScoreArticles was called only once with Article 1
     expect(mockScoreArticles).toHaveBeenCalledTimes(1);
     expect(mockScoreArticles).toHaveBeenCalledWith(
       [{ title: "Article 1", description: "Test description" }],
       "test-keyword",
     );
-    
+
     // Verify upsertArticle was called twice (both articles)
     expect(mockUpsertArticle).toHaveBeenCalledTimes(2);
-    
+
     // Verify Article 1 was LLM-scored (passed the similarity threshold)
     const calls = mockUpsertArticle.mock.calls;
-    const article1Call = calls.find(call => call[0].title === "Article 1");
-    const article2Call = calls.find(call => call[0].title === "Article 2");
+    const article1Call = calls.find((call) => call[0].title === "Article 1");
+    const article2Call = calls.find((call) => call[0].title === "Article 2");
 
     expect(article1Call).toBeDefined();
     expect(article1Call![0].relevance).toBe(8); // LLM_OK.relevance (scored article)

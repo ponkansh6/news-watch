@@ -28,7 +28,12 @@ import {
   type ThresholdResult,
   type ThresholdRecommendation,
 } from "../src/lib/threshold-eval";
-import { type ThresholdPolicy, renderThresholdEntry, selectThreshold, upsertEnvVar } from "../src/lib/threshold-apply";
+import {
+  type ThresholdPolicy,
+  renderThresholdEntry,
+  selectThreshold,
+  upsertEnvVar,
+} from "../src/lib/threshold-apply";
 
 interface Args {
   offline: boolean;
@@ -123,7 +128,9 @@ async function main() {
 
   // Check for real embeddings API key if not offline
   if (!args.offline && !process.env.GOOGLE_API_KEY) {
-    console.error("GOOGLE_API_KEY が未設定です。実embeddingsチューニングにはキーが必要です（オフライン検証は --offline を指定）");
+    console.error(
+      "GOOGLE_API_KEY が未設定です。実embeddingsチューニングにはキーが必要です（オフライン検証は --offline を指定）",
+    );
     process.exit(1);
   }
 
@@ -177,7 +184,9 @@ async function main() {
       const updated = upsertEnvVar(content, "SIMILARITY_THRESHOLD", selected.toFixed(2));
       writeFileSync(args.envFile, updated, "utf-8");
       if (!args.offline) {
-        console.error(`オフラインmock由来の閾値です。本番反映前に --offline なしで実チューニングを実施してください`);
+        console.error(
+          `オフラインmock由来の閾値です。本番反映前に --offline なしで実チューニングを実施してください`,
+        );
       }
     } catch (err) {
       console.error(`.env ファイルの書き込みに失敗しました: ${err}`);
@@ -227,20 +236,26 @@ async function main() {
     )
     .join("\n");
 
-  console.log(`\nThreshold tuning report (${args.offline ? "OFFLINE mock embeddings" : "REAL embeddings"})`);
+  console.log(
+    `\nThreshold tuning report (${args.offline ? "OFFLINE mock embeddings" : "REAL embeddings"})`,
+  );
   console.log(`Dataset: ${args.dataset}  Samples: ${samples.length}  Articles: ${scored.length}`);
   console.log(`\n${header}\n${sep}\n${rows}\n`);
   console.log(`Recommendation:`);
-  console.log(`  maxF1 threshold       = ${rec.maxF1Threshold.toFixed(2)} (f1=${rec.maxF1.toFixed(2)})`);
+  console.log(
+    `  maxF1 threshold       = ${rec.maxF1Threshold.toFixed(2)} (f1=${rec.maxF1.toFixed(2)})`,
+  );
   console.log(
     `  recall>=${rec.recallTarget} threshold = ${
-      rec.recallTargetThreshold === null ? "NONE (raise max or lower step)" : rec.recallTargetThreshold.toFixed(2)
+      rec.recallTargetThreshold === null
+        ? "NONE (raise max or lower step)"
+        : rec.recallTargetThreshold.toFixed(2)
     }`,
   );
   console.log(
     `\nSet SIMILARITY_THRESHOLD=${rec.maxF1Threshold.toFixed(2)} (balanced) or ${
-      rec.recallTargetThreshold ?? rec.maxF1Threshold
-    .toFixed(2)} (recall-first) in your environment.\n`,
+      rec.recallTargetThreshold ?? rec.maxF1Threshold.toFixed(2)
+    } (recall-first) in your environment.\n`,
   );
   if (args.writeEnv && !args.dryRun) {
     console.log(`written to ${args.envFile}`);

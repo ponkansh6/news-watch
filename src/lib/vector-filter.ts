@@ -32,7 +32,10 @@ export function resolveThreshold(override?: number): number {
 }
 
 // 類似度閾値でフィルタ
-export function filterByThreshold(items: ArticleWithEmbedding[], threshold: number): ArticleWithEmbedding[] {
+export function filterByThreshold(
+  items: ArticleWithEmbedding[],
+  threshold: number,
+): ArticleWithEmbedding[] {
   return items.filter((item) => item.similarity >= threshold);
 }
 

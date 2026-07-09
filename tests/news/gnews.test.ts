@@ -50,7 +50,7 @@ describe("searchGNews", () => {
     expect(result[1].title).toBe("Test Article 2");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://gnews.io/api/v4/search?q=test%20keyword&apikey=test-key&max=30&lang=en&sortby=publishedAt",
-      { signal: expect.any(Object) }
+      { signal: expect.any(Object) },
     );
   });
 

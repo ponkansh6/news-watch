@@ -50,7 +50,7 @@ describe("searchGitHub", () => {
           Accept: "application/vnd.github+json",
           "X-GitHub-Api-Version": "2022-11-28",
         },
-      }
+      },
     );
   });
 
@@ -97,7 +97,7 @@ describe("searchGitHub", () => {
           "X-GitHub-Api-Version": "2022-11-28",
           Authorization: "Bearer test-token",
         },
-      }
+      },
     );
   });
 });

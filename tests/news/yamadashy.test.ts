@@ -24,7 +24,7 @@ describe("searchYamadashy", () => {
     expect(result[1].title).toBe("Test Article 2");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://yamadashy.github.io/tech-blog-rss-feed/feeds/rss.xml",
-      { signal: expect.any(Object) }
+      { signal: expect.any(Object) },
     );
   });
 

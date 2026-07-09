@@ -5,11 +5,11 @@ describe("vector filtering", () => {
   test("should filter articles based on cosine similarity threshold", () => {
     // Mock embeddings (normalized for simplicity, though cosineSimilarity handles non-normalized)
     const queryVector = [1, 0, 0];
-    
+
     const articles = [
       { id: 1, title: "Relevant Article", embedding: [0.9, 0.1, 0] }, // High similarity
       { id: 2, title: "Somewhat Relevant", embedding: [0.7, 0.7, 0] }, // Medium similarity
-      { id: 3, title: "Irrelevant Article", embedding: [0, 1, 0] },   // Low similarity
+      { id: 3, title: "Irrelevant Article", embedding: [0, 1, 0] }, // Low similarity
     ];
 
     const threshold = 0.75;

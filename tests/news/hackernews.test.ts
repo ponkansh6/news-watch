@@ -50,7 +50,7 @@ describe("searchHackerNews", () => {
     expect(result[1].title).toBe("Test Hacker News Article 2");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://hn.algolia.com/api/v1/search?query=test%20keyword&tags=story&hitsPerPage=30",
-      { signal: expect.any(Object) }
+      { signal: expect.any(Object) },
     );
   });
 

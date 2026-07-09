@@ -4,7 +4,7 @@ export type ThresholdPolicy = "balanced" | "recall-first";
 
 /**
  * Renders a SIMILARITY_THRESHOLD environment variable entry.
- * 
+ *
  * @param threshold - The threshold value (0-1)
  * @returns Environment variable entry string
  */
@@ -14,7 +14,7 @@ export function renderThresholdEntry(threshold: number): string {
 
 /**
  * Upserts an environment variable in a .env file content.
- * 
+ *
  * @param content - The current .env file content
  * @param key - The environment variable key to upsert
  * @param value - The value to set
@@ -25,7 +25,7 @@ export function upsertEnvVar(content: string, key: string, value: string): strin
   const newLine = `${key}=${value}`;
   const lines = content.split("\n");
   let found = false;
-  
+
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].match(linePattern)) {
       lines[i] = newLine;
@@ -33,7 +33,7 @@ export function upsertEnvVar(content: string, key: string, value: string): strin
       break;
     }
   }
-  
+
   if (!found) {
     // Add to end, preserving trailing newline if present
     if (content.endsWith("\n")) {
@@ -45,13 +45,13 @@ export function upsertEnvVar(content: string, key: string, value: string): strin
       lines.push(newLine);
     }
   }
-  
+
   return lines.join("\n");
 }
 
 /**
  * Selects a threshold based on recommendation and policy.
- * 
+ *
  * @param rec - The threshold recommendation
  * @param policy - The selection policy
  * @returns The selected threshold value

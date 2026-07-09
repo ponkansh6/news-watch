@@ -22,10 +22,9 @@ describe("searchCodeZine", () => {
     expect(result).toHaveLength(2);
     expect(result[0].title).toBe("Test Article 1");
     expect(result[1].title).toBe("Test Article 2");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://codezine.jp/rss/new/20/index.xml",
-      { signal: expect.any(Object) }
-    );
+    expect(fetchMock).toHaveBeenCalledWith("https://codezine.jp/rss/new/20/index.xml", {
+      signal: expect.any(Object),
+    });
   });
 
   test("case-insensitive keyword matching", async () => {

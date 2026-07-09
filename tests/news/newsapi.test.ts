@@ -51,7 +51,7 @@ describe("searchNewsApi", () => {
     expect(result[1].title).toBe("Test Article 2");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://newsapi.org/v2/everything?q=test%20keyword&apiKey=test-key&pageSize=30&language=en&sortBy=publishedAt",
-      { signal: expect.any(Object) }
+      { signal: expect.any(Object) },
     );
   });
 
