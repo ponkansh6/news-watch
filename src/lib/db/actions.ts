@@ -84,11 +84,14 @@ export async function deleteOrphanedArticles(activeKeywords: string[]) {
 }
 
 /** Delete articles with composite score below minScore. */
-export async function deleteLowScoredArticles(minScore = 5) {
+export async function deleteLowScoredArticles(minScore = 5, since?: string) {
   try {
-    return await db
-      .delete(articles)
-      .where(and(isNotNull(articles.score), lt(articles.score, minScore)));
+    const conditions = [isNotNull(articles.score), lt(articles.score, minScore)];
+    // Protect the current fetch batch: only delete articles scored before
+    // `since`. Articles scored in the current fetch (scoredAt >= since) are
+    // kept so the UI polling count (processed) stays consistent with fetched.
+    if (since) conditions.push(lt(articles.scoredAt, since));
+    return await db.delete(articles).where(and(...conditions));
   } catch (err) {
     console.warn(`[db] delete low-score error:`, err);
   }

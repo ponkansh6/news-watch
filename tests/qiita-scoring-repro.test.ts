@@ -264,7 +264,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     }
 
     // deleteLowScoredArticles が呼ばれていること
-    expect(mockDeleteLowScoredArticles).toHaveBeenCalledWith(5);
+    expect(mockDeleteLowScoredArticles).toHaveBeenCalledWith(5, expect.any(String));
   });
 
   /**

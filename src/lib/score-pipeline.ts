@@ -48,7 +48,11 @@ export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<numb
           recency,
           score: composite,
           reason: llmResult?.reason ?? null,
-          scoredAt: llmResult ? new Date().toISOString() : null,
+          // Always mark the article as processed (attempted) so the UI polling
+          // can detect completion even when the LLM fails for some articles.
+          // `score` stays null for failed ones; completion is based on
+          // `scoredAt` (processed), not on a successful score.
+          scoredAt: new Date().toISOString(),
           embedding: JSON.stringify(embedding),
         });
         if (llmResult) savedCount++;

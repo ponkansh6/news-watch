@@ -8,6 +8,7 @@ interface FetchResult {
   keyword: string;
   fetched: number;
   scored: number;
+  processed: number;
   errors: string[];
 }
 
@@ -98,7 +99,7 @@ export default function FetchButton() {
         // Start polling for scoring status.
         // Articles are tagged and saved under the configured KEYWORDS (not the
         // synthetic "latest" keyword fetch-news reports), so poll those.
-        const since = new Date().toISOString();
+        const since = (data.since as string) || new Date().toISOString();
         const pollKeywords = KEYWORDS as readonly string[];
         const totalFetched = data.results.reduce(
           (acc: number, r: FetchResult) => acc + (r.fetched || 0),
@@ -118,6 +119,7 @@ export default function FetchButton() {
                 keyword: kw,
                 fetched: 0,
                 scored: statusData.status.find((s: any) => s.keyword === kw)?.scored ?? 0,
+                processed: statusData.status.find((s: any) => s.keyword === kw)?.processed ?? 0,
                 errors: [] as string[],
               }));
               setResults(updatedResults);
@@ -126,8 +128,12 @@ export default function FetchButton() {
                 (acc: number, r: FetchResult) => acc + r.scored,
                 0,
               );
+              const totalProcessed = updatedResults.reduce(
+                (acc: number, r: FetchResult) => acc + r.processed,
+                0,
+              );
 
-              if (totalScored >= totalFetched && totalFetched > 0) {
+              if (totalProcessed >= totalFetched && totalFetched > 0) {
                 clearInterval(pollInterval);
                 setLoading(false);
                 router.refresh();

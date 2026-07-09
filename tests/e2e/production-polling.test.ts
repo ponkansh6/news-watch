@@ -233,7 +233,7 @@ describe("e2e production flow with polling", () => {
 
     // The UI sets `since` right after fetch-news returns, i.e. BEFORE the
     // (async QStash) scoring runs, so scoredAt is always >= since.
-    const since = new Date().toISOString();
+    const since = (fetchData.since as string) || new Date().toISOString();
 
     // 2. Simulate QStash delivery of the queued articles
     expect(h.state.capturedBody).not.toBeNull();
@@ -252,7 +252,7 @@ describe("e2e production flow with polling", () => {
     const pollingKeywords = mockKeywords;
     const statusReq = new Request("http://localhost/api/scoring-status", {
       method: "POST",
-      body: JSON.stringify({ keywords: pollingKeywords, since }),
+      body: JSON.stringify({ keywords: mockKeywords, since }),
       headers: { "Content-Type": "application/json" },
     });
     const statusRes = await statusPost(statusReq);
@@ -264,5 +264,195 @@ describe("e2e production flow with polling", () => {
     // All articles are tagged/saved under the configured KEYWORDS, so polling
     // those keywords reports the full count and the UI detects completion.
     expect(totalScored).toBe(totalFetched);
+  });
+
+  test("UI polling completes even when some articles fail LLM scoring", async () => {
+    // Simulate the real production bug: the LLM fails for every other article
+    // in each batch (returns null). Previously this made totalScored <
+    // totalFetched forever, so polling never completed.
+    vi.mocked(gemini.scoreArticles).mockImplementation(async (batch: any[]) =>
+      (batch ?? []).map((_, i) =>
+        i % 2 === 0
+          ? { relevance: 8, usefulness: 7, summary: "Test summary", reason: "Test reason" }
+          : null,
+      ),
+    );
+
+    const fetchReq = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ sources: ALL_SOURCES }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const fetchRes = await fetchPost(fetchReq);
+    const fetchData = await fetchRes.json();
+    expect(fetchRes.status).toBe(200);
+
+    const totalFetched = fetchData.results.reduce(
+      (acc: number, r: any) => acc + (r.fetched || 0),
+      0,
+    );
+    expect(totalFetched).toBeGreaterThan(0);
+
+    const since = (fetchData.since as string) || new Date().toISOString();
+
+    expect(h.state.capturedBody).not.toBeNull();
+    const scoreReq = new NextRequest("http://localhost/api/score-articles", {
+      method: "POST",
+      body: JSON.stringify({ articles: h.state.capturedBody.articles }),
+      headers: { "Content-Type": "application/json", "upstash-signature": "sig" },
+    });
+    const scoreRes = await scorePost(scoreReq);
+    const scoreData = await scoreRes.json();
+    expect(scoreRes.status).toBe(200);
+    // Only the successfully-scored articles are counted by `saved`.
+    expect(scoreData.saved).toBeLessThan(totalFetched);
+
+    const statusReq = new Request("http://localhost/api/scoring-status", {
+      method: "POST",
+      body: JSON.stringify({ keywords: mockKeywords, since }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const statusRes = await statusPost(statusReq);
+    const statusData = await statusRes.json();
+    expect(statusRes.status).toBe(200);
+
+    const totalScored = (statusData.status as any[]).reduce((acc, s) => acc + (s.scored || 0), 0);
+    const totalProcessed = (statusData.status as any[]).reduce(
+      (acc, s) => acc + (s.processed || 0),
+      0,
+    );
+
+    // Some articles failed LLM scoring, so `scored` is below the fetched total.
+    expect(totalScored).toBeLessThan(totalFetched);
+    // But every article was processed (scoredAt set), so polling completes.
+    expect(totalProcessed).toBe(totalFetched);
+  });
+});
+
+describe("e2e local-dev flow with polling (inline scoring)", () => {
+  beforeEach(async () => {
+    process.env = {
+      ...originalEnv,
+      QSTASH_TOKEN: "", // force local-dev inline scoring path
+      NODE_ENV: "development",
+      GOOGLE_API_KEY: "test-key",
+    };
+    h.state.capturedBody = null;
+    vi.clearAllMocks();
+    await migrate(db, { migrationsFolder: "./src/lib/db/migrations" });
+    await db.delete(articles);
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  test("local-dev inline scoring: UI polling completes (processed === fetched)", async () => {
+    // Restore the happy-path mock: a previous test overrode
+    // gemini.scoreArticles with a partial-failure implementation, and
+    // vi.clearAllMocks() does not reset mock implementations, so it would leak
+    // here and make only half the articles score.
+    vi.mocked(gemini.scoreArticles).mockImplementation(async (batch: any[]) =>
+      (batch ?? []).map(() => ({
+        relevance: 8,
+        usefulness: 7,
+        summary: "Test summary",
+        reason: "Test reason",
+      })),
+    );
+
+    const fetchReq = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ sources: ALL_SOURCES }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const fetchRes = await fetchPost(fetchReq);
+    const fetchData = await fetchRes.json();
+    expect(fetchRes.status).toBe(200);
+
+    const totalFetched = fetchData.results.reduce(
+      (acc: number, r: any) => acc + (r.fetched || 0),
+      0,
+    );
+    expect(totalFetched).toBeGreaterThan(0);
+
+    // In local dev, scoring happens inline BEFORE `since` is returned. The fix
+    // generates `since` BEFORE scoring, so scoredAt >= since for every article.
+    const since = (fetchData.since as string) || new Date().toISOString();
+
+    // No separate score-articles call — the UI relies solely on fetch-news's
+    // inline scoring. Poll scoring-status the same way the UI does.
+    const statusReq = new Request("http://localhost/api/scoring-status", {
+      method: "POST",
+      body: JSON.stringify({ keywords: mockKeywords, since }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const statusRes = await statusPost(statusReq);
+    const statusData = await statusRes.json();
+    expect(statusRes.status).toBe(200);
+
+    const totalProcessed = (statusData.status as any[]).reduce(
+      (acc, s) => acc + (s.processed || 0),
+      0,
+    );
+    const totalScored = (statusData.status as any[]).reduce((acc, s) => acc + (s.scored || 0), 0);
+
+    // Every fetched article was processed inline (scoredAt set) and kept (the
+    // current batch is protected from deleteLowScoredArticles), so polling
+    // detects completion without hanging.
+    expect(totalProcessed).toBe(totalFetched);
+    expect(totalScored).toBe(totalFetched);
+  });
+
+  test("local-dev inline scoring completes even when some articles fail LLM scoring", async () => {
+    // Simulate the real bug: the LLM fails for every other article. Previously
+    // this made totalScored < totalFetched forever and polling never completed
+    // (in local dev the `since` was generated AFTER inline scoring, excluding
+    // all scored articles from the polling query).
+    vi.mocked(gemini.scoreArticles).mockImplementation(async (batch: any[]) =>
+      (batch ?? []).map((_, i) =>
+        i % 2 === 0
+          ? { relevance: 8, usefulness: 7, summary: "Test summary", reason: "Test reason" }
+          : null,
+      ),
+    );
+
+    const fetchReq = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ sources: ALL_SOURCES }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const fetchRes = await fetchPost(fetchReq);
+    const fetchData = await fetchRes.json();
+    expect(fetchRes.status).toBe(200);
+
+    const totalFetched = fetchData.results.reduce(
+      (acc: number, r: any) => acc + (r.fetched || 0),
+      0,
+    );
+    expect(totalFetched).toBeGreaterThan(0);
+
+    const since = (fetchData.since as string) || new Date().toISOString();
+
+    const statusReq = new Request("http://localhost/api/scoring-status", {
+      method: "POST",
+      body: JSON.stringify({ keywords: mockKeywords, since }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const statusRes = await statusPost(statusReq);
+    const statusData = await statusRes.json();
+    expect(statusRes.status).toBe(200);
+
+    const totalScored = (statusData.status as any[]).reduce((acc, s) => acc + (s.scored || 0), 0);
+    const totalProcessed = (statusData.status as any[]).reduce(
+      (acc, s) => acc + (s.processed || 0),
+      0,
+    );
+
+    // Some articles failed LLM scoring, so `scored` is below the fetched total.
+    expect(totalScored).toBeLessThan(totalFetched);
+    // But every article was processed (scoredAt set) and kept, so polling
+    // completes in local dev too.
+    expect(totalProcessed).toBe(totalFetched);
   });
 });

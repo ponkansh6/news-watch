@@ -227,7 +227,12 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     // upsertArticle still called for every article.
     expect(mockUpsertArticle).toHaveBeenCalledTimes(2);
     expect(mockUpsertArticle).toHaveBeenCalledWith(
-      expect.objectContaining({ relevance: null, usefulness: null, score: null, scoredAt: null }),
+      expect.objectContaining({
+        relevance: null,
+        usefulness: null,
+        score: null,
+        scoredAt: expect.any(String),
+      }),
     );
   });
 

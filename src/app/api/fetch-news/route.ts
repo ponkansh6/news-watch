@@ -245,6 +245,8 @@ export async function POST(request: Request) {
     errors: string[];
   };
 
+  const since = new Date().toISOString();
+
   if (all.length > 0) {
     if (process.env.QSTASH_TOKEN) {
       try {
@@ -273,9 +275,9 @@ export async function POST(request: Request) {
   results.push(result);
 
   // Remove low-scored articles after each batch
-  await deleteLowScoredArticles(5);
+  await deleteLowScoredArticles(5, since);
 
-  return NextResponse.json({ ok: true, message: "Scoring queued", results });
+  return NextResponse.json({ ok: true, message: "Scoring queued", results, since });
 }
 
 export async function GET() {
