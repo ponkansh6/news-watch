@@ -26,6 +26,7 @@ export const articles = sqliteTable(
     reason: text("reason"),
     scoredAt: text("scored_at"),
     score: real("score"),
+    embedding: text("embedding"),
     createdAt: text("created_at")
       .notNull()
       .$defaultFn(() => new Date().toISOString()),

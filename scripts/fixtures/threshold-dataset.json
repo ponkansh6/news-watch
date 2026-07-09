@@ -1,0 +1,41 @@
+[
+  {
+    "keyword": "artificial intelligence",
+    "articles": [
+      { "title": "Artificial intelligence model beats benchmark", "description": "A new artificial intelligence system outperforms prior models.", "relevant": true },
+      { "title": "Startup funded for artificial intelligence tools", "description": "The artificial intelligence company expands its offerings.", "relevant": true },
+      { "title": "Machine intelligence improves medical diagnosis", "description": "Learning systems help radiologists spot disease earlier.", "relevant": true },
+      { "title": "Artificial neural networks explained", "description": "How artificial neurons approximate learning from data.", "relevant": true },
+      { "title": "Local sports team wins the championship", "description": "The home team secured a victory in the final match.", "relevant": false },
+      { "title": "Recipe for homemade bread published", "description": "A baker shares a simple loaf recipe using sourdough.", "relevant": false },
+      { "title": "Artificial flower arrangement class offered", "description": "A workshop on artificial floral design this weekend.", "relevant": false },
+      { "title": "Artificial intelligence free wellness retreat", "description": "A screen-free, artificial intelligence free weekend getaway.", "relevant": false }
+    ]
+  },
+  {
+    "keyword": "react framework",
+    "articles": [
+      { "title": "React framework 19 introduces a compiler", "description": "The react framework team announced automatic memoization.", "relevant": true },
+      { "title": "Forms with react framework server components", "description": "A guide to react framework server components for forms.", "relevant": true },
+      { "title": "Component library adoption grows", "description": "Teams standardize on declarative UI frameworks for web apps.", "relevant": true },
+      { "title": "Frontend framework performance compared", "description": "How modern frameworks handle rendering and hydration.", "relevant": true },
+      { "title": "Garden watering tips for summer", "description": "How to keep plants healthy during dry weather.", "relevant": false },
+      { "title": "Classic car auction breaks records", "description": "A vintage automobile sold for a surprising price.", "relevant": false },
+      { "title": "Framework free cooking schedule shared", "description": "A simple meal plan that needs no special frameworks.", "relevant": false },
+      { "title": "React framework free newsletter launches", "description": "A plain text react framework free digest for readers.", "relevant": false }
+    ]
+  },
+  {
+    "keyword": "typescript language",
+    "articles": [
+      { "title": "TypeScript language 5.5 adds type features", "description": "The typescript language release improves inference speed.", "relevant": true },
+      { "title": "Migrating a codebase to the typescript language", "description": "A step-by-step path to adopt typescript language in projects.", "relevant": true },
+      { "title": "Static typing reduces production bugs", "description": "Strong types catch errors before code reaches users.", "relevant": true },
+      { "title": "Typed languages improve refactoring safety", "description": "Languages with static types make large changes safer.", "relevant": true },
+      { "title": "Best hiking trails in the mountains", "description": "A list of scenic routes for weekend hikers.", "relevant": false },
+      { "title": "How to brew coffee at home", "description": "Tips for a better cup using a pour-over method.", "relevant": false },
+      { "title": "Language free podcast recommendations", "description": "A list of language free shows to enjoy this month.", "relevant": false },
+      { "title": "Typescript language free digest published", "description": "A plain text typescript language free newsletter.", "relevant": false }
+    ]
+  }
+]

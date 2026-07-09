@@ -19,6 +19,7 @@ export interface ArticleInsert {
   reason: string | null;
   scoredAt: string | null;
   score: number | null;
+  embedding: string | null;
 }
 
 /** Insert or update article by URL. On conflict, refresh score/summary/reason. */
@@ -45,6 +46,7 @@ export async function upsertArticle(data: ArticleInsert) {
           reason: data.reason,
           scoredAt: data.scoredAt,
           score: data.score,
+          embedding: data.embedding,
         },
       });
   } catch (err) {

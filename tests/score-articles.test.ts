@@ -17,6 +17,9 @@ import { NextRequest } from "next/server";
 const { mockVerify } = vi.hoisted(() => ({ mockVerify: vi.fn() }));
 const { mockScoreArticles } = vi.hoisted(() => ({ mockScoreArticles: vi.fn() }));
 const { mockUpsertArticle } = vi.hoisted(() => ({ mockUpsertArticle: vi.fn() }));
+const { mockEmbedArticle } = vi.hoisted(() => ({ mockEmbedArticle: vi.fn() }));
+const { mockEmbedQuery } = vi.hoisted(() => ({ mockEmbedQuery: vi.fn() }));
+const { mockCosineSimilarity } = vi.hoisted(() => ({ mockCosineSimilarity: vi.fn() }));
 
 // ============================================================
 // Module mocks
@@ -34,6 +37,12 @@ vi.mock("@/lib/llm/gemini", () => ({
 
 vi.mock("@/lib/db/actions", () => ({
   upsertArticle: mockUpsertArticle,
+}));
+
+vi.mock("@/lib/embeddings", () => ({
+  embedArticle: mockEmbedArticle,
+  embedQuery: mockEmbedQuery,
+  cosineSimilarity: mockCosineSimilarity,
 }));
 
 // ============================================================
@@ -94,6 +103,12 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     );
     // Default: upsert succeeds
     mockUpsertArticle.mockResolvedValue(undefined);
+    // Default: embedding succeeds
+    mockEmbedArticle.mockResolvedValue([0.1, 0.2]);
+    // Default: embedQuery succeeds
+    mockEmbedQuery.mockResolvedValue([0.1, 0.2]);
+    // Default: cosine similarity returns 1.0 (all articles pass the threshold)
+    mockCosineSimilarity.mockImplementation(() => 1.0);
   });
 
   // ---------- Signature verification ----------
@@ -214,10 +229,12 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     expect(data.saved).toBe(0);
     expect(data.total).toBe(2);
 
-    // upsertArticle still called for every article with null scores
+    // upsertArticle still called for every article.
+    // Articles pass the similarity threshold (default cosine = 1.0) but LLM
+    // returned null, so relevance falls back to 0 (not null) per route logic.
     expect(mockUpsertArticle).toHaveBeenCalledTimes(2);
     expect(mockUpsertArticle).toHaveBeenCalledWith(
-      expect.objectContaining({ relevance: null, usefulness: null, score: null, scoredAt: null }),
+      expect.objectContaining({ relevance: 0, usefulness: null, score: null, scoredAt: null }),
     );
   });
 
@@ -226,9 +243,9 @@ describe("score-articles endpoint (QStash Receiver)", () => {
 
     const { POST } = await import("@/app/api/score-articles/route");
     const articles = [
-      makeArticle(),
-      makeArticle({ title: "Article 2" }),
-      makeArticle({ title: "Article 3" }),
+      makeArticle({ url: "https://example.com/a1" }),
+      makeArticle({ title: "Article 2", url: "https://example.com/a2" }),
+      makeArticle({ title: "Article 3", url: "https://example.com/a3" }),
     ];
     const request = makeRequest({ articles, keyword: "test" }, "valid-sig");
 
@@ -251,6 +268,66 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     expect(data.total).toBe(0);
     expect(mockScoreArticles).toHaveBeenCalledWith([], "test");
     expect(mockUpsertArticle).not.toHaveBeenCalled();
+  });
+
+  test("similarity filter works: only articles above threshold are LLM-scored", async () => {
+    // Mock cosineSimilarity to control similarity values (mockCosineSimilarity is hoisted)
+    // Setup: keyword embedding = [1, 0], article1 = [1, 0] (sim 1.0), article2 = [0, 1] (sim 0.0)
+    mockCosineSimilarity.mockImplementation((a: number[], b: number[]) => {
+      // Simple dot product for testing
+      let dot = 0;
+      for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
+      const normA = Math.sqrt(a.reduce((sum: number, v: number) => sum + v * v, 0));
+      const normB = Math.sqrt(b.reduce((sum: number, v: number) => sum + v * v, 0));
+      return dot / (normA * normB);
+    });
+    
+    // Mock embedQuery to return keyword embedding [1, 0]
+    mockEmbedQuery.mockResolvedValue([1, 0]);
+    // Mock embedArticle to return different vectors for different articles
+    mockEmbedArticle.mockImplementation(async (title) => {
+      if (title === "Article 1") return [1, 0]; // identical to keyword
+      if (title === "Article 2") return [0, 1]; // orthogonal to keyword
+      return [0.1, 0.2];
+    });
+    
+    const { POST } = await import("@/app/api/score-articles/route");
+    const articles = [
+      makeArticle({ title: "Article 1", url: "https://example.com/a1" }),
+      makeArticle({ title: "Article 2", url: "https://example.com/a2" }),
+    ];
+    const request = makeRequest({ articles, keyword: "test-keyword" }, "valid-sig");
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    
+    // Only Article 1 should be scored (similarity 1.0 >= 0.75)
+    expect(data.saved).toBe(1);
+    expect(data.total).toBe(2);
+    
+    // Verify mockScoreArticles was called only once with Article 1
+    expect(mockScoreArticles).toHaveBeenCalledTimes(1);
+    expect(mockScoreArticles).toHaveBeenCalledWith(
+      [{ title: "Article 1", description: "Test description" }],
+      "test-keyword",
+    );
+    
+    // Verify upsertArticle was called twice (both articles)
+    expect(mockUpsertArticle).toHaveBeenCalledTimes(2);
+    
+    // Verify Article 1 was LLM-scored (passed the similarity threshold)
+    const calls = mockUpsertArticle.mock.calls;
+    const article1Call = calls.find(call => call[0].title === "Article 1");
+    const article2Call = calls.find(call => call[0].title === "Article 2");
+
+    expect(article1Call).toBeDefined();
+    expect(article1Call![0].relevance).toBe(8); // LLM_OK.relevance (scored article)
+    expect(article1Call![0].scoredAt).toBeDefined(); // has scoredAt
+
+    expect(article2Call).toBeDefined();
+    expect(article2Call![0].relevance).toBe(null); // filtered out article
+    expect(article2Call![0].scoredAt).toBe(null); // no scoredAt
   });
 
   test("calculates recency based on article publishedAt", async () => {
@@ -284,5 +361,32 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     expect(calls[3][0].recency).toBe(0); // 31 days → recency=0
 
     vi.useRealTimers();
+  });
+
+  test("dryRun returns filter stats without calling LLM or DB", async () => {
+    const { POST } = await import("@/app/api/score-articles/route");
+    const articles = [
+      makeArticle({ title: "Article 1", url: "https://example.com/a1" }),
+      makeArticle({ title: "Article 2", url: "https://example.com/a2" }),
+    ];
+    // dryRun: true, threshold override 0.5
+    const request = makeRequest(
+      { articles, keyword: "test-keyword", threshold: 0.5, dryRun: true },
+      "valid-sig",
+    );
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+
+    expect(data.dryRun).toBe(true);
+    expect(data.threshold).toBe(0.5);
+    expect(data.total).toBe(2);
+    expect(data.passed).toBe(2); // cosine mock = 1.0 >= 0.5
+    expect(data.filtered).toBe(0);
+
+    // LLM and DB must NOT be touched in dry-run mode
+    expect(mockScoreArticles).not.toHaveBeenCalled();
+    expect(mockUpsertArticle).not.toHaveBeenCalled();
   });
 });

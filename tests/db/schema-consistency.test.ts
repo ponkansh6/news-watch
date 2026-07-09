@@ -36,6 +36,7 @@ describe("Test Case 1: 新カラムを含むarticlesテーブルのCRUD正常系
         reason TEXT,
         scored_at TEXT,
         score REAL,
+        embedding TEXT,
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
       )
     `);

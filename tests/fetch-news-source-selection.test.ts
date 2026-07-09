@@ -117,6 +117,14 @@ vi.mock("@upstash/qstash", () => ({
   } as any,
 }));
 
+// Mock embeddings so the local dev scoring path (no QSTASH_TOKEN) does not
+// depend on network access to the Google API.
+vi.mock("@/lib/embeddings", () => ({
+  embedArticle: vi.fn().mockResolvedValue([0.1, 0.2]),
+  embedQuery: vi.fn().mockResolvedValue([0.1, 0.2]),
+  cosineSimilarity: vi.fn().mockReturnValue(1.0),
+}));
+
 describe("fetch-news route source selection", () => {
   test("should work when only hackernews is selected (GNews and NewsAPI unchecked)", async () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {

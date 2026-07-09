@@ -3,7 +3,7 @@ import { Receiver } from "@upstash/qstash";
 import { scoreArticles } from "@/lib/llm/gemini";
 import { upsertArticle } from "@/lib/db/actions";
 import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
-import type { NormalizedArticle } from "@/lib/types";
+import { embedAndFilterArticles, SIMILARITY_THRESHOLD, resolveThreshold, filterByThreshold, logFilterStats } from "@/lib/vector-filter";
 
 export const maxDuration = 60;
 
@@ -18,24 +18,26 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.text();
 
     // Verify QStash signature
-    const signature = request.headers.get("upstash-signature");
-    if (!signature) {
-      return NextResponse.json({ error: "Missing signature" }, { status: 401 });
-    }
+    if (process.env.NODE_ENV !== "development") {
+      const signature = request.headers.get("upstash-signature");
+      if (!signature) {
+        return NextResponse.json({ error: "Missing signature" }, { status: 401 });
+      }
 
-    try {
-      await receiver.verify({
-        signature,
-        body: rawBody,
-      });
-    } catch (verifyError) {
-      console.error(`[score-articles] Signature verification failed:`, String(verifyError));
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+      try {
+        await receiver.verify({
+          signature,
+          body: rawBody,
+        });
+      } catch (verifyError) {
+        console.error(`[score-articles] Signature verification failed:`, String(verifyError));
+        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+      }
     }
 
     // Parse body
     const parsedBody = JSON.parse(rawBody);
-    const { articles, keyword } = parsedBody;
+    const { articles, keyword, threshold: thresholdOverride, dryRun } = parsedBody;
 
     if (!articles || !Array.isArray(articles) || !keyword) {
       return NextResponse.json(
@@ -47,19 +49,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Score articles using Gemini
+    // Embed articles and filter by similarity
+    const articlesWithEmbeddings = await embedAndFilterArticles(articles, keyword);
+    const effectiveThreshold = resolveThreshold(thresholdOverride);
+
+    const relevantArticles = filterByThreshold(articlesWithEmbeddings, effectiveThreshold);
+    logFilterStats({ keyword, threshold: effectiveThreshold, total: articlesWithEmbeddings.length, passed: relevantArticles.length });
+
+    // Dry-run mode: return filter stats without LLM/DB operations
+    if (dryRun) {
+      return NextResponse.json({
+        ok: true,
+        dryRun: true,
+        keyword,
+        threshold: effectiveThreshold,
+        total: articlesWithEmbeddings.length,
+        passed: relevantArticles.length,
+        filtered: articlesWithEmbeddings.length - relevantArticles.length,
+      });
+    }
+
+    // Score relevant articles using Gemini
     const llmResults = await scoreArticles(
-      articles.map((a: NormalizedArticle) => ({ title: a.title, description: a.description })),
+      relevantArticles.map((item) => ({ title: item.article.title, description: item.article.description })),
       keyword,
     );
 
     // Save scored articles with proper composite scoring
     let savedCount = 0;
-    for (let i = 0; i < articles.length; i++) {
-      const llmResult = llmResults[i] ?? null;
-      const article = articles[i];
+    for (let i = 0; i < articlesWithEmbeddings.length; i++) {
+      const { article, embedding, similarity } = articlesWithEmbeddings[i];
+      
+      // Find if this article was scored
+      const relevantIndex = relevantArticles.findIndex(
+        (item) => item.article.url === article.url
+      );
+      const llmResult = relevantIndex !== -1 ? llmResults[relevantIndex] : null;
 
-      const relevance = llmResult?.relevance ?? null;
+      const relevance = llmResult?.relevance ?? (similarity >= effectiveThreshold ? 0 : null);
       const usefulness = llmResult?.usefulness ?? null;
       const recency = calcRecencyScore(article.publishedAt);
       const composite = calcCompositeScore(relevance, usefulness, recency);
@@ -81,6 +108,7 @@ export async function POST(request: NextRequest) {
         score: composite,
         reason: llmResult?.reason ?? null,
         scoredAt: llmResult ? new Date().toISOString() : null,
+        embedding: JSON.stringify(embedding),
       });
 
       if (llmResult) savedCount++;
@@ -94,6 +122,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("[score-articles] Error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
   }
 }

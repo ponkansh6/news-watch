@@ -13,6 +13,7 @@ import { type NormalizedArticle } from "@/lib/types";
 import { Client } from "@upstash/qstash";
 import { scoreArticles } from "@/lib/llm/gemini";
 import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
+import { embedAndFilterArticles, SIMILARITY_THRESHOLD, resolveThreshold, filterByThreshold, logFilterStats } from "@/lib/vector-filter";
 
 // Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
@@ -106,7 +107,7 @@ function normalize(
       "publishedAt" in a ? a.publishedAt : "created_at" in a ? a.created_at : hn.created_at;
     sourceName =
       "source" in a && a.source?.name ? a.source.name : "user" in a ? "Qiita" : "Hacker News";
-    author = (a as any).author ?? hn.author ?? ("user" in a ? a.user.name : null);
+    author = (a as any).author ?? hn.author ?? ("user" in a ? (a as any).user.name : null);
   }
 
   return {
@@ -153,7 +154,16 @@ export async function POST(request: Request) {
     selectedSources = body.sources || [];
   } catch {
     // If parsing fails or no sources provided, default to all sources
-    selectedSources = ["gnews", "newsapi", "hackernews", "qiita", "github", "yamadashy", "itmedia", "codezine"];
+    selectedSources = [
+      "gnews",
+      "newsapi",
+      "hackernews",
+      "qiita",
+      "github",
+      "yamadashy",
+      "itmedia",
+      "codezine",
+    ];
   }
 
   const results: {
@@ -264,15 +274,24 @@ export async function POST(request: Request) {
         } else {
           // Local dev: score directly
           try {
+            const articlesWithEmbeddings = await embedAndFilterArticles(all, keyword);
+            const relevantArticles = filterByThreshold(articlesWithEmbeddings, SIMILARITY_THRESHOLD);
+            logFilterStats({ keyword, threshold: SIMILARITY_THRESHOLD, total: articlesWithEmbeddings.length, passed: relevantArticles.length });
             const llmResults = await scoreArticles(
-              all.map((a: NormalizedArticle) => ({ title: a.title, description: a.description })),
+              relevantArticles.map((item) => ({ title: item.article.title, description: item.article.description })),
               keyword,
             );
             let savedCount = 0;
-            for (let i = 0; i < all.length; i++) {
-              const llmResult = llmResults[i] ?? null;
-              const article = all[i];
-              const relevance = llmResult?.relevance ?? null;
+            for (let i = 0; i < articlesWithEmbeddings.length; i++) {
+              const { article, embedding, similarity } = articlesWithEmbeddings[i];
+              
+              // Find if this article was scored
+              const relevantIndex = relevantArticles.findIndex(
+                (item) => item.article.url === article.url
+              );
+              const llmResult = relevantIndex !== -1 ? llmResults[relevantIndex] : null;
+
+              const relevance = llmResult?.relevance ?? (similarity >= SIMILARITY_THRESHOLD ? 0 : null);
               const usefulness = llmResult?.usefulness ?? null;
               const recency = calcRecencyScore(article.publishedAt);
               const composite = calcCompositeScore(relevance, usefulness, recency);
@@ -294,6 +313,7 @@ export async function POST(request: Request) {
                 score: composite,
                 reason: llmResult?.reason ?? null,
                 scoredAt: llmResult ? new Date().toISOString() : null,
+                embedding: JSON.stringify(embedding),
               });
               if (llmResult) savedCount++;
             }

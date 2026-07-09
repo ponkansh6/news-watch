@@ -12,7 +12,7 @@
 const REQUIRED = {
   TURSO_DATABASE_URL: "Turso DB connection string",
   TURSO_AUTH_TOKEN: "Turso DB auth token",
-  GOOGLE_API_KEY: "Gemini API key for article scoring",
+  GOOGLE_API_KEY: "Google API key for article scoring (Gemini/Gemma) AND embeddings",
 } as const;
 
 const OPTIONAL = {

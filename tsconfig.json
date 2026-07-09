@@ -14,11 +14,7 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
+    "types": ["node"],
     "paths": {
       "@/*": ["./src/*"]
     }
@@ -29,7 +25,8 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    "**/*.mts",
+    "tests/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next", "vitest.config.ts", "tests"]
+  "exclude": ["node_modules", ".next", "vitest.config.ts"]
 }
