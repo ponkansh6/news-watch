@@ -3,6 +3,76 @@ import { GoogleGenerativeAI, TaskType } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 
 /**
+ * Limit concurrent embedding requests.
+ *
+ * Google's embedding API rate-limits concurrent requests (returns 429). Firing
+ * all article + keyword embeddings at once (e.g. 20 articles + 5 keywords in a
+ * single score-articles run) reliably trips that limit and, without backoff,
+ * aborts the whole scoring run — which is why production scoring never
+ * completed. A module-level semaphore caps in-flight requests, and each call is
+ * retried with exponential backoff on transient failures.
+ */
+const MAX_CONCURRENT_EMBEDDINGS = 5;
+const EMBED_MAX_RETRIES = 3;
+const EMBED_BACKOFF_MS = 400;
+
+let activeEmbeddings = 0;
+const embedWaiters: Array<() => void> = [];
+
+function acquireEmbedSlot(): Promise<void> {
+  if (activeEmbeddings < MAX_CONCURRENT_EMBEDDINGS) {
+    activeEmbeddings++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => embedWaiters.push(resolve));
+}
+
+function releaseEmbedSlot(): void {
+  activeEmbeddings--;
+  const next = embedWaiters.shift();
+  if (next) {
+    activeEmbeddings++;
+    next();
+  }
+}
+
+async function embedWithRetry(embedFn: () => Promise<number[]>): Promise<number[]> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= EMBED_MAX_RETRIES; attempt++) {
+    try {
+      return await embedFn();
+    } catch (err) {
+      lastError = err;
+      if (attempt < EMBED_MAX_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, EMBED_BACKOFF_MS * 2 ** attempt));
+      }
+    }
+  }
+  throw lastError;
+}
+
+async function callEmbedding(taskType: TaskType, text: string): Promise<number[]> {
+  await acquireEmbedSlot();
+  try {
+    return await embedWithRetry(async () => {
+      const model = genAI.getGenerativeModel({ model: "gemini-embedding-001" });
+      const result = await model.embedContent({
+        content: { role: "user", parts: [{ text }] },
+        taskType,
+      });
+
+      if (!result.embedding || !result.embedding.values) {
+        throw new Error("Failed to generate embedding: No embedding values returned.");
+      }
+
+      return result.embedding.values;
+    });
+  } finally {
+    releaseEmbedSlot();
+  }
+}
+
+/**
  * Generates an embedding for an article using Google's gemini-embedding-001 model.
  *
  * @param title - The title of the article.
@@ -10,20 +80,8 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
  * @returns A promise that resolves to an array of numbers representing the embedding.
  */
 export async function embedArticle(title: string, description: string | null): Promise<number[]> {
-  const model = genAI.getGenerativeModel({ model: "gemini-embedding-001" });
-
   const content = `${title}\n${description || ""}`.trim();
-
-  const result = await model.embedContent({
-    content: { role: "user", parts: [{ text: content }] },
-    taskType: TaskType.RETRIEVAL_DOCUMENT,
-  });
-
-  if (!result.embedding || !result.embedding.values) {
-    throw new Error("Failed to generate embedding: No embedding values returned.");
-  }
-
-  return result.embedding.values;
+  return callEmbedding(TaskType.RETRIEVAL_DOCUMENT, content);
 }
 
 /**
@@ -56,16 +114,5 @@ export function cosineSimilarity(vecA: number[], vecB: number[]): number {
  * @returns A promise that resolves to an array of numbers representing the embedding.
  */
 export async function embedQuery(query: string): Promise<number[]> {
-  const model = genAI.getGenerativeModel({ model: "gemini-embedding-001" });
-
-  const result = await model.embedContent({
-    content: { role: "user", parts: [{ text: query }] },
-    taskType: TaskType.RETRIEVAL_QUERY,
-  });
-
-  if (!result.embedding || !result.embedding.values) {
-    throw new Error("Failed to generate embedding: No embedding values returned.");
-  }
-
-  return result.embedding.values;
+  return callEmbedding(TaskType.RETRIEVAL_QUERY, query);
 }
