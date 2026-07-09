@@ -106,80 +106,81 @@ function makeArticles(source: string, n: number) {
   }));
 }
 
+function gnewsArticles() {
+  return makeArticles("gnews", 3);
+}
+function newsapiArticles() {
+  return makeArticles("newsapi", 3);
+}
+function hackernewsArticles() {
+  return makeArticles("hackernews", 3).map((a) => ({ ...a, story_text: a.description }));
+}
+function qiitaArticles() {
+  return makeArticles("qiita", 3).map((a) => ({
+    ...a,
+    body: a.description,
+    created_at: a.publishedAt,
+    user: { name: "u" },
+  }));
+}
+function githubArticles() {
+  return makeArticles("github", 3).map((a) => ({
+    name: a.title,
+    html_url: a.url,
+    description: a.description,
+    created_at: a.publishedAt,
+    owner: { login: "u" },
+  }));
+}
+function yamadashyArticles() {
+  return makeArticles("yamadashy", 3).map((a) => ({
+    title: a.title,
+    link: a.url,
+    description: a.description,
+    pubDate: a.publishedAt,
+    author: "a",
+  }));
+}
+function itmediaArticles() {
+  return makeArticles("itmedia", 3).map((a) => ({
+    title: a.title,
+    link: a.url,
+    description: a.description,
+    pubDate: a.publishedAt,
+  }));
+}
+function codezineArticles() {
+  return makeArticles("codezine", 3).map((a) => ({
+    title: a.title,
+    link: a.url,
+    description: a.description,
+    pubDate: a.publishedAt,
+  }));
+}
+
 vi.mock("@/lib/news/gnews", () => ({
-  searchGNews: vi.fn().mockResolvedValue(makeArticles("gnews", 3)),
+  searchGNews: vi.fn().mockResolvedValue(gnewsArticles()),
 }));
 vi.mock("@/lib/news/newsapi", () => ({
-  searchNewsApi: vi.fn().mockResolvedValue(makeArticles("newsapi", 3)),
+  searchNewsApi: vi.fn().mockResolvedValue(newsapiArticles()),
 }));
 vi.mock("@/lib/news/hackernews", () => ({
-  searchHackerNews: vi
-    .fn()
-    .mockResolvedValue(
-      makeArticles("hackernews", 3).map((a) => ({ ...a, story_text: a.description })),
-    ),
+  searchHackerNews: vi.fn().mockResolvedValue(hackernewsArticles()),
 }));
 vi.mock("@/lib/news/qiita", () => ({
-  searchQiita: vi
-    .fn()
-    .mockResolvedValue(
-      makeArticles("qiita", 3).map((a) => ({
-        ...a,
-        body: a.description,
-        created_at: a.publishedAt,
-        user: { name: "u" },
-      })),
-    ),
+  searchQiita: vi.fn().mockResolvedValue(qiitaArticles()),
 }));
 vi.mock("@/lib/news/github", () => ({
-  searchGitHub: vi
-    .fn()
-    .mockResolvedValue(
-      makeArticles("github", 3).map((a) => ({
-        name: a.title,
-        html_url: a.url,
-        description: a.description,
-        created_at: a.publishedAt,
-        owner: { login: "u" },
-      })),
-    ),
+  searchGitHub: vi.fn().mockResolvedValue(githubArticles()),
 }));
 vi.mock("@/lib/news/yamadashy", () => ({
-  searchYamadashy: vi
-    .fn()
-    .mockResolvedValue(
-      makeArticles("yamadashy", 3).map((a) => ({
-        title: a.title,
-        link: a.url,
-        description: a.description,
-        pubDate: a.publishedAt,
-        author: "a",
-      })),
-    ),
+  searchYamadashy: vi.fn().mockResolvedValue(yamadashyArticles()),
 }));
 vi.mock("@/lib/news/itmedia", () => ({
-  searchITmedia: vi
-    .fn()
-    .mockResolvedValue(
-      makeArticles("itmedia", 3).map((a) => ({
-        title: a.title,
-        link: a.url,
-        description: a.description,
-        pubDate: a.publishedAt,
-      })),
-    ),
+  searchITmedia: vi.fn().mockResolvedValue(itmediaArticles()),
 }));
 vi.mock("@/lib/news/codezine", () => ({
-  searchCodeZine: vi
-    .fn()
-    .mockResolvedValue(
-      makeArticles("codezine", 3).map((a) => ({
-        title: a.title,
-        link: a.url,
-        description: a.description,
-        pubDate: a.publishedAt,
-      })),
-    ),
+  searchCodeZine: vi.fn().mockResolvedValue(codezineArticles()),
 }));
 
 const ALL_SOURCES = [
