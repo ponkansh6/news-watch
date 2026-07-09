@@ -13,7 +13,7 @@ beforeEach(() => {
 });
 
 describe("searchGNews", () => {
-  test("happy path - returns articles when API key is set and fetch succeeds", async () => {
+test("happy path - returns articles when API key is set and fetch succeeds", async () => {
     process.env.GNEWS_API_KEY = "test-key";
     const mockResponse = {
       ok: true,
@@ -43,13 +43,13 @@ describe("searchGNews", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchGNews(50);
+    const result = await searchGNews(20);
 
     expect(result).toHaveLength(2);
     expect(result[0].title).toBe("Test Article 1");
     expect(result[1].title).toBe("Test Article 2");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://gnews.io/api/v4/top-headlines?country=us&apikey=test-key&max=50&lang=en",
+      "https://gnews.io/api/v4/top-headlines?country=us&apikey=test-key&max=20&lang=en",
       { signal: expect.any(Object) },
     );
   });
@@ -62,7 +62,7 @@ describe("searchGNews", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchGNews(50);
+    const result = await searchGNews(20);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalled();
@@ -73,7 +73,7 @@ describe("searchGNews", () => {
     const error = new Error("Network error");
     fetchMock.mockRejectedValue(error);
 
-    const result = await searchGNews(50);
+    const result = await searchGNews(20);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalled();
@@ -82,7 +82,7 @@ describe("searchGNews", () => {
   test("API key not set - returns empty array without calling fetch", async () => {
     process.env.GNEWS_API_KEY = "";
 
-    const result = await searchGNews(50);
+    const result = await searchGNews(20);
 
     expect(result).toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();

@@ -19,7 +19,7 @@ import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 // Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
 
-const MAX_ARTICLES = 50;
+const MAX_ARTICLES = 20;
 
 // Initialize QStash client
 const qstash = new Client({
@@ -179,35 +179,35 @@ export async function POST(request: Request) {
   const sourceOrder: string[] = [];
 
   if (selectedSources.includes("gnews")) {
-    fetchPromises.push(searchGNews(50));
+    fetchPromises.push(searchGNews(20));
     sourceOrder.push("gnews");
   }
   if (selectedSources.includes("newsapi")) {
-    fetchPromises.push(searchNewsApi(50));
+    fetchPromises.push(searchNewsApi(20));
     sourceOrder.push("newsapi");
   }
   if (selectedSources.includes("hackernews")) {
-    fetchPromises.push(searchHackerNews(50));
+    fetchPromises.push(searchHackerNews(20));
     sourceOrder.push("hackernews");
   }
   if (selectedSources.includes("qiita")) {
-    fetchPromises.push(searchQiita(50));
+    fetchPromises.push(searchQiita(20));
     sourceOrder.push("qiita");
   }
   if (selectedSources.includes("github")) {
-    fetchPromises.push(searchGitHub(50));
+    fetchPromises.push(searchGitHub(20));
     sourceOrder.push("github");
   }
   if (selectedSources.includes("yamadashy")) {
-    fetchPromises.push(searchYamadashy(50));
+    fetchPromises.push(searchYamadashy(20));
     sourceOrder.push("yamadashy");
   }
   if (selectedSources.includes("itmedia")) {
-    fetchPromises.push(searchITmedia(50));
+    fetchPromises.push(searchITmedia(20));
     sourceOrder.push("itmedia");
   }
   if (selectedSources.includes("codezine")) {
-    fetchPromises.push(searchCodeZine(50));
+    fetchPromises.push(searchCodeZine(20));
     sourceOrder.push("codezine");
   }
 

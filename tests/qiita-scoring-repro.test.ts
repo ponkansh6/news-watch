@@ -129,8 +129,8 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       totalFetched += result.fetched;
     }
 
-    // 5 keywords × 10 articles each = 50 total
-    expect(totalFetched).toBe(50);
+    // 5 keywords × 4 articles each = 20 total
+    expect(totalFetched).toBe(20);
 
     // upsertArticle は呼ばれていないこと（score-articles で呼ばれるため）
     expect(mockUpsertArticle).not.toHaveBeenCalled();
@@ -175,7 +175,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       expect(result.fetched).toBeGreaterThan(0);
       expect(result.errors).toHaveLength(0);
     }
-    expect(totalFetched).toBe(50);
+    expect(totalFetched).toBe(20);
   });
 
   /**
@@ -223,8 +223,8 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       expect(result.errors).toHaveLength(0);
     }
 
-    // 50 articles
-    expect(totalFetched).toBe(50);
+    // 20 articles
+    expect(totalFetched).toBe(20);
   });
 
   /**

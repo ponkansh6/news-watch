@@ -263,6 +263,30 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     expect(mockUpsertArticle).not.toHaveBeenCalled();
   });
 
+  test("scores articles in batches of LLM_BATCH_SIZE (4)", async () => {
+    const { POST } = await import("@/app/api/score-articles/route");
+    const articles = [
+      makeArticle({ url: "https://example.com/a1" }),
+      makeArticle({ url: "https://example.com/a2" }),
+      makeArticle({ url: "https://example.com/a3" }),
+      makeArticle({ url: "https://example.com/a4" }),
+      makeArticle({ url: "https://example.com/a5" }),
+      makeArticle({ url: "https://example.com/a6" }),
+      makeArticle({ url: "https://example.com/a7" }),
+      makeArticle({ url: "https://example.com/a8" }),
+    ];
+    const request = makeRequest({ articles }, "valid-sig");
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    // 8 articles, single keyword "Anthropic" → 2 batches of 4
+    expect(mockScoreArticles).toHaveBeenCalledTimes(2);
+    for (const call of mockScoreArticles.mock.calls) {
+      expect(call[0]).toHaveLength(4);
+      expect(call[1]).toBe("Anthropic");
+    }
+    expect(mockUpsertArticle).toHaveBeenCalledTimes(8);
+  });
+
   test("calculates recency based on article publishedAt", async () => {
     // Freeze time to avoid Date.now() drift between article creation and route execution
     vi.useFakeTimers();

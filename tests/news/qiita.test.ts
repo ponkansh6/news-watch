@@ -37,13 +37,13 @@ describe("searchQiita", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchQiita(50);
+    const result = await searchQiita(20);
 
     expect(result).toHaveLength(2);
     expect(result[0].title).toBe("Test Qiita Article 1");
     expect(result[1].title).toBe("Test Qiita Article 2");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://qiita.com/api/v2/items?page=1&per_page=50",
+      "https://qiita.com/api/v2/items?page=1&per_page=20",
       expect.objectContaining({ signal: expect.any(Object) }),
     );
   });
@@ -55,7 +55,7 @@ describe("searchQiita", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchQiita(50);
+    const result = await searchQiita(20);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalled();
@@ -65,7 +65,7 @@ describe("searchQiita", () => {
     const error = new Error("Network error");
     fetchMock.mockRejectedValue(error);
 
-    const result = await searchQiita(50);
+    const result = await searchQiita(20);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalled();
@@ -79,10 +79,10 @@ describe("searchQiita", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchQiita(50);
+    const result = await searchQiita(20);
 
     expect(result).toEqual([]);
-    expect(fetchMock).toHaveBeenCalledWith("https://qiita.com/api/v2/items?page=1&per_page=50", {
+    expect(fetchMock).toHaveBeenCalledWith("https://qiita.com/api/v2/items?page=1&per_page=20", {
       signal: expect.any(Object),
       headers: { Authorization: "Bearer test-token" },
     });

@@ -37,13 +37,13 @@ describe("searchGitHub", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchGitHub(50);
+    const result = await searchGitHub(20);
 
     expect(result).toHaveLength(2);
     expect(result[0].name).toBe("Test Repo 1");
     expect(result[1].name).toBe("Test Repo 2");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.github.com/search/repositories?q=stars:%3E1&sort=updated&order=desc&per_page=50",
+      "https://api.github.com/search/repositories?q=stars:%3E1&sort=updated&order=desc&per_page=20",
       {
         signal: expect.any(Object),
         headers: {
@@ -61,7 +61,7 @@ describe("searchGitHub", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchGitHub(50);
+    const result = await searchGitHub(20);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalled();
@@ -71,7 +71,7 @@ describe("searchGitHub", () => {
     const error = new Error("Network error");
     fetchMock.mockRejectedValue(error);
 
-    const result = await searchGitHub(50);
+    const result = await searchGitHub(20);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalled();
@@ -85,11 +85,11 @@ describe("searchGitHub", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchGitHub(50);
+    const result = await searchGitHub(20);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.github.com/search/repositories?q=stars:%3E1&sort=updated&order=desc&per_page=50",
+      "https://api.github.com/search/repositories?q=stars:%3E1&sort=updated&order=desc&per_page=20",
       {
         signal: expect.any(Object),
         headers: {

@@ -210,3 +210,8 @@ Hybrid scoring combines LLM-based relevance/usefulness scoring with a vector pre
 - **Phase 1-3**: Fetch/score separation, offline harness, threshold evaluation (completed)
 - **Phase 4**: Real data tuning + environment variable reflection (implemented)
 - **Future**: Per-keyword threshold persistence in database
+
+### 9.5 Processing Limits
+
+- **Fetch Cap**: The fetch endpoint caps total articles at 20 (latest articles only)
+- **LLM Batching**: Articles are scored in batches of 4 per LLM request, grouped by assigned keyword

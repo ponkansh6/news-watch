@@ -17,7 +17,7 @@ describe("searchYamadashy", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchYamadashy(50);
+    const result = await searchYamadashy(20);
 
     expect(result).toHaveLength(3);
     expect(result[0].title).toBe("Test Article 1");
@@ -37,7 +37,7 @@ describe("searchYamadashy", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchYamadashy(50);
+    const result = await searchYamadashy(20);
 
     expect(result).toHaveLength(3);
     expect(result[0].title).toBe("JavaScript Article");
@@ -50,7 +50,7 @@ describe("searchYamadashy", () => {
     };
     fetchMock.mockResolvedValue(mockResponse as any);
 
-    const result = await searchYamadashy(50);
+    const result = await searchYamadashy(20);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalled();
@@ -60,7 +60,7 @@ describe("searchYamadashy", () => {
     const error = new Error("Network error");
     fetchMock.mockRejectedValue(error);
 
-    const result = await searchYamadashy(50);
+    const result = await searchYamadashy(20);
 
     expect(result).toEqual([]);
     expect(fetchMock).toHaveBeenCalled();
