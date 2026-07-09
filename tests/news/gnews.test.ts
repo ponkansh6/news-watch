@@ -13,7 +13,7 @@ beforeEach(() => {
 });
 
 describe("searchGNews", () => {
-test("happy path - returns articles when API key is set and fetch succeeds", async () => {
+  test("happy path - returns articles when API key is set and fetch succeeds", async () => {
     process.env.GNEWS_API_KEY = "test-key";
     const mockResponse = {
       ok: true,
