@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { KEYWORDS } from "@/lib/config";
 
 interface FetchResult {
   keyword: string;
@@ -94,31 +95,33 @@ export default function FetchButton() {
       const data = await res.json();
 
       if (data.ok && Array.isArray(data.results)) {
-        // Start polling for scoring status
+        // Start polling for scoring status.
+        // Articles are tagged and saved under the configured KEYWORDS (not the
+        // synthetic "latest" keyword fetch-news reports), so poll those.
         const since = new Date().toISOString();
+        const pollKeywords = KEYWORDS as readonly string[];
+        const totalFetched = data.results.reduce(
+          (acc: number, r: FetchResult) => acc + (r.fetched || 0),
+          0,
+        );
         const pollInterval = setInterval(async () => {
           try {
             const statusRes = await fetch("/api/scoring-status", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                keywords: data.results.map((r: FetchResult) => r.keyword),
-                since,
-              }),
+              body: JSON.stringify({ keywords: pollKeywords, since }),
             });
             const statusData = await statusRes.json();
 
             if (statusData.ok) {
-              const updatedResults = data.results.map((r: FetchResult) => {
-                const status = statusData.status.find((s: any) => s.keyword === r.keyword);
-                return { ...r, scored: status?.scored ?? 0 };
-              });
+              const updatedResults = pollKeywords.map((kw) => ({
+                keyword: kw,
+                fetched: 0,
+                scored: statusData.status.find((s: any) => s.keyword === kw)?.scored ?? 0,
+                errors: [] as string[],
+              }));
               setResults(updatedResults);
 
-              const totalFetched = data.results.reduce(
-                (acc: number, r: FetchResult) => acc + r.fetched,
-                0,
-              );
               const totalScored = updatedResults.reduce(
                 (acc: number, r: FetchResult) => acc + r.scored,
                 0,
