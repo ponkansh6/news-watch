@@ -129,66 +129,56 @@ vi.mock("@/lib/news/hackernews", () => ({
     ),
 }));
 vi.mock("@/lib/news/qiita", () => ({
-  searchQiita: vi
-    .fn()
-    .mockResolvedValue(
-      makeArticles("qiita", 3).map((a) => ({
-        ...a,
-        body: a.description,
-        created_at: a.publishedAt,
-        user: { name: "u" },
-      })),
-    ),
+  searchQiita: vi.fn().mockResolvedValue(
+    makeArticles("qiita", 3).map((a) => ({
+      ...a,
+      body: a.description,
+      created_at: a.publishedAt,
+      user: { name: "u" },
+    })),
+  ),
 }));
 vi.mock("@/lib/news/github", () => ({
-  searchGitHub: vi
-    .fn()
-    .mockResolvedValue(
-      makeArticles("github", 3).map((a) => ({
-        name: a.title,
-        html_url: a.url,
-        description: a.description,
-        created_at: a.publishedAt,
-        owner: { login: "u" },
-      })),
-    ),
+  searchGitHub: vi.fn().mockResolvedValue(
+    makeArticles("github", 3).map((a) => ({
+      name: a.title,
+      html_url: a.url,
+      description: a.description,
+      created_at: a.publishedAt,
+      owner: { login: "u" },
+    })),
+  ),
 }));
 vi.mock("@/lib/news/yamadashy", () => ({
-  searchYamadashy: vi
-    .fn()
-    .mockResolvedValue(
-      makeArticles("yamadashy", 3).map((a) => ({
-        title: a.title,
-        link: a.url,
-        description: a.description,
-        pubDate: a.publishedAt,
-        author: "a",
-      })),
-    ),
+  searchYamadashy: vi.fn().mockResolvedValue(
+    makeArticles("yamadashy", 3).map((a) => ({
+      title: a.title,
+      link: a.url,
+      description: a.description,
+      pubDate: a.publishedAt,
+      author: "a",
+    })),
+  ),
 }));
 vi.mock("@/lib/news/itmedia", () => ({
-  searchITmedia: vi
-    .fn()
-    .mockResolvedValue(
-      makeArticles("itmedia", 3).map((a) => ({
-        title: a.title,
-        link: a.url,
-        description: a.description,
-        pubDate: a.publishedAt,
-      })),
-    ),
+  searchITmedia: vi.fn().mockResolvedValue(
+    makeArticles("itmedia", 3).map((a) => ({
+      title: a.title,
+      link: a.url,
+      description: a.description,
+      pubDate: a.publishedAt,
+    })),
+  ),
 }));
 vi.mock("@/lib/news/codezine", () => ({
-  searchCodeZine: vi
-    .fn()
-    .mockResolvedValue(
-      makeArticles("codezine", 3).map((a) => ({
-        title: a.title,
-        link: a.url,
-        description: a.description,
-        pubDate: a.publishedAt,
-      })),
-    ),
+  searchCodeZine: vi.fn().mockResolvedValue(
+    makeArticles("codezine", 3).map((a) => ({
+      title: a.title,
+      link: a.url,
+      description: a.description,
+      pubDate: a.publishedAt,
+    })),
+  ),
 }));
 
 const originalEnv = process.env;
