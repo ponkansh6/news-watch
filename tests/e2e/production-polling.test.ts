@@ -113,42 +113,95 @@ vi.mock("@/lib/news/newsapi", () => ({
   searchNewsApi: vi.fn().mockResolvedValue(makeArticles("newsapi", 3)),
 }));
 vi.mock("@/lib/news/hackernews", () => ({
-  searchHackerNews: vi.fn().mockResolvedValue(
-    makeArticles("hackernews", 3).map((a) => ({ ...a, story_text: a.description })),
-  ),
+  searchHackerNews: vi
+    .fn()
+    .mockResolvedValue(
+      makeArticles("hackernews", 3).map((a) => ({ ...a, story_text: a.description })),
+    ),
 }));
 vi.mock("@/lib/news/qiita", () => ({
-  searchQiita: vi.fn().mockResolvedValue(
-    makeArticles("qiita", 3).map((a) => ({ ...a, body: a.description, created_at: a.publishedAt, user: { name: "u" } })),
-  ),
+  searchQiita: vi
+    .fn()
+    .mockResolvedValue(
+      makeArticles("qiita", 3).map((a) => ({
+        ...a,
+        body: a.description,
+        created_at: a.publishedAt,
+        user: { name: "u" },
+      })),
+    ),
 }));
 vi.mock("@/lib/news/github", () => ({
-  searchGitHub: vi.fn().mockResolvedValue(
-    makeArticles("github", 3).map((a) => ({ name: a.title, html_url: a.url, description: a.description, created_at: a.publishedAt, owner: { login: "u" } })),
-  ),
+  searchGitHub: vi
+    .fn()
+    .mockResolvedValue(
+      makeArticles("github", 3).map((a) => ({
+        name: a.title,
+        html_url: a.url,
+        description: a.description,
+        created_at: a.publishedAt,
+        owner: { login: "u" },
+      })),
+    ),
 }));
 vi.mock("@/lib/news/yamadashy", () => ({
-  searchYamadashy: vi.fn().mockResolvedValue(
-    makeArticles("yamadashy", 3).map((a) => ({ title: a.title, link: a.url, description: a.description, pubDate: a.publishedAt, author: "a" })),
-  ),
+  searchYamadashy: vi
+    .fn()
+    .mockResolvedValue(
+      makeArticles("yamadashy", 3).map((a) => ({
+        title: a.title,
+        link: a.url,
+        description: a.description,
+        pubDate: a.publishedAt,
+        author: "a",
+      })),
+    ),
 }));
 vi.mock("@/lib/news/itmedia", () => ({
-  searchITmedia: vi.fn().mockResolvedValue(
-    makeArticles("itmedia", 3).map((a) => ({ title: a.title, link: a.url, description: a.description, pubDate: a.publishedAt })),
-  ),
+  searchITmedia: vi
+    .fn()
+    .mockResolvedValue(
+      makeArticles("itmedia", 3).map((a) => ({
+        title: a.title,
+        link: a.url,
+        description: a.description,
+        pubDate: a.publishedAt,
+      })),
+    ),
 }));
 vi.mock("@/lib/news/codezine", () => ({
-  searchCodeZine: vi.fn().mockResolvedValue(
-    makeArticles("codezine", 3).map((a) => ({ title: a.title, link: a.url, description: a.description, pubDate: a.publishedAt })),
-  ),
+  searchCodeZine: vi
+    .fn()
+    .mockResolvedValue(
+      makeArticles("codezine", 3).map((a) => ({
+        title: a.title,
+        link: a.url,
+        description: a.description,
+        pubDate: a.publishedAt,
+      })),
+    ),
 }));
 
-const ALL_SOURCES = ["gnews", "newsapi", "hackernews", "qiita", "github", "yamadashy", "itmedia", "codezine"];
+const ALL_SOURCES = [
+  "gnews",
+  "newsapi",
+  "hackernews",
+  "qiita",
+  "github",
+  "yamadashy",
+  "itmedia",
+  "codezine",
+];
 const originalEnv = process.env;
 
 describe("e2e production flow with polling", () => {
   beforeEach(async () => {
-    process.env = { ...originalEnv, QSTASH_TOKEN: "test-token", NODE_ENV: "production", GOOGLE_API_KEY: "test-key" };
+    process.env = {
+      ...originalEnv,
+      QSTASH_TOKEN: "test-token",
+      NODE_ENV: "production",
+      GOOGLE_API_KEY: "test-key",
+    };
     h.state.capturedBody = null;
     vi.clearAllMocks();
     await migrate(db, { migrationsFolder: "./src/lib/db/migrations" });
@@ -171,7 +224,10 @@ describe("e2e production flow with polling", () => {
     expect(fetchRes.status).toBe(200);
     expect(Array.isArray(fetchData.results)).toBe(true);
 
-    const totalFetched = fetchData.results.reduce((acc: number, r: any) => acc + (r.fetched || 0), 0);
+    const totalFetched = fetchData.results.reduce(
+      (acc: number, r: any) => acc + (r.fetched || 0),
+      0,
+    );
     expect(totalFetched).toBeGreaterThan(0);
 
     // The UI sets `since` right after fetch-news returns, i.e. BEFORE the
