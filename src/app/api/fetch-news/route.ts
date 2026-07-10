@@ -213,6 +213,13 @@ export async function POST(request: Request) {
 
   const fetchedResults = await Promise.all(fetchPromises);
 
+  // Per-source diagnostic breakdown. Kept separate from `results` so the UI's
+  // completion accounting (which uses the post-dedupe `all.length`) is unchanged.
+  const perSource = sourceOrder.map((source, index) => ({
+    source,
+    fetched: (fetchedResults[index] ?? []).length,
+  }));
+
   // Normalize + deduplicate + slice to 50 total articles
   const resultsBySource: Record<string, any[]> = {};
   sourceOrder.forEach((source, index) => {
@@ -277,7 +284,7 @@ export async function POST(request: Request) {
   // Remove low-scored articles after each batch
   await deleteLowScoredArticles(5, since);
 
-  return NextResponse.json({ ok: true, message: "Scoring queued", results, since });
+  return NextResponse.json({ ok: true, message: "Scoring queued", results, perSource, since });
 }
 
 export async function GET() {

@@ -4,7 +4,7 @@ import path from "path";
 export default defineConfig({
   test: {
     globals: true,
-    setupFiles: [],
+    setupFiles: ["./tests/setup-env.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "json-summary"],

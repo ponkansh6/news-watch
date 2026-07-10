@@ -29,8 +29,12 @@ Output format (no markdown, no extra text):
 }`;
 
 export const BATCH_SCORING_PROMPT = `Score {{articleCount}} articles for keyword "{{keyword}}".
-Output ONLY a JSON array, one object per article in the same order, no extra text.
+Output ONLY valid JSON (a JSON object). Use exactly this structure:
+{
+  "results": [
+    {"summary":"Japanese 20-40 chars","relevance":0-10,"usefulness":0-10,"reason":"Brief Japanese reason"}
+  ]
+}
+One entry per article, in the same order. No markdown, no extra text.
 
-{{articles}}
-
-Format: [{"summary":"Japanese 20-40 chars","relevance":0-10,"usefulness":0-10,"reason":"Brief Japanese reason"}]`;
+{{articles}}`;

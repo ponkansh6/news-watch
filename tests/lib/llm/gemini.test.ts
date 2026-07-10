@@ -8,20 +8,20 @@ vi.stubGlobal("fetch", mockFetch);
 describe("gemini llm module", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    process.env.GOOGLE_API_KEY = "test-api-key";
+    process.env.GROQ_API_KEY = "test-api-key";
   });
 
   afterEach(() => {
-    delete process.env.GOOGLE_API_KEY;
+    delete process.env.GROQ_API_KEY;
   });
 
   it("exports the correct LLM_MODEL", () => {
-    expect(LLM_MODEL).toBe("gemma-4-31b-it");
+    expect(LLM_MODEL).toBe("meta-llama/llama-4-scout-17b-16e-instruct");
   });
 
   describe("scoreArticle", () => {
     it("returns null if API key is missing", async () => {
-      delete process.env.GOOGLE_API_KEY;
+      delete process.env.GROQ_API_KEY;
       const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
       expect(result).toBeNull();
       expect(mockFetch).not.toHaveBeenCalled();
@@ -29,19 +29,15 @@ describe("gemini llm module", () => {
 
     it("returns parsed response on success", async () => {
       const mockResponse = {
-        candidates: [
+        choices: [
           {
-            content: {
-              parts: [
-                {
-                  text: JSON.stringify({
-                    summary: "test",
-                    relevance: 5,
-                    usefulness: 5,
-                    reason: "test",
-                  }),
-                },
-              ],
+            message: {
+              content: JSON.stringify({
+                summary: "test",
+                relevance: 5,
+                usefulness: 5,
+                reason: "test",
+              }),
             },
           },
         ],
@@ -56,7 +52,7 @@ describe("gemini llm module", () => {
       const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
       expect(result).toEqual({ summary: "test", relevance: 5, usefulness: 5, reason: "test" });
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining(LLM_MODEL),
+        expect.stringContaining("api.groq.com"),
         expect.any(Object),
       );
     });
@@ -67,9 +63,9 @@ describe("gemini llm module", () => {
       expect(result).toBeNull();
     });
 
-    it("returns null on blocked response", async () => {
+    it("returns null on API error response", async () => {
       mockFetch.mockResolvedValue(
-        new Response(JSON.stringify({ promptFeedback: { blockReason: "Safety" } }), {
+        new Response(JSON.stringify({ error: { message: "moderation" } }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }),
@@ -81,7 +77,7 @@ describe("gemini llm module", () => {
     it("returns null on invalid JSON", async () => {
       mockFetch.mockResolvedValue(
         new Response(
-          JSON.stringify({ candidates: [{ content: { parts: [{ text: "invalid" }] } }] }),
+          JSON.stringify({ choices: [{ message: { content: "invalid" } }] }),
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
@@ -93,8 +89,6 @@ describe("gemini llm module", () => {
     });
 
     it("returns null on timeout", async () => {
-      mockFetch.mockRejectedValue(new Error("AbortError"));
-      // Need to mock the error name property
       const error = new Error("AbortError");
       error.name = "AbortError";
       mockFetch.mockRejectedValue(error);
@@ -103,35 +97,33 @@ describe("gemini llm module", () => {
       expect(result).toBeNull();
     });
 
-    it("filters out thought parts", async () => {
-      const mockResponse = {
-        candidates: [
+    it("retries on HTTP 429 then succeeds", async () => {
+      const okResponse = {
+        choices: [
           {
-            content: {
-              parts: [
-                { text: "thinking...", thought: true },
-                {
-                  text: JSON.stringify({
-                    summary: "test",
-                    relevance: 5,
-                    usefulness: 5,
-                    reason: "test",
-                  }),
-                },
-              ],
+            message: {
+              content: JSON.stringify({
+                summary: "test",
+                relevance: 5,
+                usefulness: 5,
+                reason: "test",
+              }),
             },
           },
         ],
       };
-      mockFetch.mockResolvedValue(
-        new Response(JSON.stringify(mockResponse), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+      mockFetch
+        .mockResolvedValueOnce(new Response(null, { status: 429 }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify(okResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
 
       const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
       expect(result).toEqual({ summary: "test", relevance: 5, usefulness: 5, reason: "test" });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -144,17 +136,13 @@ describe("gemini llm module", () => {
 
     it("returns array of results on success", async () => {
       const mockResponse = {
-        candidates: [
+        choices: [
           {
-            content: {
-              parts: [
-                {
-                  text: JSON.stringify([
-                    { summary: "s1", relevance: 1, usefulness: 1, reason: "r1" },
-                    { summary: "s2", relevance: 2, usefulness: 2, reason: "r2" },
-                  ]),
-                },
-              ],
+            message: {
+              content: JSON.stringify([
+                { summary: "s1", relevance: 1, usefulness: 1, reason: "r1" },
+                { summary: "s2", relevance: 2, usefulness: 2, reason: "r2" },
+              ]),
             },
           },
         ],
@@ -180,16 +168,12 @@ describe("gemini llm module", () => {
 
     it("pads with null if results are missing", async () => {
       const mockResponse = {
-        candidates: [
+        choices: [
           {
-            content: {
-              parts: [
-                {
-                  text: JSON.stringify([
-                    { summary: "s1", relevance: 1, usefulness: 1, reason: "r1" },
-                  ]),
-                },
-              ],
+            message: {
+              content: JSON.stringify([
+                { summary: "s1", relevance: 1, usefulness: 1, reason: "r1" },
+              ]),
             },
           },
         ],
