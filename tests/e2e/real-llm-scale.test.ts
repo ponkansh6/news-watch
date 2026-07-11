@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { db } from "@/lib/db";
 import { articles } from "@/lib/db/schema";
 import { inArray } from "drizzle-orm";
-import { POST as scoreArticlesRoute } from "@/app/api/score-articles/route";
+import { scoreAndSaveTagged } from "@/lib/score-pipeline";
+import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { KEYWORDS } from "@/lib/config";
 import { NextRequest } from "next/server";
 
@@ -43,22 +44,15 @@ describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
         };
       });
 
-      const body = { articles: inputArticles };
-      const req = new NextRequest("http://localhost/api/score-articles", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-
       const start = Date.now();
-      const res = await scoreArticlesRoute(req);
+      const tagged = await tagArticlesByKeyword(inputArticles, KEYWORDS);
+      const saved = await scoreAndSaveTagged(tagged);
       const end = Date.now();
       const duration = end - start;
 
       console.log(`[scale] ${MAX_ARTICLES} articles scored in ${duration}ms`);
 
-      expect(res.status).toBe(200);
-      const data = await res.json();
-      expect(data.saved).toBe(MAX_ARTICLES);
+      expect(saved).toBe(MAX_ARTICLES);
       expect(duration).toBeLessThan(60_000);
     }, 600_000);
   },

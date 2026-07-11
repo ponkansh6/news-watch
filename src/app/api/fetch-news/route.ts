@@ -10,8 +10,6 @@ import { searchITmedia, type ItmediaItem } from "@/lib/news/itmedia";
 import { searchCodeZine, type CodeZineItem } from "@/lib/news/codezine";
 import { deleteOrphanedArticles, deleteLowScoredArticles, upsertArticle } from "@/lib/db/actions";
 import { type NormalizedArticle } from "@/lib/types";
-import { Client } from "@upstash/qstash";
-import { scoreArticles } from "@/lib/llm/gemini";
 import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
 import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
@@ -20,20 +18,6 @@ import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 export const maxDuration = 60;
 
 const MAX_ARTICLES = 20;
-
-// Initialize QStash client
-const qstash = new Client({
-  token: process.env.QSTASH_TOKEN || "",
-});
-
-/** Resolve the callback URL for QStash, trying env var, Vercel URL, and fallback. */
-function resolveScoreUrl(request: Request): string {
-  const base =
-    process.env.SCORE_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ??
-    `https://${request.headers.get("host") ?? "news-watch.vercel.app"}`;
-  return `${base}/api/score-articles`;
-}
 
 function normalize(
   article:
@@ -255,27 +239,12 @@ export async function POST(request: Request) {
   const since = new Date().toISOString();
 
   if (all.length > 0) {
-    if (process.env.QSTASH_TOKEN) {
-      try {
-        const scoreUrl = resolveScoreUrl(request);
-        await qstash.publishJSON({
-          url: scoreUrl,
-          body: { articles: all },
-          retries: 3,
-        });
-      } catch (queueError) {
-        console.error(`[fetch-news] Failed to queue scoring task:`, queueError);
-        result.errors.push(`Failed to queue scoring task: ${queueError}`);
-      }
-    } else {
-      // Local dev: tag and score directly
-      try {
-        const tagged = await tagArticlesByKeyword(all, KEYWORDS);
-        result.saved = await scoreAndSaveTagged(tagged);
-      } catch (scoringError) {
-        console.error(`[fetch-news] Local scoring failed:`, scoringError);
-        result.errors.push(`Local scoring failed: ${scoringError}`);
-      }
+    try {
+      const tagged = await tagArticlesByKeyword(all, KEYWORDS);
+      result.saved = await scoreAndSaveTagged(tagged);
+    } catch (scoringError) {
+      console.error(`[fetch-news] Scoring failed:`, scoringError);
+      result.errors.push(`Scoring failed: ${scoringError}`);
     }
   }
 

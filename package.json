@@ -15,7 +15,6 @@
     "type-check": "tsc --noEmit",
     "type-check:fast": "tsgo --noEmit",
     "check-env": "tsx scripts/check-env.ts",
-    "e2e:qstash": "tsx scripts/e2e-qstash.ts",
     "check:deps": "depcheck",
     "security-check": "pnpm audit --audit-level=high && secretlint \"**/*\"",
     "db:generate": "drizzle-kit generate",
@@ -26,7 +25,6 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@libsql/client": "^0.17.4",
-    "@upstash/qstash": "^2.11.1",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "fast-xml-parser": "^5.9.3",

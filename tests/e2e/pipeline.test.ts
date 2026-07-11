@@ -124,7 +124,6 @@ describe("e2e pipeline (local dev mode)", () => {
 
   beforeEach(() => {
     vi.resetModules();
-    process.env = { ...originalEnv, QSTASH_TOKEN: "" };
     vi.clearAllMocks();
   });
 
@@ -132,7 +131,7 @@ describe("e2e pipeline (local dev mode)", () => {
     process.env = originalEnv;
   });
 
-  test("should bypass QStash and run local pipeline", async () => {
+  test("should score articles inline via local pipeline", async () => {
     mockKeywords = ["test-keyword"];
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",

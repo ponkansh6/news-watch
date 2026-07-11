@@ -1,6 +1,6 @@
 /**
  * Algorithmic recency score (0-10) based on publishedAt freshness.
- * Shared between fetch-news (local dev mode) and score-articles (QStash receiver).
+ * Used by fetch-news to calculate article scores.
  */
 export function calcRecencyScore(publishedAt: string): number {
   const now = Date.now();

@@ -3,10 +3,9 @@
  *
  * Verifies that with LLM_BATCH_SIZE = 20, articles sharing a keyword are scored
  * in a single LLM call instead of being split into many small batches.
- * Exercises the real route → tagArticlesByKeyword → scoreAndSaveTagged → scoreArticles.
+ * Exercises the real scoreAndSaveTagged pipeline.
  */
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { NextRequest } from "next/server";
 import * as gemini from "@/lib/llm/gemini";
 import * as db from "@/lib/db/actions";
 
@@ -15,13 +14,6 @@ const { mockUpsertArticle } = vi.hoisted(() => ({ mockUpsertArticle: vi.fn() }))
 const { mockEmbedArticle } = vi.hoisted(() => ({ mockEmbedArticle: vi.fn() }));
 const { mockEmbedQuery } = vi.hoisted(() => ({ mockEmbedQuery: vi.fn() }));
 const { mockCosineSimilarity } = vi.hoisted(() => ({ mockCosineSimilarity: vi.fn() }));
-const { mockVerify } = vi.hoisted(() => ({ mockVerify: vi.fn() }));
-
-vi.mock("@upstash/qstash", () => ({
-  Receiver: class {
-    verify = mockVerify;
-  } as any,
-}));
 
 vi.mock("@/lib/llm/gemini", () => ({
   scoreArticles: mockScoreArticles,
@@ -54,21 +46,9 @@ function makeArticle(url: string) {
   };
 }
 
-function makeRequest(articles: unknown[]) {
-  return new NextRequest("http://localhost/api/score-articles", {
-    method: "POST",
-    body: JSON.stringify({ articles }),
-    headers: {
-      "Content-Type": "application/json",
-      "upstash-signature": "valid",
-    },
-  });
-}
-
 describe("e2e: batch consolidation (20-in-1)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockVerify.mockResolvedValue(undefined);
     mockScoreArticles.mockImplementation(
       (articles: { title: string; description: string | null }[]) =>
         Promise.resolve(
@@ -83,10 +63,12 @@ describe("e2e: batch consolidation (20-in-1)", () => {
   });
 
   test("20 articles of one keyword are scored in a single LLM call", async () => {
-    const { POST } = await import("@/app/api/score-articles/route");
+    const { scoreAndSaveTagged } = await import("@/lib/score-pipeline");
+    const { tagArticlesByKeyword } = await import("@/lib/vector-filter");
     const articles = Array.from({ length: 20 }, (_, i) => makeArticle(`https://example.com/${i}`));
-    const response = await POST(makeRequest(articles));
-    expect(response.status).toBe(200);
+    const tagged = await tagArticlesByKeyword(articles, ["Anthropic"]);
+    const saved = await scoreAndSaveTagged(tagged);
+    expect(saved).toBe(20);
     expect(mockScoreArticles).toHaveBeenCalledTimes(1);
     expect(mockScoreArticles.mock.calls[0][0]).toHaveLength(20);
     expect(mockScoreArticles.mock.calls[0][1]).toBe("Anthropic");
@@ -94,10 +76,12 @@ describe("e2e: batch consolidation (20-in-1)", () => {
   });
 
   test("25 articles of one keyword split into 20 + 5 (2 LLM calls)", async () => {
-    const { POST } = await import("@/app/api/score-articles/route");
+    const { scoreAndSaveTagged } = await import("@/lib/score-pipeline");
+    const { tagArticlesByKeyword } = await import("@/lib/vector-filter");
     const articles = Array.from({ length: 25 }, (_, i) => makeArticle(`https://example.com/${i}`));
-    const response = await POST(makeRequest(articles));
-    expect(response.status).toBe(200);
+    const tagged = await tagArticlesByKeyword(articles, ["Anthropic"]);
+    const saved = await scoreAndSaveTagged(tagged);
+    expect(saved).toBe(25);
     expect(mockScoreArticles).toHaveBeenCalledTimes(2);
     expect(mockScoreArticles.mock.calls[0][0]).toHaveLength(20);
     expect(mockScoreArticles.mock.calls[1][0]).toHaveLength(5);

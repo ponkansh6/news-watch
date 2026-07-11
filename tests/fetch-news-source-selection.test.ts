@@ -108,15 +108,6 @@ vi.mock("@/lib/config", () => ({
   KEYWORDS: ["test-keyword"],
 }));
 
-vi.mock("@upstash/qstash", () => ({
-  Client: class {
-    publishJSON = vi.fn().mockResolvedValue({ messageId: "test-msg" });
-  } as any,
-  Receiver: class {
-    verify = vi.fn().mockResolvedValue(undefined);
-  } as any,
-}));
-
 // Mock embeddings so the local dev scoring path (no QSTASH_TOKEN) does not
 // depend on network access to the Google API.
 vi.mock("@/lib/embeddings", () => ({
