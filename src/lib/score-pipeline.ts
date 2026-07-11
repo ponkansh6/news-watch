@@ -4,7 +4,7 @@ import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
 import type { ArticleWithTag } from "@/lib/vector-filter";
 
 /** Max articles sent to the LLM in a single scoring request. */
-const LLM_BATCH_SIZE = 4;
+const LLM_BATCH_SIZE = 20;
 
 /** Group tagged articles by assigned keyword, score each group in batches of
  *  LLM_BATCH_SIZE via LLM, and save. Returns count of LLM-scored (saved) articles. */

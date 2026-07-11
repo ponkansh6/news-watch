@@ -1,10 +1,9 @@
 import { z } from "zod/v4";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { SCORING_PROMPT, BATCH_SCORING_PROMPT } from "./prompts";
 
-/** LLM model used for article scoring (Groq-hosted, OpenAI-compatible API). */
-export const LLM_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
-
-const LLM_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+/** LLM model used for article scoring (Gemini). */
+export const LLM_MODEL = "gemini-3.1-flash-lite";
 
 const LLMResponseSchema = z.object({
   summary: z.string().min(1).max(100),
@@ -13,7 +12,7 @@ const LLMResponseSchema = z.object({
   reason: z.string().min(1).max(200),
 });
 
-/** Lenient schema for batch mode — Groq sometimes returns empty strings for
+/** Lenient schema for batch mode — Gemini sometimes returns empty strings for
  *  summary/reason in batch responses. We accept and pad them with defaults. */
 const LLMBatchItemSchema = z.object({
   summary: z.string().max(100),
@@ -31,103 +30,111 @@ export interface ArticleInput {
   description: string | null;
 }
 
-async function callGroq(prompt: string, maxTokens: number, timeoutMs: number, retries = 3): Promise<string | null> {
+/**
+ * Exponential backoff with jitter to avoid thundering herd.
+ * Base delay * 2^attempt + random jitter [0, baseDelay).
+ */
+function backoffMs(attempt: number, baseMs = 2000): number {
+  return baseMs * 2 ** attempt + Math.floor(Math.random() * baseMs);
+}
+
+async function callGemini(
+  prompt: string,
+  maxTokens: number,
+  _timeoutMs: number, // Kept for signature compatibility, though Gemini SDK handles timeouts differently
+  retries = 3,
+): Promise<string | null> {
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) return null;
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: LLM_MODEL,
+    generationConfig: {
+      responseMimeType: "application/json",
+      maxOutputTokens: maxTokens,
+      temperature: 0.1,
+    },
+  });
+
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) return null;
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-
     try {
-      const res = await fetch(LLM_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: LLM_MODEL,
-          messages: [{ role: "user", content: prompt }],
-          response_format: { type: "json_object" },
-          temperature: 0.1,
-          max_tokens: maxTokens,
-        }),
-        signal: controller.signal,
-      });
-
-      if (res.status === 429 || res.status >= 500) {
-        console.warn(`[llm] Groq HTTP ${res.status} (retry ${attempt + 1}/${retries})`);
-        if (attempt < retries) {
-          await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
-          continue;
-        }
-        return null;
-      }
-
-      if (!res.ok) {
-        console.warn(`[llm] Groq HTTP ${res.status}`);
-        return null;
-      }
-
-      const data = (await res.json()) as {
-        choices?: { message?: { content?: string } }[];
-        error?: { message?: string };
-      };
-
-      if (data.error) {
-        console.warn(`[llm] Groq error:`, data.error.message);
-        return null;
-      }
-
-      const text = data.choices?.[0]?.message?.content?.trim() ?? null;
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
       return text;
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") {
-        console.warn(`[llm] timeout`);
-        return null;
-      }
-      console.warn(`[llm] error:`, err);
-      if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
+    } catch (err: any) {
+      // Check for rate limit (429) or transient errors
+      const isRateLimit = err.status === 429 || /429|rate limit/i.test(err.message);
+      const isTransient = /5\d\d|overloaded|unavailable|timeout/i.test(err.message);
+
+      if ((isRateLimit || isTransient) && attempt < retries) {
+        const waitMs = backoffMs(attempt);
+        console.warn(
+          `[llm] Gemini ${isRateLimit ? "rate limit" : "transient error"}: ${err.message} (retry ${attempt + 1}/${retries}), waiting ${waitMs}ms`,
+        );
+        await new Promise((r) => setTimeout(r, waitMs));
         continue;
       }
+
+      console.warn(`[llm] Gemini error:`, err.message);
       return null;
-    } finally {
-      clearTimeout(timer);
     }
   }
   return null;
 }
 
-/** Score a single article via Groq LLM. */
+/** Score a single article via Gemini LLM. */
 export async function scoreArticle(
   article: ArticleInput,
   keyword: string,
 ): Promise<LLMResponse | null> {
+  if (!process.env.GOOGLE_API_KEY) return null;
+
   const prompt = SCORING_PROMPT.replace("{{keyword}}", keyword)
     .replace("{{title}}", article.title)
     .replace("{{description}}", article.description ?? "(no description)");
 
-  const text = await callGroq(prompt, 500, 30_000);
-  if (!text) return null;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text) as unknown;
-  } catch {
-    console.warn(`[llm] invalid JSON:`, text.slice(0, 100));
-    return null;
-  }
-
-  try {
-    return LLMResponseSchema.parse(parsed);
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      console.warn(`[llm] parse error:`, err.issues);
+  // Retry on JSON/parse failures (unstable model may produce bad output)
+  const maxParseRetries = 2;
+  for (let attempt = 0; attempt <= maxParseRetries; attempt++) {
+    const text = await callGemini(prompt, 500, 30_000);
+    if (!text) {
+      return null;
     }
-    return null;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text) as unknown;
+    } catch {
+      console.warn(
+        `[llm] invalid JSON (attempt ${attempt + 1}/${maxParseRetries + 1}):`,
+        text.slice(0, 100),
+      );
+      if (attempt < maxParseRetries) {
+        await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+        continue;
+      }
+      return null;
+    }
+
+    try {
+      return LLMResponseSchema.parse(parsed);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        console.warn(
+          `[llm] parse error (attempt ${attempt + 1}/${maxParseRetries + 1}):`,
+          err.issues,
+        );
+      }
+      if (attempt < maxParseRetries) {
+        await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+        continue;
+      }
+      return null;
+    }
   }
+  return null;
 }
 
 const LLMBatchResponseSchema = z.array(LLMBatchItemSchema);
@@ -149,47 +156,73 @@ export async function scoreArticles(
     .replace("{{keyword}}", keyword)
     .replace("{{articles}}", articlesBlock);
 
-  const text = await callGroq(prompt, 4000, 55_000);
-  if (!text) return articles.map(() => null);
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text) as unknown;
-  } catch {
-    console.warn(`[llm] invalid JSON:`, text.slice(0, 100));
-    return articles.map(() => null);
-  }
-
-  // Accept either a bare array or an object wrapping it under `results`
-  // (Groq's json_object mode requires a top-level object).
-  const arr = Array.isArray(parsed)
-    ? parsed
-    : Array.isArray((parsed as any)?.results)
-      ? (parsed as any).results
-      : null;
-
-  if (!arr) {
-    console.warn(`[llm] batch: expected array or {results:[...]}`);
-    return articles.map(() => null);
-  }
-
-  try {
-    const results = LLMBatchResponseSchema.parse(arr);
-    const padded: (LLMResponse | null)[] = articles.map((_, i) => {
-      const r = results[i];
-      if (!r) return null;
-      return {
-        summary: r.summary || "(no summary)",
-        relevance: r.relevance,
-        usefulness: r.usefulness,
-        reason: r.reason || "(no reason)",
-      };
-    });
-    return padded;
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      console.warn(`[llm] batch parse error:`, err.issues);
+  // Retry on JSON/parse failures
+  const maxParseRetries = 2;
+  for (let attempt = 0; attempt <= maxParseRetries; attempt++) {
+    const text = await callGemini(prompt, 6000, 55_000);
+    if (!text) {
+      return articles.map(() => null);
     }
-    return articles.map(() => null);
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text) as unknown;
+    } catch {
+      console.warn(
+        `[llm] batch invalid JSON (attempt ${attempt + 1}/${maxParseRetries + 1}):`,
+        text.slice(0, 100),
+      );
+      if (attempt < maxParseRetries) {
+        await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+        continue;
+      }
+      return articles.map(() => null);
+    }
+
+    // Accept either a bare array or an object wrapping it under `results`
+    const arr = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as any)?.results)
+        ? (parsed as any).results
+        : null;
+
+    if (!arr) {
+      console.warn(
+        `[llm] batch: expected array or {results:[...]} (attempt ${attempt + 1}/${maxParseRetries + 1})`,
+      );
+      if (attempt < maxParseRetries) {
+        await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+        continue;
+      }
+      return articles.map(() => null);
+    }
+
+    try {
+      const results = LLMBatchResponseSchema.parse(arr);
+      const padded: (LLMResponse | null)[] = articles.map((_, i) => {
+        const r = results[i];
+        if (!r) return null;
+        return {
+          summary: r.summary || "(no summary)",
+          relevance: r.relevance,
+          usefulness: r.usefulness,
+          reason: r.reason || "(no reason)",
+        };
+      });
+      return padded;
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        console.warn(
+          `[llm] batch parse error (attempt ${attempt + 1}/${maxParseRetries + 1}):`,
+          err.issues,
+        );
+      }
+      if (attempt < maxParseRetries) {
+        await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+        continue;
+      }
+      return articles.map(() => null);
+    }
   }
+  return articles.map(() => null);
 }

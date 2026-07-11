@@ -268,7 +268,7 @@ describe("score-articles endpoint (QStash Receiver)", () => {
     expect(mockUpsertArticle).not.toHaveBeenCalled();
   });
 
-  test("scores articles in batches of LLM_BATCH_SIZE (4)", async () => {
+  test("scores articles in batches of LLM_BATCH_SIZE (20)", async () => {
     const { POST } = await import("@/app/api/score-articles/route");
     const articles = [
       makeArticle({ url: "https://example.com/a1" }),
@@ -279,17 +279,35 @@ describe("score-articles endpoint (QStash Receiver)", () => {
       makeArticle({ url: "https://example.com/a6" }),
       makeArticle({ url: "https://example.com/a7" }),
       makeArticle({ url: "https://example.com/a8" }),
+      makeArticle({ url: "https://example.com/a9" }),
+      makeArticle({ url: "https://example.com/a10" }),
+      makeArticle({ url: "https://example.com/a11" }),
+      makeArticle({ url: "https://example.com/a12" }),
+      makeArticle({ url: "https://example.com/a13" }),
+      makeArticle({ url: "https://example.com/a14" }),
+      makeArticle({ url: "https://example.com/a15" }),
+      makeArticle({ url: "https://example.com/a16" }),
+      makeArticle({ url: "https://example.com/a17" }),
+      makeArticle({ url: "https://example.com/a18" }),
+      makeArticle({ url: "https://example.com/a19" }),
+      makeArticle({ url: "https://example.com/a20" }),
+      makeArticle({ url: "https://example.com/a21" }),
+      makeArticle({ url: "https://example.com/a22" }),
+      makeArticle({ url: "https://example.com/a23" }),
+      makeArticle({ url: "https://example.com/a24" }),
+      makeArticle({ url: "https://example.com/a25" }),
     ];
     const request = makeRequest({ articles }, "valid-sig");
     const response = await POST(request);
     expect(response.status).toBe(200);
-    // 8 articles, single keyword "Anthropic" → 2 batches of 4
+    // 25 articles, single keyword "Anthropic" → 2 batches (20 + 5)
     expect(mockScoreArticles).toHaveBeenCalledTimes(2);
+    expect(mockScoreArticles.mock.calls[0][0]).toHaveLength(20);
+    expect(mockScoreArticles.mock.calls[1][0]).toHaveLength(5);
     for (const call of mockScoreArticles.mock.calls) {
-      expect(call[0]).toHaveLength(4);
       expect(call[1]).toBe("Anthropic");
     }
-    expect(mockUpsertArticle).toHaveBeenCalledTimes(8);
+    expect(mockUpsertArticle).toHaveBeenCalledTimes(25);
   });
 
   test("calculates recency based on article publishedAt", async () => {

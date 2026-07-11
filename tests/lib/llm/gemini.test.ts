@@ -1,129 +1,102 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { LLM_MODEL, scoreArticle, scoreArticles } from "../../../src/lib/llm/gemini";
 
-// Mock global fetch
-const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
+// Mock @google/generative-ai
+const { mockGenerateContent } = vi.hoisted(() => ({
+  mockGenerateContent: vi.fn(),
+}));
+
+vi.mock("@google/generative-ai", () => {
+  return {
+    GoogleGenerativeAI: class {
+      getGenerativeModel = vi.fn().mockReturnValue({
+        generateContent: mockGenerateContent,
+      });
+    },
+  };
+});
 
 describe("gemini llm module", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    process.env.GROQ_API_KEY = "test-api-key";
+    process.env.GOOGLE_API_KEY = "test-api-key";
+    vi.stubGlobal(
+      "setTimeout",
+      vi.fn((cb) => cb()),
+    );
   });
 
   afterEach(() => {
-    delete process.env.GROQ_API_KEY;
+    vi.unstubAllGlobals();
   });
 
   it("exports the correct LLM_MODEL", () => {
-    expect(LLM_MODEL).toBe("meta-llama/llama-4-scout-17b-16e-instruct");
+    expect(LLM_MODEL).toBe("gemini-3.1-flash-lite");
   });
 
   describe("scoreArticle", () => {
     it("returns null if API key is missing", async () => {
-      delete process.env.GROQ_API_KEY;
+      delete process.env.GOOGLE_API_KEY;
       const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
       expect(result).toBeNull();
-      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockGenerateContent).not.toHaveBeenCalled();
     });
 
     it("returns parsed response on success", async () => {
-      const mockResponse = {
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                summary: "test",
-                relevance: 5,
-                usefulness: 5,
-                reason: "test",
-              }),
-            },
-          },
-        ],
-      };
-      mockFetch.mockResolvedValue(
-        new Response(JSON.stringify(mockResponse), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+      mockGenerateContent.mockResolvedValue({
+        response: {
+          text: () =>
+            JSON.stringify({
+              summary: "test",
+              relevance: 5,
+              usefulness: 5,
+              reason: "test",
+            }),
+        },
+      });
 
       const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
       expect(result).toEqual({ summary: "test", relevance: 5, usefulness: 5, reason: "test" });
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining("api.groq.com"),
-        expect.any(Object),
-      );
+      expect(mockGenerateContent).toHaveBeenCalled();
     });
 
-    it("returns null on HTTP error", async () => {
-      mockFetch.mockResolvedValue(new Response(null, { status: 500 }));
-      const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
-      expect(result).toBeNull();
-    });
-
-    it("returns null on API error response", async () => {
-      mockFetch.mockResolvedValue(
-        new Response(JSON.stringify({ error: { message: "moderation" } }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+    it("returns null on API error", async () => {
+      mockGenerateContent.mockRejectedValue(new Error("API Error"));
       const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
       expect(result).toBeNull();
     });
 
     it("returns null on invalid JSON", async () => {
-      mockFetch.mockResolvedValue(
-        new Response(
-          JSON.stringify({ choices: [{ message: { content: "invalid" } }] }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
-      );
+      mockGenerateContent.mockResolvedValue({
+        response: {
+          text: () => "invalid",
+        },
+      });
       const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
       expect(result).toBeNull();
     });
 
-    it("returns null on timeout", async () => {
-      const error = new Error("AbortError");
-      error.name = "AbortError";
-      mockFetch.mockRejectedValue(error);
-
-      const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
-      expect(result).toBeNull();
-    });
-
-    it("retries on HTTP 429 then succeeds", async () => {
+    it("retries on 429 then succeeds", async () => {
       const okResponse = {
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                summary: "test",
-                relevance: 5,
-                usefulness: 5,
-                reason: "test",
-              }),
-            },
-          },
-        ],
+        response: {
+          text: () =>
+            JSON.stringify({
+              summary: "test",
+              relevance: 5,
+              usefulness: 5,
+              reason: "test",
+            }),
+        },
       };
-      mockFetch
-        .mockResolvedValueOnce(new Response(null, { status: 429 }))
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify(okResponse), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }),
-        );
+      // Simulate 429 error (SDK throws error with status 429)
+      const rateLimitError = new Error("Rate limit exceeded");
+      (rateLimitError as any).status = 429;
+
+      mockGenerateContent.mockRejectedValueOnce(rateLimitError).mockResolvedValueOnce(okResponse);
 
       const result = await scoreArticle({ title: "test", description: "test" }, "keyword");
       expect(result).toEqual({ summary: "test", relevance: 5, usefulness: 5, reason: "test" });
-      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockGenerateContent).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -131,28 +104,19 @@ describe("gemini llm module", () => {
     it("returns empty array for empty input", async () => {
       const result = await scoreArticles([], "keyword");
       expect(result).toEqual([]);
-      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockGenerateContent).not.toHaveBeenCalled();
     });
 
     it("returns array of results on success", async () => {
-      const mockResponse = {
-        choices: [
-          {
-            message: {
-              content: JSON.stringify([
-                { summary: "s1", relevance: 1, usefulness: 1, reason: "r1" },
-                { summary: "s2", relevance: 2, usefulness: 2, reason: "r2" },
-              ]),
-            },
-          },
-        ],
-      };
-      mockFetch.mockResolvedValue(
-        new Response(JSON.stringify(mockResponse), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+      mockGenerateContent.mockResolvedValue({
+        response: {
+          text: () =>
+            JSON.stringify([
+              { summary: "s1", relevance: 1, usefulness: 1, reason: "r1" },
+              { summary: "s2", relevance: 2, usefulness: 2, reason: "r2" },
+            ]),
+        },
+      });
 
       const result = await scoreArticles(
         [
@@ -167,23 +131,12 @@ describe("gemini llm module", () => {
     });
 
     it("pads with null if results are missing", async () => {
-      const mockResponse = {
-        choices: [
-          {
-            message: {
-              content: JSON.stringify([
-                { summary: "s1", relevance: 1, usefulness: 1, reason: "r1" },
-              ]),
-            },
-          },
-        ],
-      };
-      mockFetch.mockResolvedValue(
-        new Response(JSON.stringify(mockResponse), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+      mockGenerateContent.mockResolvedValue({
+        response: {
+          text: () =>
+            JSON.stringify([{ summary: "s1", relevance: 1, usefulness: 1, reason: "r1" }]),
+        },
+      });
 
       const result = await scoreArticles(
         [

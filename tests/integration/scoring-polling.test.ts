@@ -1,18 +1,27 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll } from "vitest";
 import { POST } from "@/app/api/scoring-status/route";
 import { upsertArticle, getScoredArticles } from "@/lib/db/actions";
 import { db } from "@/lib/db";
 import { articles } from "@/lib/db/schema";
 import { migrate } from "drizzle-orm/libsql/migrator";
+import { sql } from "drizzle-orm";
 
 // Helper to clear database
 async function clearDb() {
-  await db.delete(articles);
+  try {
+    await db.delete(articles);
+  } catch {
+    // Table may not exist yet if migrate hasn't run
+  }
 }
 
 describe("Scoring Polling API", () => {
-  beforeEach(async () => {
+  beforeAll(async () => {
+    await db.run(sql`DROP TABLE IF EXISTS articles`);
     await migrate(db, { migrationsFolder: "./src/lib/db/migrations" });
+  });
+
+  beforeEach(async () => {
     await clearDb();
   });
 

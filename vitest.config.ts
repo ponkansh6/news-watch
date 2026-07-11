@@ -5,6 +5,11 @@ export default defineConfig({
   test: {
     globals: true,
     setupFiles: ["./tests/setup-env.ts"],
+    server: {
+      deps: {
+        inline: ["@google/generative-ai"],
+      },
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "json-summary"],

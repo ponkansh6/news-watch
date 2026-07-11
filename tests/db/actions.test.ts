@@ -24,7 +24,7 @@ import {
 } from "../../src/lib/db/actions";
 
 const CREATE_SQL = `
-  CREATE TABLE articles (
+  CREATE TABLE IF NOT EXISTS articles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     description TEXT,
