@@ -124,8 +124,8 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     // 5 keywords × 4 articles each = 20 total
     expect(totalFetched).toBe(20);
 
-    // upsertArticle は呼ばれていないこと（score-articles で呼ばれるため）
-    expect(mockUpsertArticle).not.toHaveBeenCalled();
+    // upsertArticle は呼ばれること（inline scoring で fetch-news が直接保存する）
+    expect(mockUpsertArticle).toHaveBeenCalled();
   });
 
   /**

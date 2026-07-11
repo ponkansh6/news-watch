@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { KEYWORDS } from "@/lib/config";
 
 interface FetchResult {
   keyword: string;
@@ -96,59 +95,31 @@ export default function FetchButton() {
       const data = await res.json();
 
       if (data.ok && Array.isArray(data.results)) {
-        // Start polling for scoring status.
-        // Articles are tagged and saved under the configured KEYWORDS (not the
-        // synthetic "latest" keyword fetch-news reports), so poll those.
-        const since = (data.since as string) || new Date().toISOString();
-        const pollKeywords = KEYWORDS as readonly string[];
+        // Scoring is done inline before fetch-news returns, so use the
+        // response directly — no polling needed.
         const totalFetched = data.results.reduce(
-          (acc: number, r: FetchResult) => acc + (r.fetched || 0),
+          (acc: number, r: any) => acc + (r.fetched || 0),
           0,
         );
-        const pollInterval = setInterval(async () => {
-          try {
-            const statusRes = await fetch("/api/scoring-status", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ keywords: pollKeywords, since }),
-            });
-            const statusData = await statusRes.json();
+        const totalSaved = data.results.reduce(
+          (acc: number, r: any) => acc + (r.saved || 0),
+          0,
+        );
+        const hasErrors = data.results.some(
+          (r: any) => Array.isArray(r.errors) && r.errors.length > 0,
+        );
 
-            if (statusData.ok) {
-              const updatedResults = pollKeywords.map((kw) => ({
-                keyword: kw,
-                fetched: 0,
-                scored: statusData.status.find((s: any) => s.keyword === kw)?.scored ?? 0,
-                processed: statusData.status.find((s: any) => s.keyword === kw)?.processed ?? 0,
-                errors: [] as string[],
-              }));
-              setResults(updatedResults);
-
-              const totalScored = updatedResults.reduce(
-                (acc: number, r: FetchResult) => acc + r.scored,
-                0,
-              );
-              const totalProcessed = updatedResults.reduce(
-                (acc: number, r: FetchResult) => acc + r.processed,
-                0,
-              );
-
-              if (totalProcessed >= totalFetched && totalFetched > 0) {
-                clearInterval(pollInterval);
-                setLoading(false);
-                router.refresh();
-              }
-            }
-          } catch (err) {
-            console.error("Polling error", err);
-          }
-        }, 3000);
-
-        // Timeout polling after 120s
-        setTimeout(() => {
-          clearInterval(pollInterval);
-          setLoading(false);
-        }, 120000);
+        setResults([
+          {
+            keyword: "latest",
+            fetched: totalFetched,
+            scored: totalSaved,
+            processed: totalFetched,
+            errors: hasErrors ? ["一部の処理でエラーが発生しました"] : [],
+          },
+        ]);
+        setLoading(false);
+        router.refresh();
       } else {
         setFetchError("ニュース取得に失敗しました");
         setLoading(false);
