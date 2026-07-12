@@ -7,7 +7,6 @@ export const LLM_MODEL = "gemini-3.1-flash-lite";
 
 const LLMResponseSchema = z.object({
   summary: z.string().min(1).max(100),
-  relevance: z.number().min(0).max(10),
   usefulness: z.number().min(0).max(10),
   reason: z.string().min(1).max(200),
 });
@@ -16,7 +15,6 @@ const LLMResponseSchema = z.object({
  *  summary/reason in batch responses. We accept and pad them with defaults. */
 const LLMBatchItemSchema = z.object({
   summary: z.string().max(100),
-  relevance: z.number().min(0).max(10),
   usefulness: z.number().min(0).max(10),
   reason: z.string().max(200),
 });
@@ -88,15 +86,13 @@ async function callGemini(
 }
 
 /** Score a single article via Gemini LLM. */
-export async function scoreArticle(
-  article: ArticleInput,
-  keyword: string,
-): Promise<LLMResponse | null> {
+export async function scoreArticle(article: ArticleInput): Promise<LLMResponse | null> {
   if (!process.env.GOOGLE_API_KEY) return null;
 
-  const prompt = SCORING_PROMPT.replace("{{keyword}}", keyword)
-    .replace("{{title}}", article.title)
-    .replace("{{description}}", article.description ?? "(no description)");
+  const prompt = SCORING_PROMPT.replace("{{title}}", article.title).replace(
+    "{{description}}",
+    article.description ?? "(no description)",
+  );
 
   // Retry on JSON/parse failures (unstable model may produce bad output)
   const maxParseRetries = 2;
@@ -149,10 +145,7 @@ export async function scoreArticle(
 const LLMBatchResponseSchema = z.array(LLMBatchItemSchema);
 
 /** Score multiple articles in a single LLM call (batch). */
-export async function scoreArticles(
-  articles: ArticleInput[],
-  keyword: string,
-): Promise<(LLMResponse | null)[]> {
+export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMResponse | null)[]> {
   if (articles.length === 0) return [];
 
   const articlesBlock = articles
@@ -161,9 +154,10 @@ export async function scoreArticles(
     )
     .join("\n");
 
-  const prompt = BATCH_SCORING_PROMPT.replace("{{articleCount}}", String(articles.length))
-    .replace("{{keyword}}", keyword)
-    .replace("{{articles}}", articlesBlock);
+  const prompt = BATCH_SCORING_PROMPT.replace("{{articleCount}}", String(articles.length)).replace(
+    "{{articles}}",
+    articlesBlock,
+  );
 
   // Retry on JSON/parse failures
   const maxParseRetries = 2;
@@ -172,7 +166,7 @@ export async function scoreArticles(
     try {
       text = await callGemini(prompt, 6000, 55_000);
     } catch (err) {
-      console.error(`[llm] Batch scoring failed for keyword "${keyword}":`, err);
+      console.error(`[llm] Batch scoring failed:`, err);
       return articles.map(() => null);
     }
     if (!text) {
@@ -219,7 +213,6 @@ export async function scoreArticles(
         if (!r) return null;
         return {
           summary: r.summary || "(no summary)",
-          relevance: r.relevance,
           usefulness: r.usefulness,
           reason: r.reason || "(no reason)",
         };

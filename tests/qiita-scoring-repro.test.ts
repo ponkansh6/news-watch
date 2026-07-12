@@ -149,7 +149,6 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
         return Promise.resolve(
           articles.map(() => ({
             summary: "テスト記事の要約",
-            relevance: 8,
             usefulness: 7,
             reason: "キーワード関連性が高く技術的価値があるため",
           })),
@@ -197,7 +196,6 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
               ? null
               : {
                   summary: "部分的な要約",
-                  relevance: 7,
                   usefulness: 6,
                   reason: "部分的な理由",
                 };
@@ -319,13 +317,10 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
 
     try {
       const { scoreArticle } = await import("@/lib/llm/gemini");
-      const result = await scoreArticle(
-        { title: "Test Qiita Article", description: null },
-        "test-keyword",
-      );
+      const result = await scoreArticle({ title: "Test Qiita Article", description: null });
 
       expect(result).not.toBeNull();
-      expect(result!.relevance).toBe(5);
+      expect(result!.usefulness).toBe(5);
     } finally {
       process.env.GOOGLE_API_KEY = origKey;
       globalThis.fetch = origFetch;

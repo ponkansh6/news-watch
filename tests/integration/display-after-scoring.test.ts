@@ -57,7 +57,6 @@ beforeEach(() => {
         JSON.stringify(
           Array.from({ length: ARTICLE_COUNT }).map((_, i) => ({
             summary: `要約: ${i}`,
-            relevance: 7 + (i % 3),
             usefulness: 6 + (i % 4),
             reason: `関連`,
           })),
@@ -135,7 +134,6 @@ describe("Display after scoring (scored articles appear in the view)", () => {
     for (const a of scored) {
       expect(a.score).not.toBeNull();
       expect(a.summary).not.toBeNull();
-      expect(a.relevance).not.toBeNull();
       expect(a.usefulness).not.toBeNull();
     }
 

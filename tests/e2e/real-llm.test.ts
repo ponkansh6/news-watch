@@ -82,19 +82,18 @@ describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
 
     it("Tier A: Single article scoring (real LLM)", async () => {
       const input = [{ title: "Test Title", description: "Test Description" }];
-      const results = await scoreArticles(input, "Anthropic");
+      const results = await scoreArticles(input);
 
       expect(results).toHaveLength(1);
       const res = results[0];
       expect(res).not.toBeNull();
       expect(res).toMatchObject({
         summary: expect.any(String),
-        relevance: expect.any(Number),
         usefulness: expect.any(Number),
         reason: expect.any(String),
       });
-      expect(res!.relevance).toBeGreaterThanOrEqual(0);
-      expect(res!.relevance).toBeLessThanOrEqual(10);
+      expect(res!.usefulness).toBeGreaterThanOrEqual(0);
+      expect(res!.usefulness).toBeLessThanOrEqual(10);
     }, 70000);
 
     it("Tier B: Batch article scoring (real LLM)", async () => {
@@ -104,7 +103,7 @@ describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
         { title: "T3", description: "D3" },
         { title: "T4", description: "D4" },
       ];
-      const results = await scoreArticles(input, "OpenAI");
+      const results = await scoreArticles(input);
 
       expect(results).toHaveLength(4);
       const scored = results.filter((r) => r !== null);

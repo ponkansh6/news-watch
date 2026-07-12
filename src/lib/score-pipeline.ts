@@ -23,15 +23,13 @@ export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<numb
       const batch = group.slice(start, start + LLM_BATCH_SIZE);
       const llmResults = await scoreArticles(
         batch.map((t) => ({ title: t.article.title, description: t.article.description })),
-        keyword,
       );
       for (let i = 0; i < batch.length; i++) {
-        const { article, embedding } = batch[i];
+        const { article, embedding, similarity } = batch[i];
         const llmResult = llmResults[i] ?? null;
-        const relevance = llmResult?.relevance ?? null;
         const usefulness = llmResult?.usefulness ?? null;
         const recency = calcRecencyScore(article.publishedAt);
-        const composite = calcCompositeScore(relevance, usefulness, recency);
+        const composite = calcCompositeScore(similarity, usefulness, recency);
         try {
           await upsertArticle({
             title: article.title,
@@ -44,7 +42,7 @@ export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<numb
             author: article.author,
             keyword,
             summary: llmResult?.summary ?? null,
-            relevance,
+            relevance: null,
             usefulness,
             recency,
             score: composite,

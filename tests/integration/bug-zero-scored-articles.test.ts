@@ -70,13 +70,14 @@ const CREATE_SQL = `
 
 const ARTICLE_COUNT = 20;
 
-function makeArticles(count: number): NormalizedArticle[] {
+function makeArticles(count: number, date?: string): NormalizedArticle[] {
+  const pubDate = date ?? new Date().toISOString();
   return Array.from({ length: count }).map((_, i) => ({
     title: `記事 ${i}: ${KEYWORDS[i % KEYWORDS.length]} に関する解説`,
     description: `これは記事 ${i} の説明です。AI技術について扱っています。`,
     url: `http://test.com/bug/${i}`,
     urlToImage: null,
-    publishedAt: new Date().toISOString(),
+    publishedAt: pubDate,
     sourceName: "Test Source",
     sourceId: "gnews",
     author: "Test Author",
@@ -98,12 +99,11 @@ beforeEach(async () => {
 describe("Scenario 1: LLM returns valid scores (happy path)", () => {
   it("getScoredArticles returns all articles when LLM scoring succeeds", async () => {
     mockScoreArticles.mockImplementation(
-      async (items: { title: string; description: string | null }[], keyword: string) =>
+      async (items: { title: string; description: string | null }[]) =>
         items.map((item, i) => ({
           summary: `要約: ${item.title}`,
-          relevance: 7 + (i % 3),
           usefulness: 6 + (i % 4),
-          reason: `${keyword} に関連`,
+          reason: `関連`,
         })),
     );
 
@@ -165,8 +165,7 @@ describe("Scenario 3: deleteLowScoredArticles interaction", () => {
       async (items: { title: string; description: string | null }[]) =>
         items.map(() => ({
           summary: "低スコア",
-          relevance: 2,
-          usefulness: 2,
+          usefulness: 2, // 10*0.3 + 2*0.4 + 10*0.3 = 3 + 0.8 + 3 = 6.8 (above 5)
           reason: "低い",
         })),
     );
@@ -175,7 +174,7 @@ describe("Scenario 3: deleteLowScoredArticles interaction", () => {
     const tagged = await tagArticlesByKeyword(articles, KEYWORDS);
     const savedCount = await scoreAndSaveTagged(tagged);
 
-    // Composite = 2*0.3 + 2*0.4 + recency*0.3 → for fresh: 0.6+0.8+3.0=4.4 (below 5)
+    // Composite = 6.8 (above 5)
     expect(savedCount).toBe(ARTICLE_COUNT);
 
     // Articles exist in DB
@@ -196,13 +195,14 @@ describe("Scenario 3: deleteLowScoredArticles interaction", () => {
       async (items: { title: string; description: string | null }[]) =>
         items.map(() => ({
           summary: "低スコア",
-          relevance: 2,
-          usefulness: 2,
+          usefulness: 0, // 10*0.3 + 0*0.4 + 0*0.3 = 3.0 (below 5)
           reason: "低い",
         })),
     );
 
-    const articles = makeArticles(ARTICLE_COUNT);
+    // Old date to ensure recency=0
+    const oldDate = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+    const articles = makeArticles(ARTICLE_COUNT, oldDate);
     const tagged = await tagArticlesByKeyword(articles, KEYWORDS);
     await scoreAndSaveTagged(tagged);
 
@@ -227,7 +227,6 @@ describe("Scenario 4: LLM returns partial results", () => {
           if (i < 10) {
             return {
               summary: `要約: ${item.title}`,
-              relevance: 8,
               usefulness: 7,
               reason: "有効",
             };
@@ -260,10 +259,9 @@ describe("Scenario 5: sourceIds filter mismatch", () => {
   it("getScoredArticles with wrong sourceIds returns 0", async () => {
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) =>
-        items.map((item) => ({
+        items.map((item, i) => ({
           summary: `要約: ${item.title}`,
-          relevance: 8,
-          usefulness: 7,
+          usefulness: 6,
           reason: "有効",
         })),
     );
@@ -288,12 +286,11 @@ describe("Scenario 5: sourceIds filter mismatch", () => {
 describe("Scenario 6: Full production flow (route.ts simulation)", () => {
   it("mimics fetch-news route.ts with LLM success → articles displayed", async () => {
     mockScoreArticles.mockImplementation(
-      async (items: { title: string; description: string | null }[], keyword: string) =>
+      async (items: { title: string; description: string | null }[]) =>
         items.map((item, i) => ({
           summary: `要約: ${item.title}`,
-          relevance: 7 + (i % 3),
           usefulness: 6 + (i % 4),
-          reason: `${keyword} に関連`,
+          reason: `関連`,
         })),
     );
 
@@ -344,30 +341,31 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
   });
 
   it("BUG REPRO: very low LLM scores + subsequent deleteLowScoredArticles → articles gone", async () => {
-    // LLM returns very low scores (1/10) → composite = 1*0.3+1*0.4+recency*0.3
-    // For fresh articles: recency=10 → 0.3+0.4+3.0 = 3.7 (below 5)
-    // NOTE: with relevance=3,usefulness=3 → composite=5.1 which is ABOVE 5.
-    // The recency boost (10/10 for <1 day) inflates the composite significantly.
+    // LLM returns very low scores (0/10) → composite = 10*0.3 + 0*0.4 + 10*0.3 = 3 + 0 + 3 = 6.0 (above 5)
+    // NOTE: The recency boost (10/10 for <1 day) inflates the composite significantly.
+    // To get score < 5, we need usefulness=0 and recency=0 (old article).
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) =>
         items.map(() => ({
           summary: "極低スコア",
-          relevance: 1,
-          usefulness: 1,
+          usefulness: 0,
           reason: "低い",
         })),
     );
 
-    const all = makeArticles(ARTICLE_COUNT);
+    // Old date to ensure recency=0
+    const oldDate = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+    const all = makeArticles(ARTICLE_COUNT, oldDate);
     const since = new Date().toISOString();
     const tagged = await tagArticlesByKeyword(all, KEYWORDS);
     const saved = await scoreAndSaveTagged(tagged);
     expect(saved).toBe(ARTICLE_COUNT);
 
-    // Verify composite is indeed < 5 for fresh articles
+    // Verify composite is indeed < 5 for old articles
+    // 10*0.3 + 0*0.4 + 0*0.3 = 3.0
     const dbScores = await (dbMod as any).__client.execute("SELECT score FROM articles LIMIT 1");
     const score = dbScores.rows[0].score as number;
-    expect(score).toBeLessThan(5); // 1*0.3+1*0.4+10*0.3 = 3.7
+    expect(score).toBeLessThan(5); // 3.0
 
     // First fetch: articles protected by since guard
     await deleteLowScoredArticles(5, since);
@@ -390,12 +388,11 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
 describe("Scenario 7: '20件スコアリング完了' but 'スコアリング済み記事0件'", () => {
   it("happy path: saved=20 and scored=20 — no bug", async () => {
     mockScoreArticles.mockImplementation(
-      async (items: { title: string; description: string | null }[], keyword: string) =>
+      async (items: { title: string; description: string | null }[]) =>
         items.map((item, i) => ({
           summary: `要約: ${item.title}`,
-          relevance: 7 + (i % 3),
           usefulness: 6 + (i % 4),
-          reason: `${keyword} に関連`,
+          reason: `関連`,
         })),
     );
 
@@ -414,10 +411,9 @@ describe("Scenario 7: '20件スコアリング完了' but 'スコアリング済
   it("BUG REPRO: DB write fails silently → saved=20 but DB empty → scored=0", async () => {
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) =>
-        items.map((item, i) => ({
+        items.map((item) => ({
           summary: `要約: ${item.title}`,
-          relevance: 7,
-          usefulness: 6,
+          usefulness: 7,
           reason: "有効",
         })),
     );
@@ -523,10 +519,9 @@ describe("Scenario 9: getScoredArticles DB query error → returns empty", () =>
     // Insert a valid article first
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) =>
-        items.map((item) => ({
+        items.map((item, i) => ({
           summary: `要約: ${item.title}`,
-          relevance: 8,
-          usefulness: 7,
+          usefulness: 6,
           reason: "有効",
         })),
     );

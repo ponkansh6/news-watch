@@ -15,14 +15,15 @@ export function calcRecencyScore(publishedAt: string): number {
 }
 
 /**
- * Composite score: relevance (30%) + usefulness (40%) + recency (30%).
- * Returns null if either LLM score is missing.
+ * Composite score: similarity (30%) + usefulness (40%) + recency (30%).
+ * Returns null if usefulness is missing.
  */
 export function calcCompositeScore(
-  relevance: number | null,
+  similarity: number,
   usefulness: number | null,
   recency: number,
 ): number | null {
-  if (relevance === null || usefulness === null) return null;
-  return Math.round((relevance * 0.3 + usefulness * 0.4 + recency * 0.3) * 10) / 10;
+  if (usefulness === null) return null;
+  const normalizedSimilarity = Math.max(0, Math.min(1, similarity)) * 10;
+  return Math.round((normalizedSimilarity * 0.3 + usefulness * 0.4 + recency * 0.3) * 10) / 10;
 }

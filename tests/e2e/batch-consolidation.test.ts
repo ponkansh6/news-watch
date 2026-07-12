@@ -53,9 +53,7 @@ describe("e2e: batch consolidation (20-in-1)", () => {
     vi.clearAllMocks();
     mockScoreArticles.mockImplementation(
       (articles: { title: string; description: string | null }[]) =>
-        Promise.resolve(
-          articles.map(() => ({ summary: "s", relevance: 8, usefulness: 7, reason: "r" })),
-        ),
+        Promise.resolve(articles.map(() => ({ summary: "s", usefulness: 7, reason: "r" }))),
     );
     mockUpsertArticle.mockResolvedValue(undefined);
     mockEmbedArticle.mockResolvedValue([0.1, 0.2]);
@@ -74,7 +72,6 @@ describe("e2e: batch consolidation (20-in-1)", () => {
     expect(saved).toBe(20);
     expect(mockScoreArticles).toHaveBeenCalledTimes(1);
     expect(mockScoreArticles.mock.calls[0][0]).toHaveLength(20);
-    expect(mockScoreArticles.mock.calls[0][1]).toBe("Anthropic");
     expect(mockUpsertArticle).toHaveBeenCalledTimes(20);
   });
 
