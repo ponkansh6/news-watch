@@ -32,29 +32,34 @@ export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<numb
         const usefulness = llmResult?.usefulness ?? null;
         const recency = calcRecencyScore(article.publishedAt);
         const composite = calcCompositeScore(relevance, usefulness, recency);
-        await upsertArticle({
-          title: article.title,
-          description: article.description,
-          url: article.url,
-          urlToImage: article.urlToImage,
-          publishedAt: article.publishedAt,
-          sourceName: article.sourceName,
-          sourceId: article.sourceId,
-          author: article.author,
-          keyword,
-          summary: llmResult?.summary ?? null,
-          relevance,
-          usefulness,
-          recency,
-          score: composite,
-          reason: llmResult?.reason ?? null,
-          // Always mark the article as processed (attempted) so the UI polling
-          // can detect completion even when the LLM fails for some articles.
-          // `score` stays null for failed ones; completion is based on
-          // `scoredAt` (processed), not on a successful score.
-          scoredAt: new Date().toISOString(),
-          embedding: JSON.stringify(embedding),
-        });
+        try {
+          await upsertArticle({
+            title: article.title,
+            description: article.description,
+            url: article.url,
+            urlToImage: article.urlToImage,
+            publishedAt: article.publishedAt,
+            sourceName: article.sourceName,
+            sourceId: article.sourceId,
+            author: article.author,
+            keyword,
+            summary: llmResult?.summary ?? null,
+            relevance,
+            usefulness,
+            recency,
+            score: composite,
+            reason: llmResult?.reason ?? null,
+            // Always mark the article as processed (attempted) so the UI polling
+            // can detect completion even when the LLM fails for some articles.
+            // `score` stays null for failed ones; completion is based on
+            // `scoredAt` (processed), not on a successful score.
+            scoredAt: new Date().toISOString(),
+            embedding: JSON.stringify(embedding),
+          });
+        } catch (err) {
+          console.error(`[pipeline] Failed to save article "${article.title}":`, err);
+          // Continue processing other articles even if one fails
+        }
         if (llmResult) savedCount++;
       }
     }

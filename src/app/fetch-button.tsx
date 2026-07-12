@@ -101,10 +101,7 @@ export default function FetchButton() {
           (acc: number, r: any) => acc + (r.fetched || 0),
           0,
         );
-        const totalSaved = data.results.reduce(
-          (acc: number, r: any) => acc + (r.saved || 0),
-          0,
-        );
+        const totalSaved = data.results.reduce((acc: number, r: any) => acc + (r.saved || 0), 0);
         const hasErrors = data.results.some(
           (r: any) => Array.isArray(r.errors) && r.errors.length > 0,
         );

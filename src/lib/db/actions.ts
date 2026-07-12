@@ -49,9 +49,10 @@ export async function upsertArticle(data: ArticleInsert) {
           embedding: data.embedding,
         },
       });
-  } catch (err) {
-    console.warn(`[db] upsert error:`, err);
-  }
+} catch (err) {
+  console.error(`[db] upsert error for url="${data.url}":`, err);
+  throw err;
+}
 }
 
 /** Articles with composite score, ordered by score then date. */

@@ -441,7 +441,9 @@ describe("Database actions tests", () => {
     };
 
     await upsertArticle(article1);
+    await new Promise((r) => setTimeout(r, 10));
     await upsertArticle(article2);
+    await new Promise((r) => setTimeout(r, 10));
     await upsertArticle(article3);
 
     const allArticles = await getAllArticles();

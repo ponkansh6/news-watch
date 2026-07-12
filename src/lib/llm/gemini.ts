@@ -45,7 +45,7 @@ async function callGemini(
   retries = 3,
 ): Promise<string | null> {
   const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) throw new Error("GOOGLE_API_KEY environment variable is not set");
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
@@ -77,11 +77,12 @@ async function callGemini(
         continue;
       }
 
-      console.warn(`[llm] Gemini error:`, err.message);
-      return null;
+      const error = new Error(`Gemini API error: ${err.message} (status: ${err.status ?? "unknown"})`);
+      error.cause = err;
+      throw error;
     }
   }
-  return null;
+  throw new Error("Gemini API call failed after retries");
 }
 
 /** Score a single article via Gemini LLM. */
@@ -98,7 +99,13 @@ export async function scoreArticle(
   // Retry on JSON/parse failures (unstable model may produce bad output)
   const maxParseRetries = 2;
   for (let attempt = 0; attempt <= maxParseRetries; attempt++) {
-    const text = await callGemini(prompt, 500, 30_000);
+    let text: string | null;
+    try {
+      text = await callGemini(prompt, 500, 30_000);
+    } catch (err) {
+      console.error(`[llm] Scoring failed for "${article.title}":`, err);
+      return null;
+    }
     if (!text) {
       return null;
     }
@@ -159,7 +166,13 @@ export async function scoreArticles(
   // Retry on JSON/parse failures
   const maxParseRetries = 2;
   for (let attempt = 0; attempt <= maxParseRetries; attempt++) {
-    const text = await callGemini(prompt, 6000, 55_000);
+    let text: string | null;
+    try {
+      text = await callGemini(prompt, 6000, 55_000);
+    } catch (err) {
+      console.error(`[llm] Batch scoring failed for keyword "${keyword}":`, err);
+      return articles.map(() => null);
+    }
     if (!text) {
       return articles.map(() => null);
     }
