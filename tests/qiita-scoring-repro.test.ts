@@ -46,6 +46,12 @@ for (const kw of MOCK_KEYWORDS) {
   QIITA_ARTICLES[kw] = buildQiitaArticles(15, kw);
 }
 
+vi.mock("@/lib/embeddings", () => ({
+  embedArticle: vi.fn(async () => new Array(768).fill(0.1)),
+  embedQuery: vi.fn(async () => new Array(768).fill(0.1)),
+  cosineSimilarity: vi.fn(() => 0.9),
+}));
+
 vi.mock("@/lib/news/qiita", () => ({
   searchQiita: vi
     .fn()
@@ -117,8 +123,8 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     let totalFetched = 0;
     for (const result of data.results) {
       expect(result.fetched).toBeGreaterThan(0);
-    // 5 keywords × 15 articles each = 75 total
-    // expect(result.errors).toHaveLength(0); // Temporarily commented out due to quota issues
+      // 5 keywords × 15 articles each = 75 total
+      // expect(result.errors).toHaveLength(0); // Temporarily commented out due to quota issues
 
       totalFetched += result.fetched;
     }
@@ -170,9 +176,8 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     for (const result of data.results) {
       totalFetched += result.fetched;
       expect(result.fetched).toBeGreaterThan(0);
-    // 5 keywords × 15 articles each = 75 total
-    // expect(result.errors).toHaveLength(0); // Temporarily commented out due to quota issues
-
+      // 5 keywords × 15 articles each = 75 total
+      // expect(result.errors).toHaveLength(0); // Temporarily commented out due to quota issues
     }
     expect(totalFetched).toBeGreaterThan(0);
   });
@@ -219,9 +224,8 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     let totalFetched = 0;
     for (const result of data.results) {
       totalFetched += result.fetched;
-    // 5 keywords × 15 articles each = 75 total
-    // expect(result.errors).toHaveLength(0); // Temporarily commented out due to quota issues
-
+      // 5 keywords × 15 articles each = 75 total
+      // expect(result.errors).toHaveLength(0); // Temporarily commented out due to quota issues
     }
 
     // 75 articles

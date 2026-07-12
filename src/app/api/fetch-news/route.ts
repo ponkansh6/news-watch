@@ -17,7 +17,7 @@ import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 // Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
 
-const MAX_ARTICLES = 75;
+const MAX_ARTICLES = 20;
 
 function normalize(
   article:

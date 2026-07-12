@@ -28,6 +28,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 vi.mock("@/lib/embeddings", () => ({
   embedArticle: vi.fn(async () => new Array(768).fill(0.1)),
   embedQuery: vi.fn(async () => new Array(768).fill(0.1)),
+  batchEmbed: vi.fn(async () => new Array(1).fill(new Array(768).fill(0.1))),
   cosineSimilarity: vi.fn(() => 0.9),
 }));
 
@@ -41,6 +42,10 @@ vi.mock("@google/generative-ai", () => ({
     getGenerativeModel = vi.fn().mockReturnValue({
       generateContent: mockGenerateContent,
     });
+  },
+  TaskType: {
+    RETRIEVAL_QUERY: "RETRIEVAL_QUERY",
+    RETRIEVAL_DOCUMENT: "RETRIEVAL_DOCUMENT",
   },
 }));
 

@@ -1,5 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { db } from "@/lib/db";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
+
+// Mock DB before imports
+vi.mock("@/lib/db", async () => {
+  const { createClient } = await import("@libsql/client");
+  const { drizzle } = await import("drizzle-orm/libsql");
+  const schemaMod = await import("@/lib/db/schema");
+  const client = createClient({ url: ":memory:" });
+  const db = drizzle({ client, schema: schemaMod });
+  return { db, __client: client };
+});
+
+import * as dbMod from "@/lib/db";
 import { articles } from "@/lib/db/schema";
 import { inArray, gte } from "drizzle-orm";
 import { scoreArticles } from "@/lib/llm/gemini";
@@ -8,6 +19,10 @@ import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { KEYWORDS } from "@/lib/config";
 import { POST as fetchNewsRoute } from "@/app/api/fetch-news/route";
 import { NextRequest } from "next/server";
+import {
+  getEmbeddingRequestCount,
+  resetEmbeddingRequestCount,
+} from "@/lib/embeddings";
 
 // Real end-to-end test: hits the REAL Gemini LLM, REAL embeddings API,
 // REAL Turso DB.
@@ -23,9 +38,35 @@ let lastFetchSince: string | null = null;
 
 async function cleanup() {
   if (createdUrls.size === 0) return;
-  await db.delete(articles).where(inArray(articles.url, [...createdUrls]));
+  await dbMod.db.delete(articles).where(inArray(articles.url, [...createdUrls]));
   createdUrls.clear();
 }
+
+beforeAll(async () => {
+  await (dbMod as any).__client.execute(`
+    CREATE TABLE IF NOT EXISTS articles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      url TEXT NOT NULL UNIQUE,
+      url_to_image TEXT,
+      published_at TEXT NOT NULL,
+      source_name TEXT,
+      source_id TEXT,
+      author TEXT,
+      keyword TEXT NOT NULL,
+      summary TEXT,
+      relevance REAL,
+      usefulness REAL,
+      recency REAL,
+      reason TEXT,
+      scored_at TEXT,
+      score REAL,
+      embedding TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+    )
+  `);
+});
 
 describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
   "Real LLM E2E Tests (all real services)",
@@ -37,7 +78,7 @@ describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
     afterEach(async () => {
       await cleanup();
       if (lastFetchSince) {
-        await db.delete(articles).where(gte(articles.scoredAt, lastFetchSince));
+        await dbMod.db.delete(articles).where(gte(articles.scoredAt, lastFetchSince));
         lastFetchSince = null;
       }
     });
@@ -77,6 +118,8 @@ describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
     }, 70000);
 
     it("Tier C: Pipeline integration (real embeddings + LLM + DB)", async () => {
+      resetEmbeddingRequestCount();
+
       const raw = [
         {
           title: "Pipeline T1 about Anthropic Claude",
@@ -95,10 +138,13 @@ describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
       expect(tagged).toHaveLength(1);
       expect(tagged[0].embedding.length).toBeGreaterThan(0);
 
+      const embeddingCount = getEmbeddingRequestCount();
+      expect(embeddingCount).toBeLessThanOrEqual(25);
+
       const savedCount = await scoreAndSaveTagged(tagged);
       expect(savedCount).toBe(1);
 
-      const saved = await db
+      const saved = await dbMod.db
         .select()
         .from(articles)
         .where(
@@ -114,6 +160,8 @@ describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
     }, 70000);
 
     it("Tier G: Full production flow via real fetch-news (all sources, real news APIs, forced inline)", async () => {
+      resetEmbeddingRequestCount();
+
       vi.stubEnv("QSTASH_TOKEN", "");
       const req = new NextRequest("http://localhost/api/fetch-news", {
         method: "POST",
@@ -146,6 +194,9 @@ describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
         0,
       );
       expect(totalFetched).toBeGreaterThan(0);
+
+      const embeddingCount = getEmbeddingRequestCount();
+      expect(embeddingCount).toBeLessThanOrEqual(25);
 
       lastFetchSince = (data.since as string) || null;
 

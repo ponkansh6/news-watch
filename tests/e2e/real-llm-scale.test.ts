@@ -1,28 +1,69 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { db } from "@/lib/db";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
+
+// Mock DB before imports (in-memory SQLite, same pattern as real-llm.test.ts)
+vi.mock("@/lib/db", async () => {
+  const { createClient } = await import("@libsql/client");
+  const { drizzle } = await import("drizzle-orm/libsql");
+  const schemaMod = await import("@/lib/db/schema");
+  const client = createClient({ url: ":memory:" });
+  const db = drizzle({ client, schema: schemaMod });
+  return { db, __client: client };
+});
+
+import * as dbMod from "@/lib/db";
 import { articles } from "@/lib/db/schema";
 import { inArray } from "drizzle-orm";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { KEYWORDS } from "@/lib/config";
-import { NextRequest } from "next/server";
+import {
+  getEmbeddingRequestCount,
+  resetEmbeddingRequestCount,
+} from "@/lib/embeddings";
 
-// Real scale E2E: REAL embeddings + REAL LLM + REAL Turso DB, 20 articles.
+// Real scale E2E: REAL embeddings + REAL LLM + in-memory DB, 20 articles.
 // Only runs with RUN_REAL_LLM_E2E=1 AND GOOGLE_API_KEY.
-// Writes to TURSO_DATABASE_URL (production per decision); cleans up its own rows.
+// Cleans up its own rows in afterEach.
 
 const createdUrls = new Set<string>();
+
+beforeAll(async () => {
+  await (dbMod as any).__client.execute(`
+    CREATE TABLE IF NOT EXISTS articles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      url TEXT NOT NULL UNIQUE,
+      url_to_image TEXT,
+      published_at TEXT NOT NULL,
+      source_name TEXT,
+      source_id TEXT,
+      author TEXT,
+      keyword TEXT NOT NULL,
+      summary TEXT,
+      relevance REAL,
+      usefulness REAL,
+      recency REAL,
+      reason TEXT,
+      scored_at TEXT,
+      score REAL,
+      embedding TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+    )
+  `);
+});
 
 describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
   "Real LLM Scale E2E Tests (all real services)",
   () => {
     beforeEach(() => {
       vi.stubEnv("NODE_ENV", "development");
+      resetEmbeddingRequestCount();
     });
 
     afterEach(async () => {
       if (createdUrls.size > 0) {
-        await db.delete(articles).where(inArray(articles.url, [...createdUrls]));
+        await dbMod.db.delete(articles).where(inArray(articles.url, [...createdUrls]));
         createdUrls.clear();
       }
     });
@@ -50,10 +91,16 @@ describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
       const end = Date.now();
       const duration = end - start;
 
-      console.log(`[scale] ${MAX_ARTICLES} articles scored in ${duration}ms`);
+      const embeddingCount = getEmbeddingRequestCount();
+      console.log(
+        `[scale] ${MAX_ARTICLES} articles scored in ${duration}ms, ${embeddingCount} embedding requests`,
+      );
 
       expect(saved).toBe(MAX_ARTICLES);
       expect(duration).toBeLessThan(60_000);
+
+      // 20 articles + 5 keywords = 25 (hard cap)
+      expect(embeddingCount).toBeLessThanOrEqual(25);
     }, 600_000);
   },
 );

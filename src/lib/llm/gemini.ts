@@ -77,7 +77,9 @@ async function callGemini(
         continue;
       }
 
-      const error = new Error(`Gemini API error: ${err.message} (status: ${err.status ?? "unknown"})`);
+      const error = new Error(
+        `Gemini API error: ${err.message} (status: ${err.status ?? "unknown"})`,
+      );
       error.cause = err;
       throw error;
     }

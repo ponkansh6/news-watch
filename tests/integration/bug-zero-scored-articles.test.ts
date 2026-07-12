@@ -25,6 +25,7 @@ vi.mock("@/lib/db", async () => {
 vi.mock("@/lib/embeddings", () => ({
   embedArticle: vi.fn(async () => new Array(768).fill(0.1)),
   embedQuery: vi.fn(async () => new Array(768).fill(0.1)),
+  batchEmbed: vi.fn(async (items) => items.map(() => new Array(768).fill(0.1))),
   cosineSimilarity: vi.fn(() => 0.9),
 }));
 
@@ -129,8 +130,7 @@ describe("Scenario 2: LLM fails (returns null array) → score=null", () => {
   it("getScoredArticles returns 0 when all LLM scores are null", async () => {
     // scoreArticles returns array of nulls (one per article)
     mockScoreArticles.mockImplementation(
-      async (items: { title: string; description: string | null }[]) =>
-        items.map(() => null),
+      async (items: { title: string; description: string | null }[]) => items.map(() => null),
     );
 
     const articles = makeArticles(ARTICLE_COUNT);
@@ -141,9 +141,7 @@ describe("Scenario 2: LLM fails (returns null array) → score=null", () => {
     expect(savedCount).toBe(0);
 
     // Articles ARE in the DB (upserted with score=null)
-    const allRows = await (dbMod as any).__client.execute(
-      "SELECT COUNT(*) as cnt FROM articles",
-    );
+    const allRows = await (dbMod as any).__client.execute("SELECT COUNT(*) as cnt FROM articles");
     expect(allRows.rows[0].cnt).toBe(ARTICLE_COUNT);
 
     // But getScoredArticles filters out null scores → returns 0
@@ -246,9 +244,7 @@ describe("Scenario 4: LLM returns partial results", () => {
     expect(savedCount).toBe(10);
 
     // All 20 articles are in DB
-    const allRows = await (dbMod as any).__client.execute(
-      "SELECT COUNT(*) as cnt FROM articles",
-    );
+    const allRows = await (dbMod as any).__client.execute("SELECT COUNT(*) as cnt FROM articles");
     expect(allRows.rows[0].cnt).toBe(ARTICLE_COUNT);
 
     // But only 10 appear in getScoredArticles
@@ -324,8 +320,7 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
   it("BUG REPRO: mimics route.ts with LLM failure → saved=20 but scored=0", async () => {
     // LLM fails for ALL articles — returns array of nulls
     mockScoreArticles.mockImplementation(
-      async (items: { title: string; description: string | null }[]) =>
-        items.map(() => null),
+      async (items: { title: string; description: string | null }[]) => items.map(() => null),
     );
 
     const all = makeArticles(ARTICLE_COUNT);
@@ -370,9 +365,7 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
     expect(saved).toBe(ARTICLE_COUNT);
 
     // Verify composite is indeed < 5 for fresh articles
-    const dbScores = await (dbMod as any).__client.execute(
-      "SELECT score FROM articles LIMIT 1",
-    );
+    const dbScores = await (dbMod as any).__client.execute("SELECT score FROM articles LIMIT 1");
     const score = dbScores.rows[0].score as number;
     expect(score).toBeLessThan(5); // 1*0.3+1*0.4+10*0.3 = 3.7
 
@@ -448,9 +441,7 @@ describe("Scenario 7: '20件スコアリング完了' but 'スコアリング済
       expect(saved).toBe(ARTICLE_COUNT);
 
       // DB is EMPTY — upsertArticle threw, scoreAndSaveTagged caught and continued
-      const dbCount = await (dbMod as any).__client.execute(
-        "SELECT COUNT(*) as cnt FROM articles",
-      );
+      const dbCount = await (dbMod as any).__client.execute("SELECT COUNT(*) as cnt FROM articles");
       expect(dbCount.rows[0].cnt).toBe(0);
 
       // getScoredArticles returns 0 — THIS MATCHES THE PRODUCTION BUG
@@ -469,8 +460,7 @@ describe("Scenario 7: Gemini API key missing → scoreArticles returns null[]", 
   it("when GOOGLE_API_KEY is absent, scoreArticles returns array of nulls", async () => {
     // Simulate: no API key → callGemini returns null → scoreArticles returns null[]
     mockScoreArticles.mockImplementation(
-      async (items: { title: string; description: string | null }[]) =>
-        items.map(() => null),
+      async (items: { title: string; description: string | null }[]) => items.map(() => null),
     );
 
     const all = makeArticles(ARTICLE_COUNT);
@@ -517,9 +507,7 @@ describe("Scenario 8: scoreArticles throws → exception swallowed", () => {
     expect(scoringError.message).toContain("Gemini API error: 429");
 
     // No articles saved to DB
-    const allRows = await (dbMod as any).__client.execute(
-      "SELECT COUNT(*) as cnt FROM articles",
-    );
+    const allRows = await (dbMod as any).__client.execute("SELECT COUNT(*) as cnt FROM articles");
     expect(allRows.rows[0].cnt).toBe(0);
 
     const scored = await getScoredArticles(100);

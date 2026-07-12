@@ -113,6 +113,7 @@ vi.mock("@/lib/config", () => ({
 vi.mock("@/lib/embeddings", () => ({
   embedArticle: vi.fn().mockResolvedValue([0.1, 0.2]),
   embedQuery: vi.fn().mockResolvedValue([0.1, 0.2]),
+  batchEmbed: vi.fn().mockResolvedValue([[0.1, 0.2]]),
   cosineSimilarity: vi.fn().mockReturnValue(1.0),
 }));
 

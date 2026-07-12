@@ -13,6 +13,7 @@ const { mockScoreArticles } = vi.hoisted(() => ({ mockScoreArticles: vi.fn() }))
 const { mockUpsertArticle } = vi.hoisted(() => ({ mockUpsertArticle: vi.fn() }));
 const { mockEmbedArticle } = vi.hoisted(() => ({ mockEmbedArticle: vi.fn() }));
 const { mockEmbedQuery } = vi.hoisted(() => ({ mockEmbedQuery: vi.fn() }));
+const { mockBatchEmbed } = vi.hoisted(() => ({ mockBatchEmbed: vi.fn() }));
 const { mockCosineSimilarity } = vi.hoisted(() => ({ mockCosineSimilarity: vi.fn() }));
 
 vi.mock("@/lib/llm/gemini", () => ({
@@ -26,6 +27,7 @@ vi.mock("@/lib/db/actions", () => ({
 vi.mock("@/lib/embeddings", () => ({
   embedArticle: mockEmbedArticle,
   embedQuery: mockEmbedQuery,
+  batchEmbed: mockBatchEmbed,
   cosineSimilarity: mockCosineSimilarity,
 }));
 
@@ -58,6 +60,7 @@ describe("e2e: batch consolidation (20-in-1)", () => {
     mockUpsertArticle.mockResolvedValue(undefined);
     mockEmbedArticle.mockResolvedValue([0.1, 0.2]);
     mockEmbedQuery.mockResolvedValue([0.1, 0.2]);
+    mockBatchEmbed.mockImplementation((items) => Promise.resolve(items.map(() => [0.1, 0.2])));
     // All articles match the single keyword "Anthropic" → one group of N
     mockCosineSimilarity.mockImplementation(() => 1.0);
   });

@@ -38,3 +38,14 @@ export const articles = sqliteTable(
     createdAtIdx: index("idx_created_at").on(table.createdAt),
   }),
 );
+
+export const keywordEmbeddings = sqliteTable("keyword_embeddings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  keyword: text("keyword").notNull().unique(),
+  embedding: text("embedding").notNull(),
+  model: text("model").notNull().default("gemini-embedding-2"),
+  dimensions: integer("dimensions").notNull().default(768),
+  createdAt: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
