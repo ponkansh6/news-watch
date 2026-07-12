@@ -16,10 +16,7 @@ import { inArray } from "drizzle-orm";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { KEYWORDS } from "@/lib/config";
-import {
-  getEmbeddingRequestCount,
-  resetEmbeddingRequestCount,
-} from "@/lib/embeddings";
+import { getEmbeddingRequestCount, resetEmbeddingRequestCount } from "@/lib/embeddings";
 
 // Real scale E2E: REAL embeddings + REAL LLM + in-memory DB, 20 articles.
 // Only runs with RUN_REAL_LLM_E2E=1 AND GOOGLE_API_KEY.

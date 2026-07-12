@@ -173,9 +173,7 @@ export async function batchEmbed(items: BatchEmbedItem[]): Promise<number[][]> {
         } catch (err) {
           lastError = err;
           if (attempt < EMBED_MAX_RETRIES) {
-            await new Promise((resolve) =>
-              setTimeout(resolve, EMBED_BACKOFF_MS * 2 ** attempt),
-            );
+            await new Promise((resolve) => setTimeout(resolve, EMBED_BACKOFF_MS * 2 ** attempt));
           }
         }
       }

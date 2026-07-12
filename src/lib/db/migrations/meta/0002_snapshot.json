@@ -144,39 +144,27 @@
       "indexes": {
         "articles_url_unique": {
           "name": "articles_url_unique",
-          "columns": [
-            "url"
-          ],
+          "columns": ["url"],
           "isUnique": true
         },
         "idx_keyword": {
           "name": "idx_keyword",
-          "columns": [
-            "keyword"
-          ],
+          "columns": ["keyword"],
           "isUnique": false
         },
         "idx_relevance_pub": {
           "name": "idx_relevance_pub",
-          "columns": [
-            "relevance",
-            "published_at"
-          ],
+          "columns": ["relevance", "published_at"],
           "isUnique": false
         },
         "idx_recency_pub": {
           "name": "idx_recency_pub",
-          "columns": [
-            "recency",
-            "published_at"
-          ],
+          "columns": ["recency", "published_at"],
           "isUnique": false
         },
         "idx_created_at": {
           "name": "idx_created_at",
-          "columns": [
-            "created_at"
-          ],
+          "columns": ["created_at"],
           "isUnique": false
         }
       },
@@ -236,9 +224,7 @@
       "indexes": {
         "keyword_embeddings_keyword_unique": {
           "name": "keyword_embeddings_keyword_unique",
-          "columns": [
-            "keyword"
-          ],
+          "columns": ["keyword"],
           "isUnique": true
         }
       },

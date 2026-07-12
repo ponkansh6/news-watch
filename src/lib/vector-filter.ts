@@ -3,7 +3,10 @@ import { batchEmbed, cosineSimilarity } from "@/lib/embeddings";
 import { TaskType } from "@google/generative-ai";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { articles as articlesTable, keywordEmbeddings as keywordEmbeddingsTable } from "@/lib/db/schema";
+import {
+  articles as articlesTable,
+  keywordEmbeddings as keywordEmbeddingsTable,
+} from "@/lib/db/schema";
 import { and, inArray, isNotNull } from "drizzle-orm";
 
 export interface ArticleWithTag {

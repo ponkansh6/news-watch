@@ -19,10 +19,7 @@ import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { KEYWORDS } from "@/lib/config";
 import { POST as fetchNewsRoute } from "@/app/api/fetch-news/route";
 import { NextRequest } from "next/server";
-import {
-  getEmbeddingRequestCount,
-  resetEmbeddingRequestCount,
-} from "@/lib/embeddings";
+import { getEmbeddingRequestCount, resetEmbeddingRequestCount } from "@/lib/embeddings";
 
 // Real end-to-end test: hits the REAL Gemini LLM, REAL embeddings API,
 // REAL Turso DB.
