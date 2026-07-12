@@ -58,6 +58,9 @@
     "vercel": "^54.20.0",
     "vitest": "^4.1.9"
   },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,md,mjs,cjs}": "oxfmt --write"
+  },
   "engines": {
     "node": "^22.14.0",
     "pnpm": "^11.9.0"
