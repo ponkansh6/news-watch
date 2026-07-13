@@ -9,7 +9,7 @@ context: |
   - UI: React 19, Tailwind CSS v4
   - Database: SQLite (Turso/libSQL)
   - ORM: Drizzle ORM + Drizzle Kit
-  - 外部API: NewsAPI, GNews
+  - 外部API: NewsAPI
   - LLM: Gemini 3.1 Flash Lite (relevance/usefulness scoring + summary)
   - Testing: Vitest
   - Lint/Format: ESLint, Oxlint, Oxfmt, Prettier
@@ -19,7 +19,7 @@ context: |
   ## プロジェクト構造
   - src/app/ — App Router pages/layouts (RSC)
   - src/app/api/fetch-news/ — News fetch API route
-  - src/lib/news/ — News source fetchers (NewsAPI, GNews, etc.)
+  - src/lib/news/ — News source fetchers (NewsAPI, etc.)
   - src/lib/llm/ — LLM integration (Gemini via OpenRouter)
   - src/lib/db/ — Drizzle schema + DB actions
   - tests/ — Test suites

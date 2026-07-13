@@ -12,9 +12,7 @@ interface FetchResult {
 }
 
 const SOURCES = [
-  { id: "gnews", name: "GNews", color: "bg-blue-500" },
   { id: "newsapi", name: "NewsAPI", color: "bg-green-500" },
-  { id: "hackernews", name: "Hacker News", color: "bg-orange-500" },
   { id: "qiita", name: "Qiita", color: "bg-purple-500" },
   { id: "github", name: "GitHub", color: "bg-gray-700" },
   { id: "yamadashy", name: "Tech Blog", color: "bg-emerald-500" },
@@ -190,7 +188,7 @@ export default function FetchButton() {
         >
           {loading ? "取得・スコアリング中..." : "ニュースを取得してスコアリング"}
         </button>
-        <span className="text-xs text-neutral-400">GNews / NewsAPI → LLMスコアリング</span>
+        <span className="text-xs text-neutral-400">NewsAPI → LLMスコアリング</span>
       </div>
 
       {fetchError && (

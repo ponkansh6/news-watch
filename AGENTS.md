@@ -44,7 +44,7 @@
 - OpenSpec 仕様書: `openspec/specs/news-watch/spec.md`
 - スコアリング: LLM (relevance + usefulness) + 機械判定 (recency) の3軸加重合成スコア
 - データベース: SQLite (Drizzle ORM)
-- ニュースソース: NewsAPI, GNews
+- ニュースソース: NewsAPI
 - デプロイ先: Vercel
 
 <internal_reminder>!IMPORTANT! Scheduler workflow: plan/dependencies → dispatch background specialists → track task IDs → wait for hook-driven completion → reconcile terminal results → verify. Do not poll running jobs, consume running-job output, or advance dependent work. !END!</internal_reminder>

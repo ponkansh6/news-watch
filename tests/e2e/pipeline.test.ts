@@ -5,19 +5,6 @@ import * as gemini from "@/lib/llm/gemini";
 import * as db from "@/lib/db/actions";
 
 // Mock all external dependencies
-vi.mock("@/lib/news/gnews", () => ({
-  searchGNews: vi.fn().mockResolvedValue([
-    {
-      title: "GNews Article",
-      url: "https://gnews.com/1",
-      description: "desc",
-      image: "img.jpg",
-      source: { name: "GNews" },
-      publishedAt: new Date().toISOString(),
-    },
-  ]),
-}));
-
 vi.mock("@/lib/news/newsapi", () => ({
   searchNewsApi: vi.fn().mockResolvedValue([
     {
@@ -27,18 +14,6 @@ vi.mock("@/lib/news/newsapi", () => ({
       urlToImage: "img.jpg",
       source: { name: "NewsAPI" },
       publishedAt: new Date().toISOString(),
-    },
-  ]),
-}));
-
-vi.mock("@/lib/news/hackernews", () => ({
-  searchHackerNews: vi.fn().mockResolvedValue([
-    {
-      title: "HN Article",
-      url: "https://hn.com/1",
-      story_text: "desc",
-      created_at: new Date().toISOString(),
-      author: "user1",
     },
   ]),
 }));
@@ -136,7 +111,7 @@ describe("e2e pipeline (local dev mode)", () => {
     mockKeywords = ["test-keyword"];
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["hackernews"] }),
+      body: JSON.stringify({ sources: ["newsapi"] }),
       headers: { "Content-Type": "application/json" },
     });
 
@@ -159,13 +134,13 @@ describe("e2e pipeline (local dev mode)", () => {
   });
 
   test("should handle empty articles (no scoring)", async () => {
-    // Mock searchHackerNews to return empty array
-    const hackernews = await import("@/lib/news/hackernews");
-    vi.mocked(hackernews.searchHackerNews).mockResolvedValue([]);
+    // Mock searchNewsApi to return empty array
+    const newsapi = await import("@/lib/news/newsapi");
+    vi.mocked(newsapi.searchNewsApi).mockResolvedValue([]);
 
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["hackernews"] }),
+      body: JSON.stringify({ sources: ["newsapi"] }),
       headers: { "Content-Type": "application/json" },
     });
 

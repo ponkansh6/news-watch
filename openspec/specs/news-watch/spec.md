@@ -19,7 +19,7 @@ authors: [shunki]
 
 ### 2.1 In Scope
 
-- Fetching news from multiple external providers (NewsAPI, GNews)
+- Fetching news from multiple external providers (NewsAPI)
 - LLM-based scoring (relevance + usefulness) + algorithmic recency scoring
 - Japanese summary generation (20-40 characters)
 - Dashboard display with sort/filter capabilities
@@ -49,7 +49,7 @@ authors: [shunki]
 
 - **Priority**: Must
 - **Acceptance Criteria**:
-  - WHEN news is fetched from NewsAPI or GNews
+  - WHEN news is fetched from NewsAPI
   - THEN each article is scored along three dimensions:
     - Relevance (30%): LLM judges how directly related the article is to the keyword (0-10)
     - Usefulness (40%): LLM judges technical/engineering value (0-10)
@@ -145,7 +145,7 @@ Layout (src/app/layout.tsx)
 ### Data Flow
 
 ```
-External APIs (NewsAPI, GNews)
+External APIs (NewsAPI)
   → src/lib/news/ (Fetchers)
     → src/lib/llm/openrouter.ts (LLM: relevance + usefulness + summary)
     → src/app/api/fetch-news/route.ts (calcRecencyScore + weighted composite)
@@ -173,7 +173,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 - **ORM**: Drizzle ORM + Drizzle Kit
 - **Styling**: Tailwind CSS v4
 - **LLM**: Gemini 3.1 Flash Lite (via OpenRouter)
-- **News Sources**: NewsAPI, GNews
+- **News Sources**: NewsAPI
 - **Deployment**: Vercel
 
 ## 7. Test Strategy

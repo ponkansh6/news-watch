@@ -1,6 +1,4 @@
-import type { GNewsArticle } from "@/lib/news/gnews";
 import type { NewsApiArticle } from "@/lib/news/newsapi";
-import type { HackerNewsArticle } from "@/lib/news/hackernews";
 import type { QiitaArticle } from "@/lib/news/qiita";
 import type { GitHubRepo } from "@/lib/news/github";
 import type { YamadashyItem } from "@/lib/news/yamadashy";
@@ -21,11 +19,4 @@ export type ArticleInput = {
   description: string | null;
 };
 
-export type {
-  GNewsArticle,
-  NewsApiArticle,
-  HackerNewsArticle,
-  QiitaArticle,
-  GitHubRepo,
-  YamadashyItem,
-};
+export type { NewsApiArticle, QiitaArticle, GitHubRepo, YamadashyItem };

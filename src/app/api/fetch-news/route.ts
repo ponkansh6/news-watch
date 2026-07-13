@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { KEYWORDS } from "@/lib/config";
-import { searchGNews, type GNewsArticle } from "@/lib/news/gnews";
 import { searchNewsApi, type NewsApiArticle } from "@/lib/news/newsapi";
-import { searchHackerNews, type HackerNewsArticle } from "@/lib/news/hackernews";
 import { searchQiita, type QiitaArticle } from "@/lib/news/qiita";
 import { searchGitHub, type GitHubRepo } from "@/lib/news/github";
 import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
@@ -20,28 +18,16 @@ export const maxDuration = 60;
 const MAX_ARTICLES = 20;
 
 function normalize(
-  article:
-    | GNewsArticle
-    | NewsApiArticle
-    | HackerNewsArticle
-    | QiitaArticle
-    | GitHubRepo
-    | YamadashyItem
-    | ItmediaItem
-    | CodeZineItem,
+  article: NewsApiArticle | QiitaArticle | GitHubRepo | YamadashyItem | ItmediaItem | CodeZineItem,
   sourceId: string,
 ): NormalizedArticle {
-  // GNews: .image, .source.name+.url
   // NewsAPI: .urlToImage, .source.name
-  // HackerNews: .story_text, .sourceName = "Hacker News"
   // Qiita: .created_at, no description/urlToImage, sourceName = "Qiita"
   // GitHub: .html_url, .owner.login, sourceName = "GitHub"
   // Yamadashy: .link, .pubDate, sourceName = "Tech Blog"
   // ITmedia: .link, .pubDate, sourceName = "ITmedia"
   // CodeZine: .link, .pubDate, sourceName = "CodeZine"
-  const g = article as GNewsArticle;
   const n = article as NewsApiArticle;
-  const hn = article as HackerNewsArticle;
   const q = article as QiitaArticle;
   const gh = article as GitHubRepo;
   const yd = article as YamadashyItem;
@@ -84,22 +70,25 @@ function normalize(
     sourceName = "Tech Blog";
     author = yd.author ?? null;
   } else {
-    // GNews, NewsAPI, HackerNews, Qiita (safe to cast — handled branches above)
-    const a = article as GNewsArticle | NewsApiArticle | HackerNewsArticle | QiitaArticle;
+    // NewsAPI, Qiita (safe to cast — handled branches above)
+    const a = article as NewsApiArticle | QiitaArticle;
     title = a.title;
     url = a.url ?? "";
     publishedAt =
-      "publishedAt" in a ? a.publishedAt : "created_at" in a ? a.created_at : hn.created_at;
-    sourceName =
-      "source" in a && a.source?.name ? a.source.name : "user" in a ? "Qiita" : "Hacker News";
-    author = (a as any).author ?? hn.author ?? ("user" in a ? (a as any).user.name : null);
+      "publishedAt" in a
+        ? a.publishedAt
+        : "created_at" in a
+          ? a.created_at
+          : new Date().toISOString();
+    sourceName = "source" in a && a.source?.name ? a.source.name : "user" in a ? "Qiita" : null;
+    author = (a as any).author ?? ("user" in a ? (a as any).user.name : null);
   }
 
   return {
     title,
     description: "description" in article ? (article.description ?? null) : null,
     url,
-    urlToImage: g.image ?? n.urlToImage ?? null,
+    urlToImage: n.urlToImage ?? null,
     publishedAt,
     sourceName,
     sourceId,
@@ -139,16 +128,7 @@ export async function POST(request: Request) {
     selectedSources = body.sources || [];
   } catch {
     // If parsing fails or no sources provided, default to all sources
-    selectedSources = [
-      "gnews",
-      "newsapi",
-      "hackernews",
-      "qiita",
-      "github",
-      "yamadashy",
-      "itmedia",
-      "codezine",
-    ];
+    selectedSources = ["newsapi", "qiita", "github", "yamadashy", "itmedia", "codezine"];
   }
 
   const results: {
@@ -162,17 +142,9 @@ export async function POST(request: Request) {
   const fetchPromises: Array<Promise<any>> = [];
   const sourceOrder: string[] = [];
 
-  if (selectedSources.includes("gnews")) {
-    fetchPromises.push(searchGNews(20));
-    sourceOrder.push("gnews");
-  }
   if (selectedSources.includes("newsapi")) {
     fetchPromises.push(searchNewsApi(20));
     sourceOrder.push("newsapi");
-  }
-  if (selectedSources.includes("hackernews")) {
-    fetchPromises.push(searchHackerNews(20));
-    sourceOrder.push("hackernews");
   }
   if (selectedSources.includes("qiita")) {
     fetchPromises.push(searchQiita(20));
@@ -210,13 +182,8 @@ export async function POST(request: Request) {
     resultsBySource[source] = fetchedResults[index];
   });
 
-  // HN self-posts (Ask HN / Show HN) may have url=null → filter them out
   const all = deduplicate([
-    ...(resultsBySource.gnews ? resultsBySource.gnews.map((a) => normalize(a, "gnews")) : []),
     ...(resultsBySource.newsapi ? resultsBySource.newsapi.map((a) => normalize(a, "newsapi")) : []),
-    ...(resultsBySource.hackernews
-      ? resultsBySource.hackernews.map((a) => normalize(a, "hackernews")).filter((a) => a.url)
-      : []),
     ...(resultsBySource.qiita ? resultsBySource.qiita.map((a) => normalize(a, "qiita")) : []),
     ...(resultsBySource.github ? resultsBySource.github.map((a) => normalize(a, "github")) : []),
     ...(resultsBySource.yamadashy

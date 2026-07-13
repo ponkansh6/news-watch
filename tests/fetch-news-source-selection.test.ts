@@ -3,19 +3,6 @@ import { NextRequest } from "next/server";
 import { POST } from "@/app/api/fetch-news/route";
 
 // Mock all external dependencies
-vi.mock("@/lib/news/gnews", () => ({
-  searchGNews: vi.fn().mockResolvedValue([
-    {
-      title: "GNews Article",
-      url: "https://gnews.com/1",
-      description: "desc",
-      image: "img.jpg",
-      source: { name: "GNews" },
-      publishedAt: new Date().toISOString(),
-    },
-  ]),
-}));
-
 vi.mock("@/lib/news/newsapi", () => ({
   searchNewsApi: vi.fn().mockResolvedValue([
     {
@@ -25,18 +12,6 @@ vi.mock("@/lib/news/newsapi", () => ({
       urlToImage: "img.jpg",
       source: { name: "NewsAPI" },
       publishedAt: new Date().toISOString(),
-    },
-  ]),
-}));
-
-vi.mock("@/lib/news/hackernews", () => ({
-  searchHackerNews: vi.fn().mockResolvedValue([
-    {
-      title: "HN Article",
-      url: "https://hn.com/1",
-      story_text: "desc",
-      created_at: new Date().toISOString(),
-      author: "user1",
     },
   ]),
 }));
@@ -118,24 +93,6 @@ vi.mock("@/lib/embeddings", () => ({
 }));
 
 describe("fetch-news route source selection", () => {
-  test("should work when only hackernews is selected (GNews and NewsAPI unchecked)", async () => {
-    const request = new NextRequest("http://localhost/api/fetch-news", {
-      method: "POST",
-      body: JSON.stringify({ sources: ["hackernews"] }),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const response = await POST(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.ok).toBe(true);
-    expect(data.results).toHaveLength(1);
-    expect(data.results[0].keyword).toBe("latest");
-    expect(data.results[0].fetched).toBeGreaterThan(0);
-    expect(data.results[0].errors).toHaveLength(0);
-  });
-
   test("should work when only qiita is selected", async () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
@@ -185,21 +142,6 @@ describe("fetch-news route source selection", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ sources: [] }),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const response = await POST(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.ok).toBe(true);
-    expect(data.results[0].errors).toHaveLength(0);
-  });
-
-  test("should work when only gnews is selected", async () => {
-    const request = new NextRequest("http://localhost/api/fetch-news", {
-      method: "POST",
-      body: JSON.stringify({ sources: ["gnews"] }),
       headers: { "Content-Type": "application/json" },
     });
 

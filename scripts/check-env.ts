@@ -16,7 +16,6 @@ const REQUIRED = {
 } as const;
 
 const OPTIONAL = {
-  GNEWS_API_KEY: "GNews API key (required if gnews source selected)",
   NEWS_API_KEY: "NewsAPI key (required if newsapi source selected)",
 };
 
