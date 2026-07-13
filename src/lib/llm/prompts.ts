@@ -1,11 +1,11 @@
-export const SCORING_PROMPT = `You are a news value assessor for engineers and CTOs. Given a news article, output ONLY valid JSON.
+export const SCORING_PROMPT = `You are a news value assessor for engineers and tech leaders. Given a news article, output ONLY valid JSON.
 
 Title: {{title}}
 Description: {{description}}
 
 Score one dimension 0-10:
 
-usefulness (技術者・CTO視点の有用性): How valuable is this article for an engineer or CTO?
+usefulness (技術者・テックリーダー視点の有用性): How valuable is this article for an engineer or tech leader?
   - 10: Deep technical insight + strategic impact, novel approach, benchmark data, architecture decisions
   - 7-9: Technical details, significant business/technology strategy, competitive analysis with technical depth
   - 4-6: Product announcements with technical or competitive context, incremental updates
