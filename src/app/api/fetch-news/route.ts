@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { KEYWORDS } from "@/lib/config";
 import { searchNewsApi, type NewsApiArticle } from "@/lib/news/newsapi";
-import { searchQiita, type QiitaArticle } from "@/lib/news/qiita";
+import { searchQiita, type QiitaFeedItem } from "@/lib/news/qiita";
 import { searchGitHub, type GitHubRepo } from "@/lib/news/github";
 import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
 import { searchITmedia, type ItmediaItem } from "@/lib/news/itmedia";
@@ -18,17 +18,17 @@ export const maxDuration = 60;
 const MAX_ARTICLES = 20;
 
 function normalize(
-  article: NewsApiArticle | QiitaArticle | GitHubRepo | YamadashyItem | ItmediaItem | CodeZineItem,
+  article: NewsApiArticle | QiitaFeedItem | GitHubRepo | YamadashyItem | ItmediaItem | CodeZineItem,
   sourceId: string,
 ): NormalizedArticle {
   // NewsAPI: .urlToImage, .source.name
-  // Qiita: .created_at, no description/urlToImage, sourceName = "Qiita"
+  // Qiita: .published, .content, sourceName = "Qiita"
   // GitHub: .html_url, .owner.login, sourceName = "GitHub"
   // Yamadashy: .link, .pubDate, sourceName = "Tech Blog"
   // ITmedia: .link, .pubDate, sourceName = "ITmedia"
   // CodeZine: .link, .pubDate, sourceName = "CodeZine"
   const n = article as NewsApiArticle;
-  const q = article as QiitaArticle;
+  const q = article as QiitaFeedItem;
   const gh = article as GitHubRepo;
   const yd = article as YamadashyItem;
   const it = article as ItmediaItem;
@@ -69,24 +69,31 @@ function normalize(
     publishedAt = yd.pubDate ?? new Date().toISOString();
     sourceName = "Tech Blog";
     author = yd.author ?? null;
+  } else if ("content" in q) {
+    // Qiita (Atom)
+    title = q.title;
+    url = typeof q.link === "string" ? q.link : q.link["@_href"];
+    publishedAt = q.published ?? new Date().toISOString();
+    sourceName = "Qiita";
+    author = q.author?.name ?? null;
   } else {
-    // NewsAPI, Qiita (safe to cast — handled branches above)
-    const a = article as NewsApiArticle | QiitaArticle;
+    // NewsAPI
+    const a = article as NewsApiArticle;
     title = a.title;
     url = a.url ?? "";
-    publishedAt =
-      "publishedAt" in a
-        ? a.publishedAt
-        : "created_at" in a
-          ? a.created_at
-          : new Date().toISOString();
-    sourceName = "source" in a && a.source?.name ? a.source.name : "user" in a ? "Qiita" : null;
-    author = (a as any).author ?? ("user" in a ? (a as any).user.name : null);
+    publishedAt = a.publishedAt ?? new Date().toISOString();
+    sourceName = a.source?.name ?? null;
+    author = a.author ?? null;
   }
 
   return {
     title,
-    description: "description" in article ? (article.description ?? null) : null,
+    description:
+      "description" in article
+        ? (article.description ?? null)
+        : "content" in article
+          ? (article.content ?? null)
+          : null,
     url,
     urlToImage: n.urlToImage ?? null,
     publishedAt,

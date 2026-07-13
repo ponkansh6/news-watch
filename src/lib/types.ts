@@ -1,5 +1,5 @@
 import type { NewsApiArticle } from "@/lib/news/newsapi";
-import type { QiitaArticle } from "@/lib/news/qiita";
+import type { QiitaFeedItem } from "@/lib/news/qiita";
 import type { GitHubRepo } from "@/lib/news/github";
 import type { YamadashyItem } from "@/lib/news/yamadashy";
 
@@ -19,4 +19,4 @@ export type ArticleInput = {
   description: string | null;
 };
 
-export type { NewsApiArticle, QiitaArticle, GitHubRepo, YamadashyItem };
+export type { NewsApiArticle, QiitaFeedItem as QiitaArticle, GitHubRepo, YamadashyItem };

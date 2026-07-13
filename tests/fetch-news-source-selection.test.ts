@@ -19,11 +19,13 @@ vi.mock("@/lib/news/newsapi", () => ({
 vi.mock("@/lib/news/qiita", () => ({
   searchQiita: vi.fn().mockResolvedValue([
     {
+      id: "1",
       title: "Qiita Article",
-      url: "https://qiita.com/1",
-      body: "desc",
-      created_at: new Date().toISOString(),
-      user: { name: "user1" },
+      link: "https://qiita.com/1",
+      published: new Date().toISOString(),
+      updated: new Date().toISOString(),
+      author: { name: "user1" },
+      content: "desc",
     },
   ]),
 }));

@@ -31,12 +31,11 @@ function buildQiitaArticles(count: number, keyword: string, date?: string) {
   return Array.from({ length: count }, (_, i) => ({
     id: `qiita-${keyword}-${i}`,
     title: `[${keyword}] Qiita Article ${i}: ${keyword} no tameno gaido`,
-    url: `https://qiita.com/${keyword}/articles/${i}`,
-    created_at: dt,
-    user: { name: `user${i}`, id: `user${i}` },
-    tags: [{ name: keyword }, { name: "tech" }],
-    likes_count: Math.floor(Math.random() * 100),
-    page_views_count: Math.floor(Math.random() * 10000),
+    link: `https://qiita.com/${keyword}/articles/${i}`,
+    published: dt,
+    updated: dt,
+    author: { name: `user${i}` },
+    content: `Content for ${keyword} article ${i}`,
   }));
 }
 
@@ -278,17 +277,16 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     const mockQiitaArticle = {
       id: "test-1",
       title: "Test Qiita Article",
-      url: "https://qiita.com/test/1",
-      created_at: "2026-07-05T00:00:00.000Z",
-      user: { name: "testuser", id: "testuser" },
-      tags: [{ name: "JavaScript" }],
-      likes_count: 10,
-      page_views_count: 100,
+      link: "https://qiita.com/test/1",
+      published: "2026-07-05T00:00:00.000Z",
+      updated: "2026-07-05T00:00:00.000Z",
+      author: { name: "testuser" },
+      content: "Test content",
     };
 
-    // normalize を直接テストするため、route モジュールから normalize 相当のロジックを確認
-    // 「description」プロパティがない ⇒ description=null になる
+    // normalize 後の description が content から埋まることを確認
     expect("description" in mockQiitaArticle).toBe(false);
+    expect("content" in mockQiitaArticle).toBe(true);
 
     // scoreArticle に description=null が渡されても "(no description)" に置換されることを確認
     // テスト5ではscoreArticleを直接呼び出すため、scoreArticlesは使用しない
