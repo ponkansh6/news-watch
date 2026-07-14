@@ -6,6 +6,7 @@ import { searchGitHub, type GitHubRepo } from "@/lib/news/github";
 import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
 import { searchITmedia, type ItmediaItem } from "@/lib/news/itmedia";
 import { searchCodeZine, type CodeZineItem } from "@/lib/news/codezine";
+import { searchZdnet, type ZdnetItem } from "@/lib/news/zdnet";
 import { deleteOrphanedArticles, deleteLowScoredArticles, upsertArticle } from "@/lib/db/actions";
 import { type NormalizedArticle } from "@/lib/types";
 import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
@@ -18,72 +19,96 @@ export const maxDuration = 60;
 const MAX_ARTICLES = 20;
 
 function normalize(
-  article: NewsApiArticle | QiitaFeedItem | GitHubRepo | YamadashyItem | ItmediaItem | CodeZineItem,
+  article:
+    | NewsApiArticle
+    | QiitaFeedItem
+    | GitHubRepo
+    | YamadashyItem
+    | ItmediaItem
+    | CodeZineItem
+    | ZdnetItem,
   sourceId: string,
 ): NormalizedArticle {
-  // NewsAPI: .urlToImage, .source.name
-  // Qiita: .published, .content, sourceName = "Qiita"
-  // GitHub: .html_url, .owner.login, sourceName = "GitHub"
-  // Yamadashy: .link, .pubDate, sourceName = "Tech Blog"
-  // ITmedia: .link, .pubDate, sourceName = "ITmedia"
-  // CodeZine: .link, .pubDate, sourceName = "CodeZine"
   const n = article as NewsApiArticle;
-  const q = article as QiitaFeedItem;
-  const gh = article as GitHubRepo;
-  const yd = article as YamadashyItem;
-  const it = article as ItmediaItem;
-  const cz = article as CodeZineItem;
 
-  // Determine source name
   let sourceName: string | null = null;
   let author: string | null = null;
   let title = "";
   let url = "";
   let publishedAt = "";
 
-  if ("name" in gh) {
-    // GitHub repo
-    title = gh.name;
-    url = gh.html_url;
-    publishedAt = gh.created_at;
-    sourceName = "GitHub";
-    author = gh.owner.login;
-  } else if ("content" in q) {
-    // Qiita (Atom) - MUST come before Yamadashy check because QiitaFeedItem also has `link`
-    title = q.title;
-    url = typeof q.link === "string" ? q.link : q.link["@_href"];
-    publishedAt = q.published ?? new Date().toISOString();
-    sourceName = "Qiita";
-    author = q.author?.name ?? null;
-  } else if ("guid" in it) {
-    // ITmedia RSS item
-    title = it.title;
-    url = it.link;
-    publishedAt = it.pubDate ?? new Date().toISOString();
-    sourceName = "ITmedia";
-    author = null;
-  } else if ("guid" in cz) {
-    // CodeZine RSS item
-    title = cz.title;
-    url = cz.link;
-    publishedAt = cz.pubDate ?? new Date().toISOString();
-    sourceName = "CodeZine";
-    author = null;
-  } else if ("link" in yd) {
-    // Yamadashy RSS item
-    title = yd.title;
-    url = yd.link ?? "";
-    publishedAt = yd.pubDate ?? new Date().toISOString();
-    sourceName = "Tech Blog";
-    author = yd.author ?? null;
-  } else {
-    // NewsAPI
-    const a = article as NewsApiArticle;
-    title = a.title;
-    url = a.url ?? "";
-    publishedAt = a.publishedAt ?? new Date().toISOString();
-    sourceName = a.source?.name ?? null;
-    author = a.author ?? null;
+  switch (sourceId) {
+    case "newsapi": {
+      const a = article as NewsApiArticle;
+      title = a.title;
+      url = a.url ?? "";
+      publishedAt = a.publishedAt ?? new Date().toISOString();
+      sourceName = a.source?.name ?? null;
+      author = a.author ?? null;
+      break;
+    }
+    case "qiita": {
+      const q = article as QiitaFeedItem;
+      title = q.title;
+      url = typeof q.link === "string" ? q.link : q.link["@_href"];
+      publishedAt = q.published ?? new Date().toISOString();
+      sourceName = "Qiita";
+      author = q.author?.name ?? null;
+      break;
+    }
+    case "github": {
+      const gh = article as GitHubRepo;
+      title = gh.name;
+      url = gh.html_url;
+      publishedAt = gh.created_at;
+      sourceName = "GitHub";
+      author = gh.owner.login;
+      break;
+    }
+    case "yamadashy": {
+      const yd = article as YamadashyItem;
+      title = yd.title;
+      url = yd.link ?? "";
+      publishedAt = yd.pubDate ?? new Date().toISOString();
+      sourceName = "Tech Blog";
+      author = yd.author ?? null;
+      break;
+    }
+    case "itmedia": {
+      const it = article as ItmediaItem;
+      title = it.title;
+      url = it.link;
+      publishedAt = it.pubDate ?? new Date().toISOString();
+      sourceName = "ITmedia";
+      author = null;
+      break;
+    }
+    case "codezine": {
+      const cz = article as CodeZineItem;
+      title = cz.title;
+      url = cz.link;
+      publishedAt = cz.pubDate ?? new Date().toISOString();
+      sourceName = "CodeZine";
+      author = null;
+      break;
+    }
+    case "zdnet": {
+      const z = article as ZdnetItem;
+      title = z.title;
+      url = z.link;
+      publishedAt = z.date ?? new Date().toISOString();
+      sourceName = "ZDNet Japan";
+      author = z.creator ?? null;
+      break;
+    }
+    default: {
+      const a = article as NewsApiArticle;
+      title = a.title;
+      url = a.url ?? "";
+      publishedAt = a.publishedAt ?? new Date().toISOString();
+      sourceName = a.source?.name ?? null;
+      author = a.author ?? null;
+    }
   }
 
   return {
@@ -135,7 +160,7 @@ export async function POST(request: Request) {
     selectedSources = body.sources || [];
   } catch {
     // If parsing fails or no sources provided, default to all sources
-    selectedSources = ["newsapi", "qiita", "github", "yamadashy", "itmedia", "codezine"];
+    selectedSources = ["newsapi", "qiita", "github", "yamadashy", "itmedia", "codezine", "zdnet"];
   }
 
   const results: {
@@ -173,6 +198,10 @@ export async function POST(request: Request) {
     fetchPromises.push(searchCodeZine(20));
     sourceOrder.push("codezine");
   }
+  if (selectedSources.includes("zdnet")) {
+    fetchPromises.push(searchZdnet(20));
+    sourceOrder.push("zdnet");
+  }
 
   const fetchedResults = await Promise.all(fetchPromises);
 
@@ -200,6 +229,7 @@ export async function POST(request: Request) {
     ...(resultsBySource.codezine
       ? resultsBySource.codezine.map((a) => normalize(a, "codezine"))
       : []),
+    ...(resultsBySource.zdnet ? resultsBySource.zdnet.map((a) => normalize(a, "zdnet")) : []),
   ]).slice(0, MAX_ARTICLES);
 
   // Build a single result with keyword "latest"
