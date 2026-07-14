@@ -48,6 +48,13 @@ function normalize(
     publishedAt = gh.created_at;
     sourceName = "GitHub";
     author = gh.owner.login;
+  } else if ("content" in q) {
+    // Qiita (Atom) - MUST come before Yamadashy check because QiitaFeedItem also has `link`
+    title = q.title;
+    url = typeof q.link === "string" ? q.link : q.link["@_href"];
+    publishedAt = q.published ?? new Date().toISOString();
+    sourceName = "Qiita";
+    author = q.author?.name ?? null;
   } else if ("guid" in it) {
     // ITmedia RSS item
     title = it.title;
@@ -69,13 +76,6 @@ function normalize(
     publishedAt = yd.pubDate ?? new Date().toISOString();
     sourceName = "Tech Blog";
     author = yd.author ?? null;
-  } else if ("content" in q) {
-    // Qiita (Atom)
-    title = q.title;
-    url = typeof q.link === "string" ? q.link : q.link["@_href"];
-    publishedAt = q.published ?? new Date().toISOString();
-    sourceName = "Qiita";
-    author = q.author?.name ?? null;
   } else {
     // NewsAPI
     const a = article as NewsApiArticle;
