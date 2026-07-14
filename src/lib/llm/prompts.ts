@@ -5,12 +5,12 @@ Description: {{description}}
 
 Score one dimension 0-10:
 
-usefulness (技術者・テックリーダー視点の有用性): How valuable is this article for an engineer or tech leader?
-  - 10: Deep technical insight + strategic impact, novel approach, benchmark data, architecture decisions
-  - 7-9: Technical details, significant business/technology strategy, competitive analysis with technical depth
-  - 4-6: Product announcements with technical or competitive context, incremental updates
-  - 1-3: General news, purely operational or niche detail, marketing fluff
-  - 0: No value for either technical or strategic perspective
+usefulness (技術者・テックリーダー視点の有用性): この記事は「エンジニアやテックリーダーにとって」どれだけ有用かを評価してください。一般的な有用性（大衆受けや広汎な人気、消費者向けの訴求力）ではなく、技術的・戦略的な価値のみを評価の対象とします。
+  - 10: 深い技術的洞察＋戦略的インパクト、新規アプローチ、ベンチマークデータ、アーキテクチャ決定、具体的な実装指針
+  - 7-9: 技術的詳細、重要な事業/技術戦略、技術的深さのある競合分析、エンジニア/リーダーが実行可能な意思決定
+  - 4-6: 明確な技術・競合文脈を伴う製品/機能発表、関連性のある段階的アップデート
+  - 1-3: 技術的・戦略的深度の薄い一般的なテックニュース、運用上の細部、マーケティング色の強い記事
+  - 0: エンジニアやテックリーダーにとって価値がない（消費者/ライフスタイル向け、または技術的・戦略的示唆のない一般ニュース）
 
 Output format (no markdown, no extra text):
 {
@@ -28,5 +28,12 @@ Output ONLY valid JSON (a JSON object). Use exactly this structure:
   ]
 }
 One entry per article, in the same order. No markdown, no extra text.
+
+Usefulness criteria (技術者・テックリーダー視点の有用性): この記事は「エンジニアやテックリーダーにとって」どれだけ有用かを評価してください。一般的な有用性（大衆受けや広汎な人気、消費者向けの訴求力）ではなく、技術的・戦略的な価値のみを評価の対象とします。
+  - 10: 深い技術的洞察＋戦略的インパクト、新規アプローチ、ベンチマークデータ、アーキテクチャ決定、具体的な実装指針
+  - 7-9: 技術的詳細、重要な事業/技術戦略、技術的深さのある競合分析、エンジニア/リーダーが実行可能な意思決定
+  - 4-6: 明確な技術・競合文脈を伴う製品/機能発表、関連性のある段階的アップデート
+  - 1-3: 技術的・戦略的深度の薄い一般的なテックニュース、運用上の細部、マーケティング色の強い記事
+  - 0: エンジニアやテックリーダーにとって価値がない（消費者/ライフスタイル向け、または技術的・戦略的示唆のない一般ニュース）
 
 {{articles}}`;
