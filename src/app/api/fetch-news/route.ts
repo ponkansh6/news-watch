@@ -16,9 +16,19 @@ import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 // Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
 
+export const SUPPORTED_SOURCE_IDS = [
+  "newsapi",
+  "qiita",
+  "github",
+  "yamadashy",
+  "itmedia",
+  "codezine",
+  "zdnet",
+];
+
 const MAX_ARTICLES = 20;
 
-function normalize(
+export function normalize(
   article:
     | NewsApiArticle
     | QiitaFeedItem
@@ -160,7 +170,7 @@ export async function POST(request: Request) {
     selectedSources = body.sources || [];
   } catch {
     // If parsing fails or no sources provided, default to all sources
-    selectedSources = ["newsapi", "qiita", "github", "yamadashy", "itmedia", "codezine", "zdnet"];
+    selectedSources = SUPPORTED_SOURCE_IDS;
   }
 
   const results: {

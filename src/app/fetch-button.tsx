@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { SOURCES } from "@/lib/sources";
 
 interface FetchResult {
   keyword: string;
@@ -10,15 +11,6 @@ interface FetchResult {
   processed: number;
   errors: string[];
 }
-
-const SOURCES = [
-  { id: "newsapi", name: "NewsAPI", color: "bg-green-500" },
-  { id: "qiita", name: "Qiita", color: "bg-purple-500" },
-  { id: "github", name: "GitHub", color: "bg-gray-700" },
-  { id: "yamadashy", name: "Tech Blog", color: "bg-emerald-500" },
-  { id: "itmedia", name: "ITmedia", color: "bg-red-500" },
-  { id: "codezine", name: "CodeZine", color: "bg-orange-600" },
-];
 
 export default function FetchButton() {
   const [loading, setLoading] = useState(false);
