@@ -1,5 +1,7 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { beforeAll } from "vitest";
+import { db } from "../src/lib/db";
 
 // Load .env.local so Vitest has the same env as the Next.js dev server,
 // EXCEPT the Turso credentials (by default). The `db` module falls back to an
@@ -31,3 +33,35 @@ try {
 } catch {
   // .env.local missing — tests relying on it will be skipped by their guards.
 }
+
+// Apply all migrations to the in-memory DB BEFORE any test runs.
+// Registered as a global beforeAll so Vitest awaits completion before tests.
+// If a migration is missing (e.g. schema.ts changed but `db:generate` was
+// forgotten), the table won't exist and schema-consistency tests will FAIL —
+// surfacing migration drift in CI / pre-push hook instead of production.
+const migrationsDir = resolve(__dirname, "../src/lib/db/migrations");
+
+async function applyMigrations() {
+  const files = readdirSync(migrationsDir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  for (const file of files) {
+    const sql = readFileSync(join(migrationsDir, file), "utf-8");
+    const statements = sql
+      .split(/--> statement-breakpoint|;/)
+      .map((s) => s.trim())
+      .filter((s) => s !== "");
+    for (const stmt of statements) {
+      try {
+        await db.$client.execute(stmt);
+      } catch (e) {
+        console.error(`[setup] Failed to apply migration ${file}: ${stmt}`);
+        throw e;
+      }
+    }
+  }
+}
+
+beforeAll(async () => {
+  await applyMigrations();
+});

@@ -9,18 +9,6 @@ vi.stubGlobal("fetch", mockFetch);
 
 beforeAll(async () => {
   vi.useFakeTimers();
-  await db.$client.execute(`CREATE TABLE IF NOT EXISTS hatena_feeds (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    domain TEXT NOT NULL UNIQUE,
-    feed_url TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active',
-    bookmark_count INTEGER NOT NULL DEFAULT 0,
-    last_fetched_at TEXT,
-    error_count INTEGER NOT NULL DEFAULT 0,
-    last_error TEXT,
-    discovered_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  )`);
 });
 
 beforeEach(async () => {

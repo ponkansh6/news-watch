@@ -1,3 +1,4 @@
 #!/bin/sh
 
 pnpm exec tsgo --noEmit
+pnpm exec vitest run tests/db/schema-consistency.test.ts
