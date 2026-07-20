@@ -188,18 +188,16 @@ External APIs (NewsAPI, Qiita, GitHub, Hatena Bookmark, RSS feeds)
 
 ### Hatena Discovery Pipeline
 
-**Trigger**: Daily QStash cron (03:00 JST) → `POST /api/discover-hatena`
+**Trigger**: `fetch-news` API 呼び出し時に Hatena 記事が 0 件の場合、自動的に実行。
 
 **Steps**:
 
-1. Call Hatena Hotentry `https://b.hatena.ne.jp/hotentry/it?page=1..3`
-2. Parse response as HTML
-3. Extract `*.hatenablog.com` domains via regex from links and paths
-4. Deduplicate by domain, keep highest `bookmark_count`
-5. For each domain, fetch homepage HTML and parse `<link rel="alternate" type="application/rss+xml" href="...">`
-6. Fallback to `https://{domain}/rss` if autodiscovery fails
-7. UPSERT into `hatena_feeds` table (`status='active'`, update `bookmarkCount`)
-8. Ingestion (`fetch-news`) reads `feedUrl` from `hatena_feeds WHERE status='active'`
+1. Call Hatena Hotentry/Entrylist RSS `https://b.hatena.ne.jp/hotentry/it.rss` および `https://b.hatena.ne.jp/entrylist/it.rss`
+2. Parse response as XML (RSS 1.0)
+3. Extract `*.hatenablog.com` domains from `<link>` elements
+4. Deduplicate by domain
+5. UPSERT into `hatena_feeds` table (`status='active'`, `feedUrl='https://{domain}/rss'`)
+6. Ingestion (`fetch-news`) reads `feedUrl` from `hatena_feeds WHERE status='active'`
 
 **Rate Limit Mitigation**:
 

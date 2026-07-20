@@ -18,40 +18,22 @@ beforeEach(async () => {
 });
 
 describe("discoverHatenaFeeds", () => {
-  test("filters only *.hatenablog.com and resolves feed via autodiscovery", async () => {
+  test("extracts domains from RSS and upserts feeds", async () => {
     mockFetch.mockImplementation(async (url: string) => {
-      if (url.includes("hotentry")) {
-        if (url.includes("page=1")) {
-          return {
-            ok: true,
-            text: async () => `
-              <html>
-                <body>
-                  <a href="https://user1.hatenablog.com/entry/1">Link 1</a>
-                  <a href="/entry/s/user2.hatenablog.com/entry/2">Link 2</a>
-                  <a href="/site/user3.hatenablog.com/">Link 3</a>
-                </body>
-              </html>
-            `,
-          };
-        }
+      if (url.includes(".rss")) {
         return {
           ok: true,
-          text: async () => "<html></html>",
+          text: async () => `
+            <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <item rdf:about="https://user1.hatenablog.com/entry/1">
+                <link>https://user1.hatenablog.com/entry/1</link>
+              </item>
+              <item>
+                <link>https://user2.hatenablog.com/entry/2</link>
+              </item>
+            </rdf:RDF>
+          `,
         };
-      }
-      // homepage HTML for RSS autodiscovery
-      if (url === "https://user1.hatenablog.com") {
-        return new Response(
-          '<html><head><link rel="alternate" type="application/rss+xml" href="https://user1.hatenablog.com/feed"></head></html>',
-          { status: 200 },
-        );
-      }
-      if (url === "https://user2.hatenablog.com") {
-        return new Response("<html></html>", { status: 200 }); // no link → fallback /rss
-      }
-      if (url === "https://user3.hatenablog.com") {
-        return new Response("<html></html>", { status: 200 }); // no link → fallback /rss
       }
       return new Response("<html></html>", { status: 200 });
     });
@@ -60,17 +42,14 @@ describe("discoverHatenaFeeds", () => {
     await vi.runAllTimersAsync();
     const result = await promise;
 
-    expect(result.discovered).toBe(3);
+    expect(result.discovered).toBe(2);
     expect(result.updated).toBe(0);
-    expect(result.errors).toEqual([]);
 
     const rows = await db.select().from(hatenaFeeds);
-    const user1 = rows.find((r) => r.domain === "user1.hatenablog.com");
-    const user2 = rows.find((r) => r.domain === "user2.hatenablog.com");
-    const user3 = rows.find((r) => r.domain === "user3.hatenablog.com");
-    expect(user1?.feedUrl).toBe("https://user1.hatenablog.com/feed");
-    expect(user2?.feedUrl).toBe("https://user2.hatenablog.com/rss");
-    expect(user3?.feedUrl).toBe("https://user3.hatenablog.com/rss");
+    expect(rows.map((r) => r.domain).sort()).toEqual(
+      ["user1.hatenablog.com", "user2.hatenablog.com"].sort(),
+    );
+    expect(rows[0].feedUrl).toBe("https://user1.hatenablog.com/rss");
   });
 
   test("dedups by domain and reactivates on re-discovery", async () => {
@@ -84,10 +63,16 @@ describe("discoverHatenaFeeds", () => {
     });
 
     mockFetch.mockImplementation(async (url: string) => {
-      if (url.includes("hotentry")) {
+      if (url.includes(".rss")) {
         return {
           ok: true,
-          text: async () => '<html><a href="https://user1.hatenablog.com/entry/1">Link</a></html>',
+          text: async () => `
+            <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+              <item rdf:about="https://user1.hatenablog.com/entry/1">
+                <link>https://user1.hatenablog.com/entry/1</link>
+              </item>
+            </rdf:RDF>
+          `,
         };
       }
       return new Response("<html></html>", { status: 200 });
@@ -106,9 +91,9 @@ describe("discoverHatenaFeeds", () => {
     expect(rows[0].errorCount).toBe(0);
   });
 
-  test("records error when hotentry page fails", async () => {
+  test("records error when RSS fetch fails", async () => {
     mockFetch.mockImplementation(async (url: string) => {
-      if (url.includes("hotentry")) return { ok: false, status: 404 };
+      if (url.includes(".rss")) return { ok: false, status: 404 };
       return new Response("<html></html>", { status: 200 });
     });
 

@@ -8,6 +8,7 @@ import { searchITmedia, type ItmediaItem } from "@/lib/news/itmedia";
 import { searchCodeZine, type CodeZineItem } from "@/lib/news/codezine";
 import { searchZdnet, type ZdnetItem } from "@/lib/news/zdnet";
 import { searchHatena, type HatenaItem } from "@/lib/news/hatena";
+import { discoverHatenaFeeds } from "@/lib/news/hatena-discovery";
 import { deleteOrphanedArticles, deleteLowScoredArticles, upsertArticle } from "@/lib/db/actions";
 import { type NormalizedArticle } from "@/lib/types";
 import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
@@ -225,7 +226,13 @@ export async function POST(request: Request) {
     sourceOrder.push("zdnet");
   }
   if (selectedSources.includes("hatena")) {
-    fetchPromises.push(searchHatena(20));
+    let hatena = await searchHatena(20);
+    if (hatena.length === 0) {
+      console.log("[hatena] No active feeds, running discovery...");
+      await discoverHatenaFeeds();
+      hatena = await searchHatena(20);
+    }
+    fetchPromises.push(Promise.resolve(hatena));
     sourceOrder.push("hatena");
   }
 

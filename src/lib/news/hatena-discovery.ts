@@ -2,13 +2,14 @@ import { db } from "@/lib/db";
 import { hatenaFeeds } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
-const HATENA_HOTENTRY_URL = "https://b.hatena.ne.jp/hotentry";
-const CATEGORY = "it"; // technology category
-const MAX_PAGES = 3; // paginate through first 3 pages
+const HATENA_HOTENTRY_RSS_URL = "https://b.hatena.ne.jp/hotentry/it.rss";
+const HATENA_ENTRYLIST_RSS_URL = "https://b.hatena.ne.jp/entrylist/it.rss";
 const REQUEST_DELAY_MS = 1000; // polite delay between requests
 const MAX_RETRIES = 3;
 const MAX_ERROR_COUNT = 5; // auto-disable after 5 consecutive errors
 const HATENA_PROXY_URL = process.env.HATENA_PROXY_URL;
+
+import { XMLParser } from "fast-xml-parser";
 
 let proxyDispatcher: any = undefined;
 try {
@@ -83,50 +84,27 @@ async function fetchWithRetry(url: string, retries = MAX_RETRIES): Promise<Respo
   return null;
 }
 
-function extractHatenablogDomainsFromHtml(html: string): Map<string, number> {
-  // Returns Map<domain, maxBookmarkCount> — bookmarkCount is 0 for hotentry
-  const map = new Map<string, number>();
+function extractArticlesFromHatenaRss(xml: string): { url: string; domain: string }[] {
+  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+  const parsed = parser.parse(xml);
+  const items = parsed?.["rdf:RDF"]?.item ?? parsed?.rss?.channel?.item ?? [];
+  const itemList = Array.isArray(items) ? items : [items];
 
-  // Regex patterns for hatenablog.com domains
-  const patterns = [
-    /https?:\/\/([a-z0-9-]+\.hatenablog\.com)/g,
-    /\/entry\/s\/([a-z0-9-]+\.hatenablog\.com)/g,
-    /\/site\/([a-z0-9-]+\.hatenablog\.com)/g,
-  ];
-
-  for (const pattern of patterns) {
-    let match;
-    while ((match = pattern.exec(html)) !== null) {
-      const domain = match[1];
-      if (domain && !map.has(domain)) {
-        map.set(domain, 0); // bookmarkCount not available from hotentry
+  const results: { url: string; domain: string }[] = [];
+  for (const item of itemList) {
+    const link = item.link ?? item["@_rdf:about"];
+    if (typeof link === "string") {
+      try {
+        const url = new URL(link);
+        if (url.hostname.endsWith(".hatenablog.com")) {
+          results.push({ url: link, domain: url.hostname });
+        }
+      } catch {
+        // ignore invalid URLs
       }
     }
   }
-  return map;
-}
-
-async function discoverFeedUrl(domain: string): Promise<string | null> {
-  // Hatena Blog RSS is always at https://{domain}/rss
-  // But we verify via HTML autodiscovery for robustness
-  const homepage = `https://${domain}`;
-  try {
-    const res = await politeFetch(homepage, { headers: { Accept: "text/html" } });
-    if (!res.ok) return `https://${domain}/rss`; // fallback to standard path
-    const html = await res.text();
-    // Parse <link rel="alternate" type="application/rss+xml" href="...">
-    const match =
-      html.match(
-        /<link[^>]+rel=["']alternate["'][^>]+type=["']application\/rss\+xml["'][^>]+href=["']([^"']+)["']/i,
-      ) ??
-      html.match(
-        /<link[^>]+href=["']([^"']+)["'][^>]+rel=["']alternate["'][^>]+type=["']application\/rss\+xml["']/i,
-      );
-    if (match?.[1]) return match[1];
-    return `https://${domain}/rss`;
-  } catch {
-    return `https://${domain}/rss`;
-  }
+  return results;
 }
 
 async function upsertFeed(domain: string, feedUrl: string, bookmarkCount: number) {
@@ -163,30 +141,26 @@ export async function discoverHatenaFeeds(): Promise<{
   let discovered = 0;
   let updated = 0;
 
-  // Fetch paginated hotentry
-  const allDomains = new Map<string, number>();
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const url = `${HATENA_HOTENTRY_URL}/${CATEGORY}?page=${page}`;
+  const allDomains = new Set<string>();
+  const rssUrls = [HATENA_HOTENTRY_RSS_URL, HATENA_ENTRYLIST_RSS_URL];
+
+  for (const url of rssUrls) {
     const res = await fetchWithRetry(url);
     if (!res?.ok) {
-      errors.push(`Page ${page}: HTTP ${res?.status ?? "network error"}`);
+      errors.push(`RSS ${url}: HTTP ${res?.status ?? "network error"}`);
       continue;
     }
 
-    const html = await res.text();
-    const domains = extractHatenablogDomainsFromHtml(html);
+    const xml = await res.text();
+    const articles = extractArticlesFromHatenaRss(xml);
 
-    for (const [domain, count] of domains) {
-      allDomains.set(domain, Math.max(allDomains.get(domain) ?? 0, count));
+    for (const article of articles) {
+      allDomains.add(article.domain);
     }
   }
 
-  for (const [domain, bookmarkCount] of allDomains) {
-    const feedUrl = await discoverFeedUrl(domain);
-    if (!feedUrl) {
-      errors.push(`Failed to resolve feed for ${domain}`);
-      continue;
-    }
+  for (const domain of allDomains) {
+    const feedUrl = `https://${domain}/rss`;
 
     // Check if existing to count as discovered vs updated
     const existing = await db
@@ -195,8 +169,7 @@ export async function discoverHatenaFeeds(): Promise<{
       .where(eq(hatenaFeeds.domain, domain))
       .limit(1);
 
-    const resolvedCount = Math.max(existing[0]?.bookmarkCount ?? 0, bookmarkCount);
-    await upsertFeed(domain, feedUrl, resolvedCount);
+    await upsertFeed(domain, feedUrl, 0);
     if (existing.length) updated++;
     else discovered++;
   }
