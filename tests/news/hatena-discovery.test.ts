@@ -29,7 +29,7 @@ describe("discoverHatenaFeeds", () => {
                 <link>https://user1.hatenablog.com/entry/1</link>
               </item>
               <item>
-                <link>https://user2.hatenablog.com/entry/2</link>
+                <link>https://example.com/entry/2</link>
               </item>
             </rdf:RDF>
           `,
@@ -47,9 +47,9 @@ describe("discoverHatenaFeeds", () => {
 
     const rows = await db.select().from(hatenaFeeds);
     expect(rows.map((r) => r.domain).sort()).toEqual(
-      ["user1.hatenablog.com", "user2.hatenablog.com"].sort(),
+      ["example.com", "user1.hatenablog.com"].sort(),
     );
-    expect(rows[0].feedUrl).toBe("https://user1.hatenablog.com/rss");
+    expect(rows.find((r) => r.domain === "example.com")?.feedUrl).toBe("https://example.com/rss");
   });
 
   test("dedups by domain and reactivates on re-discovery", async () => {

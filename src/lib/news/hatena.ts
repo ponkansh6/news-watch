@@ -1,5 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
-import { getActiveFeedUrls, recordFeedError, recordFeedSuccess } from "@/lib/news/hatena-discovery";
+import { HATENA_HOTENTRY_RSS_URL, HATENA_ENTRYLIST_RSS_URL } from "@/lib/news/hatena-discovery";
 
 export interface HatenaItem {
   title: string;
@@ -15,52 +15,38 @@ const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_
 
 function parseHatenaRss(xml: string): HatenaItem[] {
   const parsed = parser.parse(xml);
-  const channel = parsed?.rss?.channel;
-  if (!channel?.item) return [];
-  const items: any[] = Array.isArray(channel.item) ? channel.item : [channel.item];
-  return items.map((i) => ({
+  const items = parsed?.["rdf:RDF"]?.item ?? parsed?.rss?.channel?.item ?? [];
+  const itemList = Array.isArray(items) ? items : [items];
+  return itemList.map((i: any) => ({
     title: i.title,
-    link: i.link,
+    link: i.link ?? i["@_rdf:about"],
     description: i.description,
     pubDate: i.pubDate,
     author: i["dc:creator"] ?? i.author ?? null,
-    guid: i.guid,
+    guid: i.guid ?? i.link,
     category: i.category,
   }));
 }
 
 export async function searchHatena(limit = 50): Promise<HatenaItem[]> {
-  const feedUrls = await getActiveFeedUrls();
-  if (feedUrls.length === 0) {
-    console.warn("[hatena] No active feeds discovered yet. Run discovery first.");
-    return [];
-  }
-
+  const rssUrls = [HATENA_HOTENTRY_RSS_URL, HATENA_ENTRYLIST_RSS_URL];
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
-
   try {
     const results = await Promise.all(
-      feedUrls.map(async (url) => {
+      rssUrls.map(async (url) => {
         try {
           const res = await fetch(url, {
             signal: controller.signal,
             headers: { "User-Agent": "news-watch/1.0 (+https://github.com/shunki/news-watch)" },
           });
           if (!res.ok) {
-            const domain = new URL(url).hostname;
-            await recordFeedError(domain, `HTTP ${res.status}`);
             console.warn(`[hatena] HTTP ${res.status} for ${url}`);
             return [] as HatenaItem[];
           }
           const xml = await res.text();
-          const items = parseHatenaRss(xml);
-          const domain = new URL(url).hostname;
-          await recordFeedSuccess(domain);
-          return items;
+          return parseHatenaRss(xml);
         } catch (err) {
-          const domain = new URL(url).hostname;
-          await recordFeedError(domain, err instanceof Error ? err.message : String(err));
           console.warn(`[hatena] fetch/parse error for ${url}:`, err);
           return [] as HatenaItem[];
         }

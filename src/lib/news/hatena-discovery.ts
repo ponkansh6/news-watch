@@ -2,8 +2,8 @@ import { db } from "@/lib/db";
 import { hatenaFeeds } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
-const HATENA_HOTENTRY_RSS_URL = "https://b.hatena.ne.jp/hotentry/it.rss";
-const HATENA_ENTRYLIST_RSS_URL = "https://b.hatena.ne.jp/entrylist/it.rss";
+export const HATENA_HOTENTRY_RSS_URL = "https://b.hatena.ne.jp/hotentry/it.rss";
+export const HATENA_ENTRYLIST_RSS_URL = "https://b.hatena.ne.jp/entrylist/it.rss";
 const REQUEST_DELAY_MS = 1000; // polite delay between requests
 const MAX_RETRIES = 3;
 const MAX_ERROR_COUNT = 5; // auto-disable after 5 consecutive errors
@@ -96,9 +96,7 @@ function extractArticlesFromHatenaRss(xml: string): { url: string; domain: strin
     if (typeof link === "string") {
       try {
         const url = new URL(link);
-        if (url.hostname.endsWith(".hatenablog.com")) {
-          results.push({ url: link, domain: url.hostname });
-        }
+        results.push({ url: link, domain: url.hostname });
       } catch {
         // ignore invalid URLs
       }
