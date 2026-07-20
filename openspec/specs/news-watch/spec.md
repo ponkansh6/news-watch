@@ -3,7 +3,7 @@ title: News Watch
 status: Active
 version: 1.0.0
 created_at: 2026-06-01
-updated_at: 2026-07-09
+updated_at: 2026-07-20
 authors: [shunki]
 ---
 
@@ -22,7 +22,7 @@ authors: [shunki]
 - Fetching news from multiple external providers (NewsAPI)
 - Dynamic discovery of Hatena Blog feeds via Hatena Bookmark API
 - Periodic feed discovery via scheduled cron (QStash)
-- LLM-based scoring (relevance + usefulness) + algorithmic recency scoring
+- Vector similarity (relevance) + LLM-based usefulness scoring + algorithmic recency scoring
 - Japanese summary generation (20-40 characters)
 - Dashboard display with sort/filter capabilities
 - SQLite persistence via Drizzle ORM
@@ -53,7 +53,7 @@ authors: [shunki]
 - **Acceptance Criteria**:
   - WHEN news is fetched from NewsAPI
   - THEN each article is scored along three dimensions:
-    - Relevance (30%): LLM judges how directly related the article is to the keyword (0-10)
+    - Relevance (30%): Vector similarity between article and keyword embedding, normalized from 0-1 to 0-10
     - Usefulness (40%): LLM judges technical/engineering value (0-10)
     - Recency (30%): Algorithmic score — within 1 day=10, 3 days=8, 7 days=6, 14 days=4, 30 days=2, older=0
   - AND the weighted composite score (`relevance×0.3 + usefulness×0.4 + recency×0.3`) is stored
@@ -115,25 +115,25 @@ authors: [shunki]
 
 ### articles (SQLite via Drizzle ORM — `src/lib/db/schema.ts`)
 
-| Field         | Type    | Description                                                    |
-| ------------- | ------- | -------------------------------------------------------------- |
-| `id`          | integer | Primary key (auto-increment)                                   |
-| `title`       | text    | The headline of the article                                    |
-| `description` | text    | A brief description or snippet from the source                 |
-| `url`         | text    | Unique URL for deduplication                                   |
-| `urlToImage`  | text    | URL to the article's main image                                |
-| `publishedAt` | text    | Publication timestamp                                          |
-| `sourceName`  | text    | Name of the news source (e.g., BBC, CNN)                       |
-| `author`      | text    | Author of the article                                          |
-| `keyword`     | text    | Primary keyword/category for the article                       |
-| `summary`     | text    | AI-generated summary (20-40 chars, Japanese)                   |
-| `relevance`   | real    | LLM-scored relevance to the keyword (0-10)                     |
-| `usefulness`  | real    | LLM-scored technical usefulness (0-10)                         |
-| `recency`     | real    | Algorithmic score based on publication freshness (0-10)        |
-| `score`       | real    | Composite score = relevance×0.3 + usefulness×0.4 + recency×0.3 |
-| `reason`      | text    | LLM-generated explanation (Japanese)                           |
-| `scoredAt`    | text    | Timestamp when scoring occurred                                |
-| `createdAt`   | text    | Timestamp when the record was created in the local DB          |
+| Field         | Type    | Description                                                      |
+| ------------- | ------- | ---------------------------------------------------------------- |
+| `id`          | integer | Primary key (auto-increment)                                     |
+| `title`       | text    | The headline of the article                                      |
+| `description` | text    | A brief description or snippet from the source                   |
+| `url`         | text    | Unique URL for deduplication                                     |
+| `urlToImage`  | text    | URL to the article's main image                                  |
+| `publishedAt` | text    | Publication timestamp                                            |
+| `sourceName`  | text    | Name of the news source (e.g., BBC, CNN)                         |
+| `author`      | text    | Author of the article                                            |
+| `keyword`     | text    | Primary keyword/category for the article                         |
+| `summary`     | text    | AI-generated summary (20-40 chars, Japanese)                     |
+| `relevance`   | real    | Vector similarity score to the keyword (0-1, normalized to 0-10) |
+| `usefulness`  | real    | LLM-scored technical usefulness (0-10)                           |
+| `recency`     | real    | Algorithmic score based on publication freshness (0-10)          |
+| `score`       | real    | Composite score = relevance×0.3 + usefulness×0.4 + recency×0.3   |
+| `reason`      | text    | LLM-generated explanation (Japanese)                             |
+| `scoredAt`    | text    | Timestamp when scoring occurred                                  |
+| `createdAt`   | text    | Timestamp when the record was created in the local DB            |
 
 **Indexes:**
 
@@ -175,7 +175,7 @@ Layout (src/app/layout.tsx)
 ```
 External APIs (NewsAPI, Qiita, GitHub, Hatena Bookmark, RSS feeds)
   → src/lib/news/ (Fetchers + Discovery)
-    → src/lib/llm/openrouter.ts (LLM: relevance + usefulness + summary)
+    → src/lib/llm/gemini.ts (LLM: usefulness + summary) + src/lib/vector-filter.ts (vector similarity: relevance)
     → src/app/api/fetch-news/route.ts (calcRecencyScore + weighted composite)
       → src/lib/db/actions.ts (Persistence)
           → SQLite Database (articles + hatena_feeds)
@@ -217,7 +217,7 @@ External APIs (NewsAPI, Qiita, GitHub, Hatena Bookmark, RSS feeds)
 ```
 composite = relevance × 0.3 + usefulness × 0.4 + recency × 0.3
 
-relevance  : LLM判定 (0-10) — キーワードとの関連性
+relevance  : ベクトル類似度 (0-1→0-10正規化) — キーワード埋め込みとの余弦類似度
 usefulness : LLM判定 (0-10) — 技術者視点での有用性
 recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準）
 ```
@@ -281,3 +281,10 @@ Hybrid scoring combines LLM-based relevance/usefulness scoring with a vector pre
 
 - **Fetch Cap**: The fetch endpoint caps total articles at 20 (latest articles only)
 - **LLM Batching**: Articles are scored in batches of 4 per LLM request, grouped by assigned keyword
+
+### 9.6 Recency Delta Refresh
+
+- fetch-news 実行時に、selectedSources に含まれる sourceId の全記事（今回 fetch されたもの＋されなかった既存記事）について recency を再計算し、`score += (newRecency - oldRecency) × 0.3` で差分更新する。
+- similarity / usefulness は再計算せず既存値を維持する。
+- recency リフレッシュ日時は `recencyRefreshedAt` カラムに記録する。
+- score は 0–10 にクランプする。

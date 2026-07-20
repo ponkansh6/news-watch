@@ -1,0 +1,1 @@
+ALTER TABLE `articles` ADD `recency_refreshed_at` text;

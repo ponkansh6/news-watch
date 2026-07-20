@@ -52,6 +52,7 @@ export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<numb
             // `score` stays null for failed ones; completion is based on
             // `scoredAt` (processed), not on a successful score.
             scoredAt: new Date().toISOString(),
+            recencyRefreshedAt: new Date().toISOString(),
             embedding: JSON.stringify(embedding),
           });
         } catch (err) {

@@ -29,6 +29,13 @@
       "when": 1784091882097,
       "tag": "0003_old_shen",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784548553713,
+      "tag": "0004_abandoned_lady_deathstrike",
+      "breakpoints": true
     }
   ]
 }

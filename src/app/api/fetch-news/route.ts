@@ -9,7 +9,12 @@ import { searchCodeZine, type CodeZineItem } from "@/lib/news/codezine";
 import { searchZdnet, type ZdnetItem } from "@/lib/news/zdnet";
 import { searchHatena, type HatenaItem } from "@/lib/news/hatena";
 import { discoverHatenaFeeds } from "@/lib/news/hatena-discovery";
-import { deleteOrphanedArticles, deleteLowScoredArticles, upsertArticle } from "@/lib/db/actions";
+import {
+  deleteOrphanedArticles,
+  deleteLowScoredArticles,
+  upsertArticle,
+  refreshRecencyForSources,
+} from "@/lib/db/actions";
 import { type NormalizedArticle } from "@/lib/types";
 import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
 import { tagArticlesByKeyword } from "@/lib/vector-filter";
@@ -273,6 +278,16 @@ export async function POST(request: Request) {
     saved?: number;
     errors: string[];
   };
+
+  if (selectedSources.length > 0) {
+    try {
+      const fetchedUrls = all.map((a) => a.url);
+      await refreshRecencyForSources(selectedSources, fetchedUrls);
+    } catch (e) {
+      console.error(`[fetch-news] Recency refresh failed:`, e);
+      result.errors.push(`Recency refresh failed: ${e}`);
+    }
+  }
 
   const since = new Date().toISOString();
 

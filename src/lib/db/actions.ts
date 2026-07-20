@@ -1,6 +1,7 @@
 import { db } from "./index";
 import { articles, hatenaFeeds } from "./schema";
 import { desc, isNotNull, notInArray, and, lt, inArray, eq } from "drizzle-orm";
+import { calcRecencyScore } from "../scoring";
 
 export interface ArticleInsert {
   title: string;
@@ -16,6 +17,7 @@ export interface ArticleInsert {
   relevance: number | null;
   usefulness: number | null;
   recency: number | null;
+  recencyRefreshedAt?: string | null;
   reason: string | null;
   scoredAt: string | null;
   score: number | null;
@@ -42,6 +44,7 @@ export async function upsertArticle(data: ArticleInsert) {
           relevance: data.relevance,
           usefulness: data.usefulness,
           recency: data.recency,
+          recencyRefreshedAt: data.recencyRefreshedAt,
           summary: data.summary,
           reason: data.reason,
           scoredAt: data.scoredAt,
@@ -136,5 +139,47 @@ export async function reactivateHatenaFeed(id: number) {
   } catch (err) {
     console.error(`[db] reactivateHatenaFeed error for id=${id}:`, err);
     return false;
+  }
+}
+
+/** Refresh recency and update score for existing articles in sources. */
+export async function refreshRecencyForSources(
+  sourceIds: string[],
+  excludeUrls: string[],
+): Promise<number> {
+  try {
+    const targetArticles = await db
+      .select({
+        url: articles.url,
+        recency: articles.recency,
+        score: articles.score,
+        publishedAt: articles.publishedAt,
+      })
+      .from(articles)
+      .where(and(inArray(articles.sourceId, sourceIds), notInArray(articles.url, excludeUrls)));
+
+    let updatedCount = 0;
+    for (const article of targetArticles) {
+      if (article.score === null) continue;
+
+      const oldRecency = article.recency ?? 0;
+      const newRecency = calcRecencyScore(article.publishedAt);
+      const delta = (newRecency - oldRecency) * 0.3;
+      const newScore = Math.max(0, Math.min(10, article.score + delta));
+
+      await db
+        .update(articles)
+        .set({
+          recency: newRecency,
+          score: newScore,
+          recencyRefreshedAt: new Date().toISOString(),
+        })
+        .where(eq(articles.url, article.url));
+      updatedCount++;
+    }
+    return updatedCount;
+  } catch (err) {
+    console.error(`[db] refreshRecencyForSources error:`, err);
+    return 0;
   }
 }

@@ -23,6 +23,7 @@ export const articles = sqliteTable(
     relevance: real("relevance"),
     usefulness: real("usefulness"),
     recency: real("recency"),
+    recencyRefreshedAt: text("recency_refreshed_at"),
     reason: text("reason"),
     scoredAt: text("scored_at"),
     score: real("score"),
