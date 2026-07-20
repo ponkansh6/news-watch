@@ -13,14 +13,31 @@ export interface HatenaItem {
 
 const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
 
+export function decodeEntities(input: unknown): string {
+  if (input == null) return "";
+  const str = typeof input === "object" ? ((input as any)["#text"] ?? "") : String(input);
+  if (!str) return "";
+  return str
+    .replace(/&#x([0-9a-fA-F]+);/g, (_: string, hex: string) =>
+      String.fromCodePoint(parseInt(hex, 16)),
+    )
+    .replace(/&#(\d+);/g, (_: string, dec: string) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ");
+}
+
 function parseHatenaRss(xml: string): HatenaItem[] {
   const parsed = parser.parse(xml);
   const items = parsed?.["rdf:RDF"]?.item ?? parsed?.rss?.channel?.item ?? [];
   const itemList = Array.isArray(items) ? items : [items];
   return itemList.map((i: any) => ({
-    title: i.title,
+    title: decodeEntities(i.title),
     link: i.link ?? i["@_rdf:about"],
-    description: i.description,
+    description: decodeEntities(i.description),
     pubDate: i.pubDate,
     author: i["dc:creator"] ?? i.author ?? null,
     guid: i.guid ?? i.link,
