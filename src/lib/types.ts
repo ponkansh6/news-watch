@@ -2,6 +2,7 @@ import type { NewsApiArticle } from "@/lib/news/newsapi";
 import type { QiitaFeedItem } from "@/lib/news/qiita";
 import type { GitHubRepo } from "@/lib/news/github";
 import type { YamadashyItem } from "@/lib/news/yamadashy";
+import type { HatenaItem } from "@/lib/news/hatena";
 
 export interface NormalizedArticle {
   title: string;
@@ -19,4 +20,10 @@ export type ArticleInput = {
   description: string | null;
 };
 
-export type { NewsApiArticle, QiitaFeedItem as QiitaArticle, GitHubRepo, YamadashyItem };
+export type {
+  NewsApiArticle,
+  QiitaFeedItem as QiitaArticle,
+  GitHubRepo,
+  YamadashyItem,
+  HatenaItem,
+};

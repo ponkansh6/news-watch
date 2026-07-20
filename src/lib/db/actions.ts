@@ -1,6 +1,6 @@
 import { db } from "./index";
-import { articles } from "./schema";
-import { desc, isNotNull, notInArray, and, lt, inArray } from "drizzle-orm";
+import { articles, hatenaFeeds } from "./schema";
+import { desc, isNotNull, notInArray, and, lt, inArray, eq } from "drizzle-orm";
 
 export interface ArticleInsert {
   title: string;
@@ -105,5 +105,36 @@ export async function getAllArticles(limit = 10) {
   } catch (err) {
     console.warn(`[db] query error:`, err);
     return [];
+  }
+}
+
+/** Get all Hatena feeds, ordered by error count (desc) then last fetched (desc). */
+export async function getHatenaFeeds() {
+  try {
+    return await db
+      .select()
+      .from(hatenaFeeds)
+      .orderBy(desc(hatenaFeeds.errorCount), desc(hatenaFeeds.lastFetchedAt));
+  } catch (err) {
+    console.warn(`[db] getHatenaFeeds error:`, err);
+    return [];
+  }
+}
+
+/** Reactivate a Hatena feed by ID. */
+export async function reactivateHatenaFeed(id: number) {
+  try {
+    const result = await db
+      .update(hatenaFeeds)
+      .set({
+        status: "active",
+        errorCount: 0,
+        lastError: null,
+      })
+      .where(eq(hatenaFeeds.id, id));
+    return result.rowsAffected > 0;
+  } catch (err) {
+    console.error(`[db] reactivateHatenaFeed error for id=${id}:`, err);
+    return false;
   }
 }

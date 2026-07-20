@@ -49,3 +49,40 @@ export const keywordEmbeddings = sqliteTable("keyword_embeddings", {
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
 });
+
+/**
+ * Discovered Hatena Blog RSS feeds.
+ * - domain: e.g. "user.hatenablog.com" (unique key for deduplication)
+ * - feedUrl: resolved RSS URL (e.g. "https://user.hatenablog.com/rss")
+ * - status: "active" | "inactive" | "error" — controls whether searchHatena reads it
+ * - bookmarkCount: popularity signal from Hatena Bookmark (for ranking/prioritization)
+ * - lastFetchedAt: last successful fetch timestamp (for staleness detection)
+ * - errorCount: consecutive fetch errors (for auto-disable after N failures)
+ * - discoveredAt / updatedAt: audit trail
+ */
+export const hatenaFeeds = sqliteTable(
+  "hatena_feeds",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    domain: text("domain").notNull().unique(), // e.g. "user.hatenablog.com"
+    feedUrl: text("feed_url").notNull(), // e.g. "https://user.hatenablog.com/rss"
+    status: text("status", { enum: ["active", "inactive", "error"] })
+      .notNull()
+      .default("active"),
+    bookmarkCount: integer("bookmark_count").notNull().default(0),
+    lastFetchedAt: text("last_fetched_at"), // ISO timestamp
+    errorCount: integer("error_count").notNull().default(0),
+    lastError: text("last_error"), // last error message
+    discoveredAt: text("discovered_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+    updatedAt: text("updated_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString())
+      .$onUpdateFn(() => new Date().toISOString()),
+  },
+  (table) => ({
+    statusIdx: index("idx_hatena_feeds_status").on(table.status),
+    domainIdx: index("idx_hatena_feeds_domain").on(table.domain),
+  }),
+);

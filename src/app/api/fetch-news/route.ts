@@ -7,6 +7,7 @@ import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
 import { searchITmedia, type ItmediaItem } from "@/lib/news/itmedia";
 import { searchCodeZine, type CodeZineItem } from "@/lib/news/codezine";
 import { searchZdnet, type ZdnetItem } from "@/lib/news/zdnet";
+import { searchHatena, type HatenaItem } from "@/lib/news/hatena";
 import { deleteOrphanedArticles, deleteLowScoredArticles, upsertArticle } from "@/lib/db/actions";
 import { type NormalizedArticle } from "@/lib/types";
 import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
@@ -24,6 +25,7 @@ export const SUPPORTED_SOURCE_IDS = [
   "itmedia",
   "codezine",
   "zdnet",
+  "hatena",
 ];
 
 const MAX_ARTICLES = 20;
@@ -36,7 +38,8 @@ export function normalize(
     | YamadashyItem
     | ItmediaItem
     | CodeZineItem
-    | ZdnetItem,
+    | ZdnetItem
+    | HatenaItem,
   sourceId: string,
 ): NormalizedArticle {
   const n = article as NewsApiArticle;
@@ -109,6 +112,15 @@ export function normalize(
       publishedAt = z.date ?? new Date().toISOString();
       sourceName = "ZDNet Japan";
       author = z.creator ?? null;
+      break;
+    }
+    case "hatena": {
+      const h = article as HatenaItem;
+      title = h.title;
+      url = h.link;
+      publishedAt = h.pubDate ?? new Date().toISOString();
+      sourceName = "Hatena Blog";
+      author = h.author ?? null;
       break;
     }
     default: {
@@ -212,6 +224,10 @@ export async function POST(request: Request) {
     fetchPromises.push(searchZdnet(20));
     sourceOrder.push("zdnet");
   }
+  if (selectedSources.includes("hatena")) {
+    fetchPromises.push(searchHatena(20));
+    sourceOrder.push("hatena");
+  }
 
   const fetchedResults = await Promise.all(fetchPromises);
 
@@ -240,6 +256,7 @@ export async function POST(request: Request) {
       ? resultsBySource.codezine.map((a) => normalize(a, "codezine"))
       : []),
     ...(resultsBySource.zdnet ? resultsBySource.zdnet.map((a) => normalize(a, "zdnet")) : []),
+    ...(resultsBySource.hatena ? resultsBySource.hatena.map((a) => normalize(a, "hatena")) : []),
   ]).slice(0, MAX_ARTICLES);
 
   // Build a single result with keyword "latest"
