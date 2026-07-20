@@ -192,25 +192,27 @@ External APIs (NewsAPI, Qiita, GitHub, Hatena Bookmark, RSS feeds)
 
 **Steps**:
 
-1. Call Hatena Bookmark API `https://b.hatena.ne.jp/entrylist/json?category=it&page=1..3`
-2. Filter entries where URL hostname matches `*.hatenablog.com`
-3. Deduplicate by domain, keep highest `bookmark_count`
-4. For each domain, fetch homepage HTML and parse `<link rel="alternate" type="application/rss+xml" href="...">`
-5. Fallback to `https://{domain}/rss` if autodiscovery fails
-6. UPSERT into `hatena_feeds` table (`status='active'`, update `bookmarkCount`)
-7. Ingestion (`fetch-news`) reads `feedUrl` from `hatena_feeds WHERE status='active'`
+1. Call Hatena Hotentry `https://b.hatena.ne.jp/hotentry/it?page=1..3`
+2. Parse response as HTML
+3. Extract `*.hatenablog.com` domains via regex from links and paths
+4. Deduplicate by domain, keep highest `bookmark_count`
+5. For each domain, fetch homepage HTML and parse `<link rel="alternate" type="application/rss+xml" href="...">`
+6. Fallback to `https://{domain}/rss` if autodiscovery fails
+7. UPSERT into `hatena_feeds` table (`status='active'`, update `bookmarkCount`)
+8. Ingestion (`fetch-news`) reads `feedUrl` from `hatena_feeds WHERE status='active'`
 
 **Rate Limit Mitigation**:
 
 - Max 3 API calls per discovery run (1 per page)
 - 1s delay between requests
 - Respect `Retry-After` on 429
-- Optional proxy via `HATENA_PROXY_URL` env var for fixed egress IP
+- `HATENA_PROXY_URL` env var is used by `politeFetch` to route requests through a dedicated IP (via `undici` ProxyAgent) to avoid Vercel's shared egress IP rate limits.
 
 **Failure Handling**:
 
 - RSS fetch errors increment `errorCount`; auto-disable at 5 consecutive failures
 - Discovery errors logged but don't block other domains
+- **Test Strategy**: Real-connection integration tests (enabled via `RUN_LIVE_TESTS=1`) are available to reproduce commercial connection errors locally.
 
 ### Scoring Formula
 

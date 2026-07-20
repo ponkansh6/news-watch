@@ -8,7 +8,8 @@ const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
 beforeAll(async () => {
-  await db.run(sql`CREATE TABLE IF NOT EXISTS hatena_feeds (
+  vi.useFakeTimers();
+  await db.$client.execute(`CREATE TABLE IF NOT EXISTS hatena_feeds (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     domain TEXT NOT NULL UNIQUE,
     feed_url TEXT NOT NULL,
@@ -23,7 +24,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await db.run(sql`DELETE FROM hatena_feeds`);
+  await db.$client.execute(`DELETE FROM hatena_feeds`);
   vi.clearAllMocks();
   vi.stubGlobal("fetch", mockFetch);
 });
@@ -31,20 +32,25 @@ beforeEach(async () => {
 describe("discoverHatenaFeeds", () => {
   test("filters only *.hatenablog.com and resolves feed via autodiscovery", async () => {
     mockFetch.mockImplementation(async (url: string) => {
-      if (url.includes("entrylist/json")) {
+      if (url.includes("hotentry")) {
         if (url.includes("page=1")) {
           return {
             ok: true,
-            json: async () => ({
-              entries: [
-                { link: "https://user1.hatenablog.com/entry/1", count: 10 },
-                { link: "https://other.com/entry/1", count: 100 }, // excluded (not hatenablog.com)
-                { link: "https://user2.hatenablog.com/entry/2", count: 5 },
-              ],
-            }),
+            text: async () => `
+              <html>
+                <body>
+                  <a href="https://user1.hatenablog.com/entry/1">Link 1</a>
+                  <a href="/entry/s/user2.hatenablog.com/entry/2">Link 2</a>
+                  <a href="/site/user3.hatenablog.com/">Link 3</a>
+                </body>
+              </html>
+            `,
           };
         }
-        return { ok: true, json: async () => ({ entries: [] }) };
+        return {
+          ok: true,
+          text: async () => "<html></html>",
+        };
       }
       // homepage HTML for RSS autodiscovery
       if (url === "https://user1.hatenablog.com") {
@@ -56,25 +62,30 @@ describe("discoverHatenaFeeds", () => {
       if (url === "https://user2.hatenablog.com") {
         return new Response("<html></html>", { status: 200 }); // no link → fallback /rss
       }
+      if (url === "https://user3.hatenablog.com") {
+        return new Response("<html></html>", { status: 200 }); // no link → fallback /rss
+      }
       return new Response("<html></html>", { status: 200 });
     });
 
-    const result = await discoverHatenaFeeds();
+    const promise = discoverHatenaFeeds();
+    await vi.runAllTimersAsync();
+    const result = await promise;
 
-    expect(result.discovered).toBe(2);
+    expect(result.discovered).toBe(3);
     expect(result.updated).toBe(0);
     expect(result.errors).toEqual([]);
 
     const rows = await db.select().from(hatenaFeeds);
     const user1 = rows.find((r) => r.domain === "user1.hatenablog.com");
     const user2 = rows.find((r) => r.domain === "user2.hatenablog.com");
-    const other = rows.find((r) => r.domain === "other.com");
-    expect(other).toBeUndefined();
+    const user3 = rows.find((r) => r.domain === "user3.hatenablog.com");
     expect(user1?.feedUrl).toBe("https://user1.hatenablog.com/feed");
     expect(user2?.feedUrl).toBe("https://user2.hatenablog.com/rss");
+    expect(user3?.feedUrl).toBe("https://user3.hatenablog.com/rss");
   });
 
-  test("dedups by domain keeping max bookmarkCount and reactivates on re-discovery", async () => {
+  test("dedups by domain and reactivates on re-discovery", async () => {
     // pre-existing row marked as error
     await db.insert(hatenaFeeds).values({
       domain: "user1.hatenablog.com",
@@ -85,42 +96,37 @@ describe("discoverHatenaFeeds", () => {
     });
 
     mockFetch.mockImplementation(async (url: string) => {
-      if (url.includes("entrylist/json")) {
-        if (url.includes("page=1")) {
-          return {
-            ok: true,
-            json: async () => ({
-              entries: [
-                { link: "https://user1.hatenablog.com/entry/1", count: 20 },
-                { link: "https://user1.hatenablog.com/entry/2", count: 8 }, // same domain, lower count
-              ],
-            }),
-          };
-        }
-        return { ok: true, json: async () => ({ entries: [] }) };
+      if (url.includes("hotentry")) {
+        return {
+          ok: true,
+          text: async () => '<html><a href="https://user1.hatenablog.com/entry/1">Link</a></html>',
+        };
       }
       return new Response("<html></html>", { status: 200 });
     });
 
-    const result = await discoverHatenaFeeds();
+    const promise = discoverHatenaFeeds();
+    await vi.runAllTimersAsync();
+    const result = await promise;
 
     expect(result.discovered).toBe(0);
     expect(result.updated).toBe(1);
 
     const rows = await db.select().from(hatenaFeeds);
     expect(rows).toHaveLength(1);
-    expect(rows[0].bookmarkCount).toBe(20); // GREATEST kept
     expect(rows[0].status).toBe("active"); // reactivated
     expect(rows[0].errorCount).toBe(0);
   });
 
-  test("records error when Bookmark API page fails", async () => {
+  test("records error when hotentry page fails", async () => {
     mockFetch.mockImplementation(async (url: string) => {
-      if (url.includes("entrylist/json")) return { ok: false, status: 404 };
+      if (url.includes("hotentry")) return { ok: false, status: 404 };
       return new Response("<html></html>", { status: 200 });
     });
 
-    const result = await discoverHatenaFeeds();
+    const promise = discoverHatenaFeeds();
+    await vi.runAllTimersAsync();
+    const result = await promise;
 
     expect(result.discovered).toBe(0);
     expect(result.errors.length).toBeGreaterThan(0);

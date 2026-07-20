@@ -2,17 +2,34 @@ import { db } from "@/lib/db";
 import { hatenaFeeds } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
-const HATENA_BOOKMARK_API = "https://b.hatena.ne.jp/entrylist/json";
+const HATENA_HOTENTRY_URL = "https://b.hatena.ne.jp/hotentry";
 const CATEGORY = "it"; // technology category
-const MAX_PAGES = 3; // paginate through first 3 pages (each page ~30 entries)
+const MAX_PAGES = 3; // paginate through first 3 pages
 const REQUEST_DELAY_MS = 1000; // polite delay between requests
 const MAX_RETRIES = 3;
 const MAX_ERROR_COUNT = 5; // auto-disable after 5 consecutive errors
+const HATENA_PROXY_URL = process.env.HATENA_PROXY_URL;
+
+let proxyDispatcher: any = undefined;
+try {
+  if (HATENA_PROXY_URL) {
+    try {
+      require.resolve("undici");
+      // @ts-ignore
+      const { ProxyAgent } = require("undici");
+      proxyDispatcher = new ProxyAgent(HATENA_PROXY_URL);
+    } catch {
+      // undici not found, ignore
+    }
+  }
+} catch (e) {
+  console.warn("[hatena-discovery] Failed to load ProxyAgent, falling back to direct fetch", e);
+}
 
 // Rate-limit guard: track last request time per process (Vercel cold starts reset this)
 let lastRequestAt = 0;
 
-async function politeFetch(url: string, init?: RequestInit): Promise<Response> {
+export async function politeFetch(url: string, init?: RequestInit): Promise<Response> {
   const now = Date.now();
   const wait = Math.max(0, REQUEST_DELAY_MS - (now - lastRequestAt));
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
@@ -20,6 +37,9 @@ async function politeFetch(url: string, init?: RequestInit): Promise<Response> {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  const dispatcher = proxyDispatcher;
+
   try {
     return await fetch(url, {
       ...init,
@@ -29,6 +49,8 @@ async function politeFetch(url: string, init?: RequestInit): Promise<Response> {
         Accept: "application/json",
         ...init?.headers,
       },
+      // @ts-expect-error: dispatcher is a Node-specific fetch extension
+      dispatcher,
     });
   } finally {
     clearTimeout(timeout);
@@ -61,21 +83,24 @@ async function fetchWithRetry(url: string, retries = MAX_RETRIES): Promise<Respo
   return null;
 }
 
-function extractHatenablogDomains(entries: any[]): Map<string, number> {
-  // Returns Map<domain, maxBookmarkCount> — keep highest bookmark count per domain
+function extractHatenablogDomainsFromHtml(html: string): Map<string, number> {
+  // Returns Map<domain, maxBookmarkCount> — bookmarkCount is 0 for hotentry
   const map = new Map<string, number>();
-  for (const entry of entries) {
-    const url = entry?.link || entry?.url;
-    if (!url) continue;
-    try {
-      const u = new URL(url);
-      if (u.hostname.endsWith(".hatenablog.com") || u.hostname === "hatenablog.com") {
-        const domain = u.hostname; // e.g. "user.hatenablog.com"
-        const count = entry.count ?? entry.bookmark_count ?? 0;
-        map.set(domain, Math.max(map.get(domain) ?? 0, count));
+
+  // Regex patterns for hatenablog.com domains
+  const patterns = [
+    /https?:\/\/([a-z0-9-]+\.hatenablog\.com)/g,
+    /\/entry\/s\/([a-z0-9-]+\.hatenablog\.com)/g,
+    /\/site\/([a-z0-9-]+\.hatenablog\.com)/g,
+  ];
+
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      const domain = match[1];
+      if (domain && !map.has(domain)) {
+        map.set(domain, 0); // bookmarkCount not available from hotentry
       }
-    } catch {
-      // ignore malformed URLs
     }
   }
   return map;
@@ -138,47 +163,42 @@ export async function discoverHatenaFeeds(): Promise<{
   let discovered = 0;
   let updated = 0;
 
-  // Fetch paginated entrylist
+  // Fetch paginated hotentry
+  const allDomains = new Map<string, number>();
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const url = `${HATENA_BOOKMARK_API}?category=${CATEGORY}&page=${page}`;
+    const url = `${HATENA_HOTENTRY_URL}/${CATEGORY}?page=${page}`;
     const res = await fetchWithRetry(url);
     if (!res?.ok) {
       errors.push(`Page ${page}: HTTP ${res?.status ?? "network error"}`);
-      break;
-    }
-
-    let data: any;
-    try {
-      data = await res.json();
-    } catch {
-      errors.push(`Page ${page}: invalid JSON`);
       continue;
     }
 
-    const entries = data?.entries ?? data ?? [];
-    if (!entries.length) break; // no more pages
+    const html = await res.text();
+    const domains = extractHatenablogDomainsFromHtml(html);
 
-    const domains = extractHatenablogDomains(entries);
-    for (const [domain, bookmarkCount] of domains) {
-      const feedUrl = await discoverFeedUrl(domain);
-      if (!feedUrl) {
-        errors.push(`Failed to resolve feed for ${domain}`);
-        continue;
-      }
-
-      // Check if existing to count as discovered vs updated, and resolve
-      // bookmarkCount to the running maximum (libsql lacks SQL GREATEST()).
-      const existing = await db
-        .select({ id: hatenaFeeds.id, bookmarkCount: hatenaFeeds.bookmarkCount })
-        .from(hatenaFeeds)
-        .where(eq(hatenaFeeds.domain, domain))
-        .limit(1);
-
-      const resolvedCount = Math.max(existing[0]?.bookmarkCount ?? 0, bookmarkCount);
-      await upsertFeed(domain, feedUrl, resolvedCount);
-      if (existing.length) updated++;
-      else discovered++;
+    for (const [domain, count] of domains) {
+      allDomains.set(domain, Math.max(allDomains.get(domain) ?? 0, count));
     }
+  }
+
+  for (const [domain, bookmarkCount] of allDomains) {
+    const feedUrl = await discoverFeedUrl(domain);
+    if (!feedUrl) {
+      errors.push(`Failed to resolve feed for ${domain}`);
+      continue;
+    }
+
+    // Check if existing to count as discovered vs updated
+    const existing = await db
+      .select({ id: hatenaFeeds.id, bookmarkCount: hatenaFeeds.bookmarkCount })
+      .from(hatenaFeeds)
+      .where(eq(hatenaFeeds.domain, domain))
+      .limit(1);
+
+    const resolvedCount = Math.max(existing[0]?.bookmarkCount ?? 0, bookmarkCount);
+    await upsertFeed(domain, feedUrl, resolvedCount);
+    if (existing.length) updated++;
+    else discovered++;
   }
 
   return { discovered, updated, errors };
