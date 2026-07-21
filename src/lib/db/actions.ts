@@ -12,7 +12,7 @@ export interface ArticleInsert {
   sourceName: string | null;
   sourceId: string | null;
   author: string | null;
-  keyword: string;
+  keyword: string | null;
   summary: string | null;
   relevance: number | null;
   usefulness: number | null;

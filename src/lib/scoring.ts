@@ -40,6 +40,7 @@ export function softmax(values: number[], temperature = 1.0): number[] {
 export function normalizeSimilaritiesWithTagged(tagged: ArticleWithTag[]): ArticleWithTag[] {
   const byKeyword = new Map<string, ArticleWithTag[]>();
   for (const t of tagged) {
+    if (t.keyword === null) continue; // Skip untagged articles
     const list = byKeyword.get(t.keyword) || [];
     list.push(t);
     byKeyword.set(t.keyword, list);

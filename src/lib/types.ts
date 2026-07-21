@@ -18,7 +18,7 @@ export interface NormalizedArticle {
 export interface ArticleWithTag {
   article: NormalizedArticle;
   embedding: number[];
-  keyword: string; // best-matching term (highest vector similarity)
+  keyword: string | null; // best-matching term (highest vector similarity), null if below threshold
   similarity: number; // cosine similarity to the best-matching term
 }
 

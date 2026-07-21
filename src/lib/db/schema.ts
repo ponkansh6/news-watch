@@ -18,7 +18,7 @@ export const articles = sqliteTable(
     sourceName: text("source_name"),
     sourceId: text("source_id"),
     author: text("author"),
-    keyword: text("keyword").notNull(),
+    keyword: text("keyword"),
     summary: text("summary"),
     relevance: real("relevance"),
     usefulness: real("usefulness"),

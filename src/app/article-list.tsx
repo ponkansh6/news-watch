@@ -10,7 +10,7 @@ interface Article {
   sourceName: string | null;
   sourceId: string | null;
   author: string | null;
-  keyword: string;
+  keyword: string | null;
   summary: string | null;
   relevance: number | null;
   usefulness: number | null;
@@ -121,9 +121,15 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
               <time dateTime={article.publishedAt} className="text-neutral-500">
                 {formatDate(article.publishedAt)}
               </time>
-              <span className={`rounded border px-2 py-0.5 ${getKeywordColor(article.keyword)}`}>
-                {article.keyword}
-              </span>
+              {article.keyword ? (
+                <span className={`rounded border px-2 py-0.5 ${getKeywordColor(article.keyword)}`}>
+                  {article.keyword}
+                </span>
+              ) : (
+                <span className="rounded border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-neutral-400">
+                  タグなし
+                </span>
+              )}
               {article.reason && (
                 <span className="italic text-neutral-400" title={article.reason}>
                   {article.reason.length > 30 ? article.reason.slice(0, 30) + "…" : article.reason}

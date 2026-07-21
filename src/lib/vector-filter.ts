@@ -10,9 +10,18 @@ import {
 import { and, inArray, isNotNull } from "drizzle-orm";
 
 /**
+ * Minimum normalized similarity score (0-10 scale) required for a keyword tag
+ * to be assigned. Articles whose best-matching keyword scores below this
+ * threshold are returned with `keyword: null` (no tag assigned) but are still
+ * saved to the DB and displayed.
+ */
+export const TAGGING_THRESHOLD = 6.0;
+
+/**
  * Tag each article with the keyword (from the provided vocabulary) that has the
- * highest vector similarity. Every article is assigned a tag — there is no
- * threshold filtering.
+ * highest vector similarity. Articles whose best-matching keyword scores below
+ * TAGGING_THRESHOLD are returned with `keyword: null` (no tag assigned) but are
+ * still included in results for display.
  *
  * Embedding cost is minimized by reusing embeddings already stored in the DB:
  * - Article embeddings are reused by URL (set during upsert).
@@ -140,7 +149,7 @@ export async function tagArticlesByKeyword(
     const embedding =
       existingEmbeddings.get(article.url) ?? batchResults.get(`art:${article.url}`) ?? [];
 
-    let bestKeyword = keywordEmbeddings[0].keyword;
+    let bestKeyword: string | null = null;
     let bestSim = -Infinity;
     for (const { keyword, embedding: kwEmb } of keywordEmbeddings) {
       const sim = cosineSimilarity(kwEmb, embedding);
@@ -148,6 +157,10 @@ export async function tagArticlesByKeyword(
         bestSim = sim;
         bestKeyword = keyword;
       }
+    }
+    // Apply threshold: articles below TAGGING_THRESHOLD are not tagged
+    if (bestSim * 10 < TAGGING_THRESHOLD) {
+      return { article, embedding, keyword: null, similarity: bestSim };
     }
     return { article, embedding, keyword: bestKeyword, similarity: bestSim };
   });
