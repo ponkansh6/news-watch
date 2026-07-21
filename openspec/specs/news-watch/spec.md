@@ -115,25 +115,28 @@ authors: [shunki]
 
 ### articles (SQLite via Drizzle ORM — `src/lib/db/schema.ts`)
 
-| Field         | Type    | Description                                                      |
-| ------------- | ------- | ---------------------------------------------------------------- |
-| `id`          | integer | Primary key (auto-increment)                                     |
-| `title`       | text    | The headline of the article                                      |
-| `description` | text    | A brief description or snippet from the source                   |
-| `url`         | text    | Unique URL for deduplication                                     |
-| `urlToImage`  | text    | URL to the article's main image                                  |
-| `publishedAt` | text    | Publication timestamp                                            |
-| `sourceName`  | text    | Name of the news source (e.g., BBC, CNN)                         |
-| `author`      | text    | Author of the article                                            |
-| `keyword`     | text    | Primary keyword/category for the article                         |
-| `summary`     | text    | AI-generated summary (20-40 chars, Japanese)                     |
-| `relevance`   | real    | Vector similarity score to the keyword (0-1, normalized to 0-10) |
-| `usefulness`  | real    | LLM-scored technical usefulness (0-10)                           |
-| `recency`     | real    | Algorithmic score based on publication freshness (0-10)          |
-| `score`       | real    | Composite score = relevance×0.3 + usefulness×0.4 + recency×0.3   |
-| `reason`      | text    | LLM-generated explanation (Japanese)                             |
-| `scoredAt`    | text    | Timestamp when scoring occurred                                  |
-| `createdAt`   | text    | Timestamp when the record was created in the local DB            |
+| Field                | Type    | Description                                                      |
+| -------------------- | ------- | ---------------------------------------------------------------- |
+| `id`                 | integer | Primary key (auto-increment)                                     |
+| `title`              | text    | The headline of the article                                      |
+| `description`        | text    | A brief description or snippet from the source                   |
+| `url`                | text    | Unique URL for deduplication                                     |
+| `urlToImage`         | text    | URL to the article's main image                                  |
+| `publishedAt`        | text    | Publication timestamp                                            |
+| `sourceName`         | text    | Name of the news source (e.g., BBC, CNN)                         |
+| `author`             | text    | Author of the article                                            |
+| `keyword`            | text    | Primary keyword/category for the article                         |
+| `summary`            | text    | AI-generated summary (20-40 chars, Japanese)                     |
+| `relevance`          | real    | Vector similarity score to the keyword (0-1, normalized to 0-10) |
+| `usefulness`         | real    | LLM-scored technical usefulness (0-10)                           |
+| `recency`            | real    | Algorithmic score based on publication freshness (0-10)          |
+| `score`              | real    | Composite score = relevance×0.3 + usefulness×0.4 + recency×0.3   |
+| `reason`             | text    | LLM-generated explanation (Japanese)                             |
+| `sourceId`           | text    | Internal source identifier (e.g., newsapi, hatena, qiita, zdnet) |
+| `recencyRefreshedAt` | text    | Timestamp of last recency delta refresh                          |
+| `scoredAt`           | text    | Timestamp when scoring occurred                                  |
+| `createdAt`          | text    | Timestamp when the record was created in the local DB            |
+| `embedding`          | text    | JSON-serialized vector embedding of the article (for cache)      |
 
 **Indexes:**
 
@@ -158,6 +161,17 @@ authors: [shunki]
 | `updatedAt`     | text    | ISO timestamp of last update                                    |
 
 **Indexes:** `idx_hatena_feeds_status`, `idx_hatena_feeds_domain`
+
+### keyword_embeddings (SQLite via Drizzle ORM)
+
+| Field        | Type    | Description                                              |
+| ------------ | ------- | -------------------------------------------------------- |
+| `id`         | integer | Primary key (auto-increment)                             |
+| `keyword`    | text    | Keyword string, UNIQUE                                   |
+| `embedding`  | text    | JSON-serialized vector embedding for the keyword         |
+| `model`      | text    | Embedding model identifier (default: gemini-embedding-2) |
+| `dimensions` | integer | Vector dimensions (default: 768)                         |
+| `createdAt`  | text    | Timestamp when the record was created                    |
 
 ## 6. Architecture
 
@@ -280,7 +294,7 @@ Hybrid scoring combines LLM-based relevance/usefulness scoring with a vector pre
 ### 9.5 Processing Limits
 
 - **Fetch Cap**: The fetch endpoint caps total articles at 20 (latest articles only)
-- **LLM Batching**: Articles are scored in batches of 4 per LLM request, grouped by assigned keyword
+- **LLM Batching**: Articles are scored in batches of 20 per LLM request, grouped by assigned keyword
 
 ### 9.6 Recency Delta Refresh
 

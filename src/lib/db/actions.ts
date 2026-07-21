@@ -165,7 +165,7 @@ export async function refreshRecencyForSources(
       const oldRecency = article.recency ?? 0;
       const newRecency = calcRecencyScore(article.publishedAt);
       const delta = (newRecency - oldRecency) * 0.3;
-      const newScore = Math.max(0, Math.min(10, article.score + delta));
+      const newScore = Math.round(Math.max(0, Math.min(10, article.score + delta)) * 10) / 10;
 
       await db
         .update(articles)

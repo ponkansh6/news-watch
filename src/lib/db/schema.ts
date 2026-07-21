@@ -87,3 +87,4 @@ export const hatenaFeeds = sqliteTable(
     domainIdx: index("idx_hatena_feeds_domain").on(table.domain),
   }),
 );
+// test

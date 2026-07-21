@@ -3,3 +3,6 @@
 pnpm run lint:fast
 pnpm exec tsgo --noEmit
 pnpm exec lint-staged
+
+# Warn if spec-sensitive files are staged without spec.md
+bash scripts/check-spec-update.sh

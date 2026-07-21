@@ -30,6 +30,8 @@ export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<numb
         const usefulness = llmResult?.usefulness ?? null;
         const recency = calcRecencyScore(article.publishedAt);
         const composite = calcCompositeScore(similarity, usefulness, recency);
+        // Normalize similarity (0-1) to relevance (0-10), same as calcCompositeScore
+        const relevance = Math.round(Math.max(0, Math.min(1, similarity)) * 10 * 10) / 10;
         try {
           await upsertArticle({
             title: article.title,
@@ -42,7 +44,7 @@ export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<numb
             author: article.author,
             keyword,
             summary: llmResult?.summary ?? null,
-            relevance: null,
+            relevance,
             usefulness,
             recency,
             score: composite,
