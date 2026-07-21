@@ -1,5 +1,8 @@
 import { GoogleGenerativeAI, TaskType } from "@google/generative-ai";
 
+export const EMBEDDING_MODEL_VERSION = "gemini-embedding-2";
+export const EMBEDDING_DIMENSIONS = 768;
+
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 
 /**

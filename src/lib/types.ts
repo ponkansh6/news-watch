@@ -15,6 +15,13 @@ export interface NormalizedArticle {
   author: string | null;
 }
 
+export interface ArticleWithTag {
+  article: NormalizedArticle;
+  embedding: number[];
+  keyword: string; // best-matching term (highest vector similarity)
+  similarity: number; // cosine similarity to the best-matching term
+}
+
 export type ArticleInput = {
   title: string;
   description: string | null;

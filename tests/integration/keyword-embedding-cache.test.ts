@@ -16,6 +16,8 @@ const mockCosineSimilarity = vi.fn();
 vi.mock("@/lib/embeddings", () => ({
   batchEmbed: (...args: any[]) => mockBatchEmbed(...args),
   cosineSimilarity: (...args: any[]) => mockCosineSimilarity(...args),
+  EMBEDDING_MODEL_VERSION: "gemini-embedding-2",
+  EMBEDDING_DIMENSIONS: 768,
 }));
 
 const mockScoreArticles = vi.fn();

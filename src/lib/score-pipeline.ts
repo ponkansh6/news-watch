@@ -1,7 +1,11 @@
 import { scoreArticles } from "@/lib/llm/gemini";
 import { upsertArticle } from "@/lib/db/actions";
-import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
-import type { ArticleWithTag } from "@/lib/vector-filter";
+import {
+  calcRecencyScore,
+  calcCompositeScore,
+  normalizeSimilaritiesWithTagged,
+} from "@/lib/scoring";
+import type { ArticleWithTag } from "@/lib/types";
 
 /** Max articles sent to the LLM in a single scoring request. */
 const LLM_BATCH_SIZE = 20;
@@ -9,8 +13,11 @@ const LLM_BATCH_SIZE = 20;
 /** Group tagged articles by assigned keyword, score each group in batches of
  *  LLM_BATCH_SIZE via LLM, and save. Returns count of LLM-scored (saved) articles. */
 export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<number> {
+  // Normalize similarities using softmax
+  const normalizedTagged = normalizeSimilaritiesWithTagged(tagged);
+
   const byKeyword = new Map<string, ArticleWithTag[]>();
-  for (const t of tagged) {
+  for (const t of normalizedTagged) {
     const list = byKeyword.get(t.keyword);
     if (list) list.push(t);
     else byKeyword.set(t.keyword, [t]);
@@ -30,8 +37,8 @@ export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<numb
         const usefulness = llmResult?.usefulness ?? null;
         const recency = calcRecencyScore(article.publishedAt);
         const composite = calcCompositeScore(similarity, usefulness, recency);
-        // Normalize similarity (0-1) to relevance (0-10), same as calcCompositeScore
-        const relevance = Math.round(Math.max(0, Math.min(1, similarity)) * 10 * 10) / 10;
+        // similarity is already normalized to 0-10 by normalizeSimilaritiesWithTagged
+        const relevance = Math.round(Math.max(0, Math.min(10, similarity)) * 10) / 10;
         try {
           await upsertArticle({
             title: article.title,

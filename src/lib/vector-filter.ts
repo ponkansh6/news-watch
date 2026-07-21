@@ -1,5 +1,5 @@
-import type { NormalizedArticle } from "@/lib/types";
-import { batchEmbed, cosineSimilarity } from "@/lib/embeddings";
+import type { NormalizedArticle, ArticleWithTag } from "@/lib/types";
+import { batchEmbed, cosineSimilarity, EMBEDDING_MODEL_VERSION } from "@/lib/embeddings";
 import { TaskType } from "@google/generative-ai";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -8,13 +8,6 @@ import {
   keywordEmbeddings as keywordEmbeddingsTable,
 } from "@/lib/db/schema";
 import { and, inArray, isNotNull } from "drizzle-orm";
-
-export interface ArticleWithTag {
-  article: NormalizedArticle;
-  embedding: number[];
-  keyword: string; // best-matching term (highest vector similarity)
-  similarity: number; // cosine similarity to the best-matching term
-}
 
 /**
  * Tag each article with the keyword (from the provided vocabulary) that has the
@@ -60,11 +53,12 @@ export async function tagArticlesByKeyword(
       .select({
         keyword: keywordEmbeddingsTable.keyword,
         embedding: keywordEmbeddingsTable.embedding,
+        model: keywordEmbeddingsTable.model,
       })
       .from(keywordEmbeddingsTable)
       .where(inArray(keywordEmbeddingsTable.keyword, [...keywords]));
     for (const row of rows) {
-      if (row.embedding) {
+      if (row.embedding && row.model === EMBEDDING_MODEL_VERSION) {
         keywordEmbeddingMap.set(row.keyword, JSON.parse(row.embedding));
       }
     }
@@ -81,7 +75,7 @@ export async function tagArticlesByKeyword(
       missingKeywords.push(keyword);
       batchItems.push({
         text: keyword,
-        taskType: TaskType.RETRIEVAL_QUERY,
+        taskType: TaskType.SEMANTIC_SIMILARITY,
         key: `kw:${keyword}`,
       });
     }
@@ -94,7 +88,7 @@ export async function tagArticlesByKeyword(
       const content = `${articles[i].title}\n${articles[i].description || ""}`.trim();
       batchItems.push({
         text: content,
-        taskType: TaskType.RETRIEVAL_DOCUMENT,
+        taskType: TaskType.SEMANTIC_SIMILARITY,
         key: `art:${articles[i].url}`,
       });
     }
@@ -119,11 +113,15 @@ export async function tagArticlesByKeyword(
             missingKeywords.map((kw) => ({
               keyword: kw,
               embedding: JSON.stringify(batchResults.get(`kw:${kw}`) ?? []),
+              model: EMBEDDING_MODEL_VERSION,
             })),
           )
           .onConflictDoUpdate({
             target: keywordEmbeddingsTable.keyword,
-            set: { embedding: sql`excluded.embedding` },
+            set: {
+              embedding: sql`excluded.embedding`,
+              model: sql`excluded.model`,
+            },
           });
       } catch {
         // UPSERT失敗は無視（次回再試行）

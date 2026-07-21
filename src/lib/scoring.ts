@@ -1,3 +1,5 @@
+import type { ArticleWithTag } from "@/lib/types";
+
 /**
  * Algorithmic recency score (0-10) based on publishedAt freshness.
  * Used by fetch-news to calculate article scores.
@@ -24,6 +26,31 @@ export function calcCompositeScore(
   recency: number,
 ): number | null {
   if (usefulness === null) return null;
-  const normalizedSimilarity = Math.max(0, Math.min(1, similarity)) * 10;
+  // similarity is already normalized to 0-10 by normalizeSimilaritiesWithTagged
+  const normalizedSimilarity = Math.max(0, Math.min(10, similarity));
   return Math.round((normalizedSimilarity * 0.3 + usefulness * 0.4 + recency * 0.3) * 10) / 10;
+}
+
+export function softmax(values: number[], temperature = 1.0): number[] {
+  const exponents = values.map((v) => Math.exp(v / temperature));
+  const sum = exponents.reduce((a, b) => a + b, 0);
+  return exponents.map((e) => e / sum);
+}
+
+export function normalizeSimilaritiesWithTagged(tagged: ArticleWithTag[]): ArticleWithTag[] {
+  const byKeyword = new Map<string, ArticleWithTag[]>();
+  for (const t of tagged) {
+    const list = byKeyword.get(t.keyword) || [];
+    list.push(t);
+    byKeyword.set(t.keyword, list);
+  }
+
+  for (const [_, group] of byKeyword) {
+    const similarities = group.map((t) => t.similarity);
+    const normalized = softmax(similarities);
+    for (let i = 0; i < group.length; i++) {
+      group[i].similarity = normalized[i] * 10;
+    }
+  }
+  return tagged;
 }
