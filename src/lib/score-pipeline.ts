@@ -55,11 +55,14 @@ export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<numb
             recencyRefreshedAt: new Date().toISOString(),
             embedding: JSON.stringify(embedding),
           });
+          // Only count articles that were actually persisted to the DB.
+          // Previously this was outside the try-catch, causing the UI to
+          // show "N件スコアリング完了" even when all DB writes failed.
+          if (llmResult) savedCount++;
         } catch (err) {
           console.error(`[pipeline] Failed to save article "${article.title}":`, err);
           // Continue processing other articles even if one fails
         }
-        if (llmResult) savedCount++;
       }
     }
   }

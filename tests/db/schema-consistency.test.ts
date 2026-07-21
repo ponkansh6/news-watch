@@ -48,4 +48,24 @@ describe("schema consistency", () => {
       expect(createdTables, `Table ${tableName} not found in migrations`).toContain(tableName);
     }
   });
+
+  test("all columns in schema.ts should exist in database", async () => {
+    const tables = getSchemaTables();
+
+    for (const { table, name } of tables) {
+      const expectedColumns = Object.values(table)
+        .filter((val: any) => val && typeof val === "object" && "name" in val)
+        .map((col: any) => col.name);
+
+      const result = await db.$client.execute(`PRAGMA table_info(${name})`);
+
+      // Handle different result structures (e.g. array of rows or object with rows)
+      const rows = Array.isArray(result) ? result : (result as any).rows || [];
+      const actualColumns = rows.map((row: any) => row.name);
+
+      for (const col of expectedColumns) {
+        expect(actualColumns, `Column ${col} missing in table ${name}`).toContain(col);
+      }
+    }
+  });
 });

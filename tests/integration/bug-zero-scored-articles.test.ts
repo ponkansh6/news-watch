@@ -59,8 +59,9 @@ const CREATE_SQL = `
     summary TEXT,
     relevance REAL,
     usefulness REAL,
-    recency REAL,
-    reason TEXT,
+      recency REAL,
+      recency_refreshed_at TEXT,
+      reason TEXT,
     scored_at TEXT,
     score REAL,
     embedding TEXT,
@@ -408,7 +409,7 @@ describe("Scenario 7: '20件スコアリング完了' but 'スコアリング済
     expect(scored.length).toBe(ARTICLE_COUNT);
   });
 
-  it("BUG REPRO: DB write fails silently → saved=20 but DB empty → scored=0", async () => {
+  it("BUG REPRO: DB write fails → saved=0 (fixed: savedCount no longer increments on DB failure)", async () => {
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) =>
         items.map((item) => ({
@@ -418,11 +419,11 @@ describe("Scenario 7: '20件スコアリング完了' but 'スコアリング済
         })),
     );
 
-    // CRITICAL: Make db.insert throw to simulate DB failure.
-    // upsertArticle has try/catch → catches the error silently →
-    // savedCount still increments even though nothing was written.
+    // Make db.insert throw to simulate DB failure.
+    // Previously savedCount incremented even though nothing was written,
+    // causing the UI to show "N件スコアリング完了" with 0 displayed articles.
+    // FIX: savedCount now only increments after successful DB write.
     const dbObject = (dbMod as any).db;
-    const originalInsert = dbObject.insert;
     const insertSpy = vi.spyOn(dbObject, "insert").mockImplementation((..._args: any[]) => {
       throw new Error("[mock] DB write failure: Turso connection refused");
     });
@@ -432,15 +433,14 @@ describe("Scenario 7: '20件スコアリング完了' but 'スコアリング済
       const tagged = await tagArticlesByKeyword(all, KEYWORDS);
       const saved = await scoreAndSaveTagged(tagged);
 
-      // savedCount = 20 because llmResult is truthy for all articles
-      // upsertArticle caught the DB error and swallowed it, but savedCount still increments
-      expect(saved).toBe(ARTICLE_COUNT);
+      // After fix: saved=0 because all DB writes failed
+      expect(saved).toBe(0);
 
-      // DB is EMPTY — upsertArticle threw, scoreAndSaveTagged caught and continued
+      // DB is EMPTY
       const dbCount = await (dbMod as any).__client.execute("SELECT COUNT(*) as cnt FROM articles");
       expect(dbCount.rows[0].cnt).toBe(0);
 
-      // getScoredArticles returns 0 — THIS MATCHES THE PRODUCTION BUG
+      // getScoredArticles returns 0
       const scored = await getScoredArticles(100);
       expect(scored.length).toBe(0);
     } finally {

@@ -79,6 +79,7 @@ vi.mock("@/lib/db/actions", () => ({
   upsertArticle: vi.fn().mockResolvedValue(undefined),
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
+  refreshRecencyForSources: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock("@/lib/config", () => ({

@@ -58,6 +58,7 @@ beforeAll(async () => {
       relevance REAL,
       usefulness REAL,
       recency REAL,
+      recency_refreshed_at TEXT,
       reason TEXT,
       scored_at TEXT,
       score REAL,
