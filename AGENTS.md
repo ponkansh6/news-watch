@@ -9,6 +9,25 @@
 - **`git -c core.hooksPath=...` の使用禁止**: hooks のパスを差し替えて bypass する手法。`~/.local/bin/git` によりブロックされている。
 - **`GIT_CONFIG_PARAMETERS` / `GIT_CONFIG_KEY_N` 経由の hooksPath 注入禁止**: git 内部設定の環境変数経由の bypass。`~/.local/bin/git` によりブロックされている。
 
+## Git Hooks の warning 対処ルール
+
+このプロジェクトでは Husky + lint-staged により pre-commit / pre-push フックが強制実行される。フックが出力する warning を無視せず、以下の基準で対処すること。
+
+### pre-push warning: `src/ files changed but tests/ was NOT updated`
+
+- **発生条件**: `src/` 配下のファイルを変更してコミットし、push したときに、対応する `tests/` 配下のテストファイルが変更・追加されていない場合に出力される。
+- **対処**: 変更内容に応じて以下のいずれかを行う:
+  - **新規モジュールを追加した場合**: `tests/` に対応するユニットテストを作成する（例: `src/lib/news/xtech.ts` → `tests/news/xtech.test.ts`）
+  - **既存モジュールに変更を加えた場合**: 既存テストケースを確認し、必要に応じてテストを追加・更新する
+  - **テスト不要と判断した場合**: 該当するテストファイルにテストケースを追加するか、既存テストが変更をカバーしていることを確認する（例: 設定変更のみ、型定義のみの変更など）
+- **禁止**: warning を無視して `--no-verify` や `HUSKY=0` で bypass すること（下記「安全に関するルール」参照）
+- **注意**: warning が表示されても push 自体は成功するが、テスト欠落のシグナルとして必ず対処すること。push 完了後に改めてテストを追加し、別コミットとして push してもよい。
+
+### pre-commit warning 全般
+
+- lint-staged が eslint や prettier の自動修正を行った場合、警告や修正ログが出力されることがある。これらは原則自動対処されるため、手動介入は不要。
+- ただしフックが **error** で終了した場合はコミットがブロックされる。エラーメッセージを読み、原因を特定して修正してから再コミットすること。`--no-verify` での bypass は禁止。
+
 ## リソース制約
 
 - **subagentの並列実行はPCスペック上難しいため控えること。**
