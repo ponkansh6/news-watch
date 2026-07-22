@@ -11,6 +11,7 @@ export const SOURCES: SourceDef[] = [
   { id: "itmedia", name: "ITmedia", color: "bg-red-500" },
   { id: "codezine", name: "CodeZine", color: "bg-orange-600" },
   { id: "zdnet", name: "ZDNet Japan", color: "bg-blue-600" },
+  { id: "xtech", name: "日経クロステック", color: "bg-sky-700" },
   { id: "hatena", name: "Hatena Blog", color: "bg-rose-500" },
 ];
 

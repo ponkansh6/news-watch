@@ -6,6 +6,7 @@ import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
 import { searchITmedia, type ItmediaItem } from "@/lib/news/itmedia";
 import { searchCodeZine, type CodeZineItem } from "@/lib/news/codezine";
 import { searchZdnet, type ZdnetItem } from "@/lib/news/zdnet";
+import { searchXtech, type XtechItem } from "@/lib/news/xtech";
 import { searchHatena, type HatenaItem } from "@/lib/news/hatena";
 import { discoverHatenaFeeds } from "@/lib/news/hatena-discovery";
 import {
@@ -29,6 +30,7 @@ export const SUPPORTED_SOURCE_IDS = [
   "itmedia",
   "codezine",
   "zdnet",
+  "xtech",
   "hatena",
 ];
 
@@ -42,6 +44,7 @@ export function normalize(
     | ItmediaItem
     | CodeZineItem
     | ZdnetItem
+    | XtechItem
     | HatenaItem,
   sourceId: string,
 ): NormalizedArticle {
@@ -107,6 +110,15 @@ export function normalize(
       publishedAt = z.date ?? new Date().toISOString();
       sourceName = "ZDNet Japan";
       author = z.creator ?? null;
+      break;
+    }
+    case "xtech": {
+      const x = article as XtechItem;
+      title = x.title;
+      url = x.link;
+      publishedAt = x.date ?? new Date().toISOString();
+      sourceName = "日経クロステック";
+      author = x.creator ?? null;
       break;
     }
     case "hatena": {
@@ -216,6 +228,10 @@ export async function POST(request: Request) {
     fetchPromises.push(searchZdnet(20));
     sourceOrder.push("zdnet");
   }
+  if (selectedSources.includes("xtech")) {
+    fetchPromises.push(searchXtech(20));
+    sourceOrder.push("xtech");
+  }
   if (selectedSources.includes("hatena")) {
     let hatena = await searchHatena(20);
     if (hatena.length === 0) {
@@ -254,6 +270,7 @@ export async function POST(request: Request) {
       ? resultsBySource.codezine.map((a) => normalize(a, "codezine"))
       : []),
     ...(resultsBySource.zdnet ? resultsBySource.zdnet.map((a) => normalize(a, "zdnet")) : []),
+    ...(resultsBySource.xtech ? resultsBySource.xtech.map((a) => normalize(a, "xtech")) : []),
     ...(resultsBySource.hatena ? resultsBySource.hatena.map((a) => normalize(a, "hatena")) : []),
   ]).slice(0, MAX_ARTICLES);
 
