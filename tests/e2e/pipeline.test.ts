@@ -30,18 +30,6 @@ vi.mock("@/lib/news/qiita", () => ({
   ]),
 }));
 
-vi.mock("@/lib/news/github", () => ({
-  searchGitHub: vi.fn().mockResolvedValue([
-    {
-      name: "GitHub Repo",
-      html_url: "https://github.com/1",
-      description: "desc",
-      created_at: new Date().toISOString(),
-      owner: { login: "user1" },
-    },
-  ]),
-}));
-
 vi.mock("@/lib/news/yamadashy", () => ({
   searchYamadashy: vi.fn().mockResolvedValue([
     {

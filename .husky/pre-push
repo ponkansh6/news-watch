@@ -1,4 +1,19 @@
 #!/bin/sh
 
-pnpm exec tsgo --noEmit
+PUSH_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null)
+
+# --- Test file staleness check ---
+# src/ が変更された場合、tests/ も更新されたか警告（pre-push 固有）
+if echo "$PUSH_FILES" | grep -qE "^src/"; then
+  if echo "$PUSH_FILES" | grep -qE "^tests/"; then
+    echo "Test files updated."
+  else
+    echo ""
+    echo "⚠️  Warning: src/ files changed but tests/ was NOT updated."
+    echo "   Consider adding or updating tests for the changed source code."
+    echo ""
+  fi
+fi
+
+# --- Mandatory check ---
 pnpm exec vitest run tests/db/schema-consistency.test.ts

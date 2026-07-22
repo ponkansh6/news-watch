@@ -56,10 +56,6 @@ vi.mock("@/lib/news/newsapi", () => ({
   searchNewsApi: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("@/lib/news/github", () => ({
-  searchGitHub: vi.fn().mockResolvedValue([]),
-}));
-
 vi.mock("@/lib/news/itmedia", () => ({
   searchITmedia: vi.fn().mockResolvedValue([]),
 }));

@@ -163,7 +163,7 @@ describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
       const req = new NextRequest("http://localhost/api/fetch-news", {
         method: "POST",
         body: JSON.stringify({
-          sources: ["newsapi", "qiita", "github", "yamadashy", "itmedia", "codezine"],
+          sources: ["newsapi", "qiita", "yamadashy", "itmedia", "codezine"],
         }),
         headers: { "Content-Type": "application/json" },
       });

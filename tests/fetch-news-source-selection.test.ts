@@ -30,18 +30,6 @@ vi.mock("@/lib/news/qiita", () => ({
   ]),
 }));
 
-vi.mock("@/lib/news/github", () => ({
-  searchGitHub: vi.fn().mockResolvedValue([
-    {
-      name: "GitHub Repo",
-      html_url: "https://github.com/1",
-      description: "desc",
-      created_at: new Date().toISOString(),
-      owner: { login: "user1" },
-    },
-  ]),
-}));
-
 vi.mock("@/lib/news/yamadashy", () => ({
   searchYamadashy: vi.fn().mockResolvedValue([
     {
@@ -100,21 +88,6 @@ describe("fetch-news route source selection", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ sources: ["qiita"] }),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const response = await POST(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.ok).toBe(true);
-    expect(data.results[0].errors).toHaveLength(0);
-  });
-
-  test("should work when only github is selected", async () => {
-    const request = new NextRequest("http://localhost/api/fetch-news", {
-      method: "POST",
-      body: JSON.stringify({ sources: ["github"] }),
       headers: { "Content-Type": "application/json" },
     });
 

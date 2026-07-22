@@ -12,7 +12,6 @@ import { describe, expect, test, vi } from "vitest";
 import { normalize } from "@/app/api/fetch-news/route";
 import type { NewsApiArticle } from "@/lib/news/newsapi";
 import type { QiitaFeedItem } from "@/lib/news/qiita";
-import type { GitHubRepo } from "@/lib/news/github";
 import type { YamadashyItem } from "@/lib/news/yamadashy";
 import type { ItmediaItem } from "@/lib/news/itmedia";
 import type { CodeZineItem } from "@/lib/news/codezine";
@@ -76,24 +75,6 @@ describe("normalize: 各データソースの誤判定検知", () => {
     expect(r.url).toBe("https://qiita.com/u/items/abc");
     expect(r.author).toBe("u");
     expect(r.publishedAt).toBe("2026-07-02T00:00:00Z");
-  });
-
-  test("GitHub: html_url / owner.login がマップされ、sourceName=GitHub", () => {
-    const a: GitHubRepo = {
-      name: "repo",
-      description: null,
-      html_url: "https://github.com/o/repo",
-      owner: { login: "o" },
-      created_at: "2026-07-03T00:00:00Z",
-      stargazers_count: 10,
-      language: null,
-    };
-    const r = normalize(a, "github");
-    expect(r.sourceId).toBe("github");
-    expect(r.sourceName).toBe("GitHub");
-    expect(r.url).toBe("https://github.com/o/repo");
-    expect(r.author).toBe("o");
-    expect(r.publishedAt).toBe("2026-07-03T00:00:00Z");
   });
 
   test("Yamadashy: sourceName=Tech Blog", () => {

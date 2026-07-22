@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { KEYWORDS } from "@/lib/config";
 import { searchNewsApi, type NewsApiArticle } from "@/lib/news/newsapi";
 import { searchQiita, type QiitaFeedItem } from "@/lib/news/qiita";
-import { searchGitHub, type GitHubRepo } from "@/lib/news/github";
 import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
 import { searchITmedia, type ItmediaItem } from "@/lib/news/itmedia";
 import { searchCodeZine, type CodeZineItem } from "@/lib/news/codezine";
@@ -26,7 +25,6 @@ export const maxDuration = 60;
 export const SUPPORTED_SOURCE_IDS = [
   "newsapi",
   "qiita",
-  "github",
   "yamadashy",
   "itmedia",
   "codezine",
@@ -40,7 +38,6 @@ export function normalize(
   article:
     | NewsApiArticle
     | QiitaFeedItem
-    | GitHubRepo
     | YamadashyItem
     | ItmediaItem
     | CodeZineItem
@@ -75,15 +72,7 @@ export function normalize(
       author = q.author?.name ?? null;
       break;
     }
-    case "github": {
-      const gh = article as GitHubRepo;
-      title = gh.name;
-      url = gh.html_url;
-      publishedAt = gh.created_at;
-      sourceName = "GitHub";
-      author = gh.owner.login;
-      break;
-    }
+
     case "yamadashy": {
       const yd = article as YamadashyItem;
       title = yd.title;
@@ -210,10 +199,7 @@ export async function POST(request: Request) {
     fetchPromises.push(searchQiita(20));
     sourceOrder.push("qiita");
   }
-  if (selectedSources.includes("github")) {
-    fetchPromises.push(searchGitHub(20));
-    sourceOrder.push("github");
-  }
+
   if (selectedSources.includes("yamadashy")) {
     fetchPromises.push(searchYamadashy(20));
     sourceOrder.push("yamadashy");
@@ -259,7 +245,7 @@ export async function POST(request: Request) {
   const all = deduplicate([
     ...(resultsBySource.newsapi ? resultsBySource.newsapi.map((a) => normalize(a, "newsapi")) : []),
     ...(resultsBySource.qiita ? resultsBySource.qiita.map((a) => normalize(a, "qiita")) : []),
-    ...(resultsBySource.github ? resultsBySource.github.map((a) => normalize(a, "github")) : []),
+
     ...(resultsBySource.yamadashy
       ? resultsBySource.yamadashy.map((a) => normalize(a, "yamadashy"))
       : []),
