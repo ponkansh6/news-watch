@@ -16,5 +16,18 @@ if echo "$PUSH_FILES" | grep -qE "^src/"; then
   fi
 fi
 
-# --- Mandatory check ---
+# --- Schema consistency check (local in-memory DB) ---
 pnpm exec vitest run tests/db/schema-consistency.test.ts
+
+# --- Production schema drift detection ---
+# If .env.local is present, load Turso credentials and check that the
+# production DB schema matches schema.ts.  This catches drift when columns
+# were added to schema.ts but drizzle-kit push was never run against Turso.
+ENV_FILE="$(git rev-parse --show-toplevel)/.env.local"
+if [ -f "$ENV_FILE" ]; then
+  TURSO_URL=$(grep -E "^TURSO_DATABASE_URL=" "$ENV_FILE" | head -1 | cut -d= -f2-)
+  TURSO_TOKEN=$(grep -E "^TURSO_AUTH_TOKEN=" "$ENV_FILE" | head -1 | cut -d= -f2-)
+  if [ -n "$TURSO_URL" ] && [ -n "$TURSO_TOKEN" ]; then
+    scripts/check-prod-schema.sh
+  fi
+fi
