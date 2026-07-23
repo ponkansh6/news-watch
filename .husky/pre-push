@@ -28,6 +28,7 @@ if [ -f "$ENV_FILE" ]; then
   TURSO_URL=$(grep -E "^TURSO_DATABASE_URL=" "$ENV_FILE" | head -1 | cut -d= -f2-)
   TURSO_TOKEN=$(grep -E "^TURSO_AUTH_TOKEN=" "$ENV_FILE" | head -1 | cut -d= -f2-)
   if [ -n "$TURSO_URL" ] && [ -n "$TURSO_TOKEN" ]; then
-    scripts/check-prod-schema.sh
+    TURSO_DATABASE_URL="$TURSO_URL" TURSO_AUTH_TOKEN="$TURSO_TOKEN" \
+      scripts/check-prod-schema.sh
   fi
 fi
