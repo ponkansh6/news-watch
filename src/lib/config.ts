@@ -5,7 +5,7 @@ export const KEYWORDS = [
   "Softbank ソフトバンク モバイル通信 AI投資 テクノロジー",
   "KDDI au 通信キャリア モバイル IoT 5G",
   "NTT 日本電信電話 NTTデータ NTTドコモ 通信インフラ",
-  "Google 検索 GCP Android YouTube Pixel テクノロジー企業",
+  "Google 検索 GCP Android YouTube Pixel Gemini テクノロジー企業",
   "docomo ドコモ NTTドコモ モバイル通信 キャリア",
 ] as const;
 
@@ -18,6 +18,6 @@ export const KEYWORD_LABELS: Record<string, string> = {
   "Softbank ソフトバンク モバイル通信 AI投資 テクノロジー": "Softbank",
   "KDDI au 通信キャリア モバイル IoT 5G": "KDDI",
   "NTT 日本電信電話 NTTデータ NTTドコモ 通信インフラ": "NTT",
-  "Google 検索 GCP Android YouTube Pixel テクノロジー企業": "Google",
+  "Google 検索 GCP Android YouTube Pixel Gemini テクノロジー企業": "Google",
   "docomo ドコモ NTTドコモ モバイル通信 キャリア": "docomo",
 };

@@ -10,6 +10,99 @@ vi.mock("@/lib/db", async () => {
   return { db, __client: client };
 });
 
+// Mock embeddings only (Gemini Embedding API) — real LLM scoring preserved.
+// Uses content-aware mock vectors: articles matching a keyword phrase get a
+// high-similarity vector to that keyword, ensuring tag assignment succeeds.
+vi.mock("@/lib/embeddings", () => {
+  let embedCallCount = 0;
+
+  // 768-dimensional basis vectors by keyword index (orthogonal-ish for
+  // non-matching, identical for matching keyword/article pairs).
+  const KEYWORD_COUNT = 7; // must match KEYWORDS length in config.ts
+  const keywordBases: number[][] = [];
+  for (let k = 0; k < KEYWORD_COUNT; k++) {
+    const vec = new Array(768).fill(0);
+    vec[k] = 1; // orthogonal unit basis per keyword
+    keywordBases.push(vec);
+  }
+
+  // Tokenise into lowercase words for overlap matching.
+  function tokens(s: string): Set<string> {
+    return new Set(
+      s
+        .toLowerCase()
+        .split(/[\s,、。．()（）]+/)
+        .filter(Boolean),
+    );
+  }
+
+  function vectorFor(text: string): number[] {
+    // Match by word-overlap with each keyword phrase.
+    const keywordPhrases = [
+      "Anthropic Claude AI safety enterprise AI",
+      "OpenAI ChatGPT GPT-4 DALL-E 人工知能研究",
+      "Softbank ソフトバンク モバイル通信 AI投資 テクノロジー",
+      "KDDI au 通信キャリア モバイル IoT 5G",
+      "NTT 日本電信電話 NTTデータ NTTドコモ 通信インフラ",
+      "Google 検索 GCP Android YouTube Pixel Gemini テクノロジー企業",
+      "docomo ドコモ NTTドコモ モバイル通信 キャリア",
+    ];
+    const textTokens = tokens(text);
+    let bestIdx = -1;
+    let bestOverlap = 0;
+    for (let i = 0; i < keywordPhrases.length; i++) {
+      const kwTokens = tokens(keywordPhrases[i]);
+      let overlap = 0;
+      for (const t of textTokens) {
+        if (kwTokens.has(t)) overlap++;
+      }
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap;
+        bestIdx = i;
+      }
+    }
+    if (bestOverlap > 0) return [...keywordBases[bestIdx]];
+    // Unrecognised text → zero vector (similarity stays 0, below threshold)
+    return new Array(768).fill(0);
+  }
+
+  function cosineSimilarity(vecA: number[], vecB: number[]): number {
+    if (vecA.length !== vecB.length) return 0;
+    let dot = 0,
+      normA = 0,
+      normB = 0;
+    for (let i = 0; i < vecA.length; i++) {
+      dot += vecA[i] * vecB[i];
+      normA += vecA[i] * vecA[i];
+      normB += vecB[i] * vecB[i];
+    }
+    if (normA === 0 || normB === 0) return 0;
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  }
+
+  return {
+    EMBEDDING_MODEL_VERSION: "gemini-embedding-2",
+    EMBEDDING_DIMENSIONS: 768,
+    cosineSimilarity,
+    getEmbeddingRequestCount: () => embedCallCount,
+    resetEmbeddingRequestCount: () => {
+      embedCallCount = 0;
+    },
+    embedArticle: vi.fn(async (_title: string, _description: string | null) => {
+      embedCallCount++;
+      return vectorFor(`${_title}\n${_description || ""}`);
+    }),
+    embedQuery: vi.fn(async (query: string) => {
+      embedCallCount++;
+      return vectorFor(query);
+    }),
+    batchEmbed: vi.fn(async (items: { text: string }[]) => {
+      embedCallCount++;
+      return items.map((item) => vectorFor(item.text));
+    }),
+  };
+});
+
 import * as dbMod from "@/lib/db";
 import { articles } from "@/lib/db/schema";
 import { inArray, gte } from "drizzle-orm";
@@ -52,7 +145,7 @@ beforeAll(async () => {
       source_name TEXT,
       source_id TEXT,
       author TEXT,
-      keyword TEXT NOT NULL,
+      keyword TEXT,
       summary TEXT,
       relevance REAL,
       usefulness REAL,
