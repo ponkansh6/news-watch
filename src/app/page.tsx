@@ -1,5 +1,4 @@
 import { getScoredArticles } from "@/lib/db/actions";
-import { KEYWORDS } from "@/lib/config";
 import ArticleList from "./article-list";
 import FetchButton from "./fetch-button";
 
@@ -17,7 +16,6 @@ export default async function Home(props: { searchParams: Promise<{ sources?: st
     <main className="mx-auto max-w-4xl px-4 py-8">
       <header className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight">News Watch</h1>
-        <p className="mt-1 text-neutral-500">監視キーワード: {KEYWORDS.join(", ")}</p>
       </header>
 
       <section className="mb-12">
