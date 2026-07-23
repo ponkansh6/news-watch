@@ -20,6 +20,7 @@ import { KEYWORDS } from "@/lib/config";
 import { POST as fetchNewsRoute } from "@/app/api/fetch-news/route";
 import { NextRequest } from "next/server";
 import { getEmbeddingRequestCount, resetEmbeddingRequestCount } from "@/lib/embeddings";
+import { getScoredArticles } from "@/lib/db/actions";
 
 // Real end-to-end test: hits the REAL Gemini LLM, REAL embeddings API,
 // REAL Turso DB.
@@ -66,129 +67,158 @@ beforeAll(async () => {
   `);
 });
 
-describe.skipIf(!process.env.RUN_REAL_LLM_E2E || !process.env.GOOGLE_API_KEY)(
-  "Real LLM E2E Tests (all real services)",
-  () => {
-    beforeEach(() => {
-      vi.stubEnv("NODE_ENV", "development");
+describe("Real LLM E2E Tests (all real services)", () => {
+  beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "development");
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    if (lastFetchSince) {
+      await dbMod.db.delete(articles).where(gte(articles.scoredAt, lastFetchSince));
+      lastFetchSince = null;
+    }
+  });
+
+  it("Tier A: Single article scoring (real LLM)", async () => {
+    const input = [{ title: "Test Title", description: "Test Description" }];
+    const results = await scoreArticles(input);
+
+    expect(results).toHaveLength(1);
+    const res = results[0];
+    expect(res).not.toBeNull();
+    expect(res).toMatchObject({
+      summary: expect.any(String),
+      usefulness: expect.any(Number),
+      reason: expect.any(String),
     });
+    expect(res!.usefulness).toBeGreaterThanOrEqual(0);
+    expect(res!.usefulness).toBeLessThanOrEqual(10);
+  }, 70000);
 
-    afterEach(async () => {
-      await cleanup();
-      if (lastFetchSince) {
-        await dbMod.db.delete(articles).where(gte(articles.scoredAt, lastFetchSince));
-        lastFetchSince = null;
-      }
-    });
+  it("Tier B: Batch article scoring (real LLM)", async () => {
+    const input = [
+      { title: "T1", description: "D1" },
+      { title: "T2", description: "D2" },
+      { title: "T3", description: "D3" },
+      { title: "T4", description: "D4" },
+    ];
+    const results = await scoreArticles(input);
 
-    it("Tier A: Single article scoring (real LLM)", async () => {
-      const input = [{ title: "Test Title", description: "Test Description" }];
-      const results = await scoreArticles(input);
+    expect(results).toHaveLength(4);
+    const scored = results.filter((r) => r !== null);
+    expect(scored.length).toBeGreaterThanOrEqual(3);
+    for (const res of scored) {
+      expect(res!.summary.length).toBeGreaterThan(0);
+    }
+  }, 70000);
 
-      expect(results).toHaveLength(1);
-      const res = results[0];
-      expect(res).not.toBeNull();
-      expect(res).toMatchObject({
-        summary: expect.any(String),
-        usefulness: expect.any(Number),
-        reason: expect.any(String),
-      });
-      expect(res!.usefulness).toBeGreaterThanOrEqual(0);
-      expect(res!.usefulness).toBeLessThanOrEqual(10);
-    }, 70000);
+  it("Tier C: Pipeline integration (real embeddings + LLM + DB)", async () => {
+    resetEmbeddingRequestCount();
 
-    it("Tier B: Batch article scoring (real LLM)", async () => {
-      const input = [
-        { title: "T1", description: "D1" },
-        { title: "T2", description: "D2" },
-        { title: "T3", description: "D3" },
-        { title: "T4", description: "D4" },
-      ];
-      const results = await scoreArticles(input);
+    const raw = [
+      {
+        title: "Pipeline T1 about Anthropic Claude",
+        description: "Pipeline D1 about AI safety research",
+        url: "http://test.com/real-c/1",
+        urlToImage: null,
+        publishedAt: new Date().toISOString(),
+        sourceName: "Test",
+        sourceId: "test",
+        author: "Author",
+      },
+    ];
+    for (const r of raw) createdUrls.add(r.url);
 
-      expect(results).toHaveLength(4);
-      const scored = results.filter((r) => r !== null);
-      expect(scored.length).toBeGreaterThanOrEqual(3);
-      for (const res of scored) {
-        expect(res!.summary.length).toBeGreaterThan(0);
-      }
-    }, 70000);
+    const tagged = await tagArticlesByKeyword(raw, KEYWORDS);
+    expect(tagged).toHaveLength(1);
+    expect(tagged[0].embedding.length).toBeGreaterThan(0);
 
-    it("Tier C: Pipeline integration (real embeddings + LLM + DB)", async () => {
-      resetEmbeddingRequestCount();
+    const embeddingCount = getEmbeddingRequestCount();
+    expect(embeddingCount).toBeLessThanOrEqual(25);
 
-      const raw = [
-        {
-          title: "Pipeline T1 about Anthropic Claude",
-          description: "Pipeline D1 about AI safety research",
-          url: "http://test.com/real-c/1",
-          urlToImage: null,
-          publishedAt: new Date().toISOString(),
-          sourceName: "Test",
-          sourceId: "test",
-          author: "Author",
-        },
-      ];
-      for (const r of raw) createdUrls.add(r.url);
+    const savedCount = await scoreAndSaveTagged(tagged);
+    expect(savedCount).toBe(1);
 
-      const tagged = await tagArticlesByKeyword(raw, KEYWORDS);
-      expect(tagged).toHaveLength(1);
-      expect(tagged[0].embedding.length).toBeGreaterThan(0);
-
-      const embeddingCount = getEmbeddingRequestCount();
-      expect(embeddingCount).toBeLessThanOrEqual(25);
-
-      const savedCount = await scoreAndSaveTagged(tagged);
-      expect(savedCount).toBe(1);
-
-      const saved = await dbMod.db
-        .select()
-        .from(articles)
-        .where(
-          inArray(
-            articles.url,
-            raw.map((r) => r.url),
-          ),
-        );
-      expect(saved).toHaveLength(1);
-      expect(saved[0].score).not.toBeNull();
-      expect(saved[0].summary).not.toBeNull();
-      expect(saved[0].embedding).not.toBeNull();
-    }, 70000);
-
-    it("Tier G: Full production flow via real fetch-news (all sources, real news APIs, forced inline)", async () => {
-      resetEmbeddingRequestCount();
-
-      vi.stubEnv("QSTASH_TOKEN", "");
-      const req = new NextRequest("http://localhost/api/fetch-news", {
-        method: "POST",
-        body: JSON.stringify({
-          sources: ["newsapi", "qiita", "yamadashy", "itmedia", "codezine"],
-        }),
-        headers: { "Content-Type": "application/json" },
-      });
-      const res = await fetchNewsRoute(req);
-      const data = await res.json();
-      expect(res.status).toBe(200);
-
-      const perSource = (data.perSource as any[]) ?? [];
-      expect(
-        perSource.some((p) => (p.fetched || 0) > 0),
-        `all news sources returned 0 articles (perSource=${JSON.stringify(perSource)})`,
-      ).toBe(true);
-
-      const totalFetched = (data.results as any[]).reduce(
-        (acc: number, r: any) => acc + (r.fetched || 0),
-        0,
+    const saved = await dbMod.db
+      .select()
+      .from(articles)
+      .where(
+        inArray(
+          articles.url,
+          raw.map((r) => r.url),
+        ),
       );
-      expect(totalFetched).toBeGreaterThan(0);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].score).not.toBeNull();
+    expect(saved[0].summary).not.toBeNull();
+    expect(saved[0].embedding).not.toBeNull();
+  }, 70000);
 
-      const embeddingCount = getEmbeddingRequestCount();
-      expect(embeddingCount).toBeLessThanOrEqual(25);
+  it("Tier G: Full production flow (all sources, real news APIs + real LLM + real embeddings)", async () => {
+    resetEmbeddingRequestCount();
 
-      lastFetchSince = (data.since as string) || null;
+    const ALL_SOURCES = [
+      "newsapi",
+      "qiita",
+      "yamadashy",
+      "itmedia",
+      "codezine",
+      "zdnet",
+      "xtech",
+      "hatena",
+    ];
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({
+        sources: ALL_SOURCES,
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await fetchNewsRoute(req);
+    const data = await res.json();
+    expect(res.status).toBe(200);
 
-      vi.unstubAllEnvs();
-    }, 120000);
-  },
-);
+    // ── Stage 1: fetch succeeded for each source ──
+    const perSource = (data.perSource as any[]) ?? [];
+    expect(perSource.length).toBe(ALL_SOURCES.length);
+    const zeroSources = perSource
+      .filter((p: any) => (p.fetched || 0) === 0)
+      .map((p: any) => p.source);
+    expect(
+      zeroSources,
+      `sources with 0 fetched articles: ${zeroSources.join(", ")} (perSource=${JSON.stringify(perSource)})`,
+    ).toHaveLength(0);
+
+    const totalFetched = (data.results as any[]).reduce(
+      (acc: number, r: any) => acc + (r.fetched || 0),
+      0,
+    );
+    expect(totalFetched).toBeGreaterThan(0);
+
+    lastFetchSince = (data.since as string) || null;
+
+    // ── Stage 2: scored articles appear in DB ──
+    const scored = await getScoredArticles(100);
+    expect(scored.length).toBeGreaterThan(0);
+    expect(scored.length).toBeLessThanOrEqual(totalFetched);
+
+    // At least some articles must have valid LLM scores
+    const withScore = scored.filter((a) => a.score !== null);
+    expect(withScore.length).toBeGreaterThan(0);
+
+    // Verify structure of scored results
+    for (const a of withScore.slice(0, 3)) {
+      expect(a.score).toBeGreaterThan(0);
+      expect(a.summary).toBeTruthy();
+      expect(a.usefulness).toBeGreaterThanOrEqual(0);
+      expect(a.relevance).toBeGreaterThanOrEqual(0);
+      expect(a.recency).toBeGreaterThanOrEqual(0);
+      expect(a.sourceId).toBeTruthy();
+    }
+
+    // Embedding usage within limits
+    const embeddingCount = getEmbeddingRequestCount();
+    expect(embeddingCount).toBeLessThanOrEqual(25);
+  }, 120000);
+});

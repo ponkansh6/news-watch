@@ -74,7 +74,7 @@ vi.mock("@/lib/config", () => ({
   KEYWORDS: ["test-keyword"],
 }));
 
-// Mock embeddings so the local dev scoring path (no QSTASH_TOKEN) does not
+// Mock embeddings so the local dev scoring path does not
 // depend on network access to the Google API.
 vi.mock("@/lib/embeddings", () => ({
   embedArticle: vi.fn().mockResolvedValue([0.1, 0.2]),

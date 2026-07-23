@@ -294,7 +294,12 @@ Hybrid scoring combines LLM-based relevance/usefulness scoring with a vector pre
 ### 9.5 Processing Limits
 
 - **Fetch Cap**: The fetch endpoint caps total articles at 20 (latest articles only)
-- **LLM Batching**: Articles are scored in batches of 20 per LLM request, grouped by assigned keyword
+- **LLM Batching**: Articles are scored in batches per LLM request, grouped by assigned keyword.
+  - Default batch size: 20 articles per request.
+  - **Japanese-optimized batching**: When >50% of articles in a batch contain Japanese characters (Hiragana/Katakana/Kanji), batch size is dynamically reduced to 8 to prevent token limit overflow.
+  - `maxOutputTokens`: 500 (single), 16000 (batch).
+  - **Timeout**: 30s (single), 55s (batch) — passed as `RequestOptions.timeout` to the Gemini SDK.
+  - **Fallback**: On batch parsing failure (invalid JSON, wrong structure, Zod validation error, or all-null results), the pipeline falls back to individual `scoreArticle()` calls per article.
 
 ### 9.6 Recency Delta Refresh
 

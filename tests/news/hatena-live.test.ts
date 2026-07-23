@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, afterAll } from "vitest";
 
-const RUN_LIVE = process.env.RUN_LIVE_TESTS === "1";
-
-describe.skipIf(!RUN_LIVE)("live Hatena connection", () => {
+describe("live Hatena connection", () => {
   afterAll(() => {
     vi.unstubAllGlobals();
   });

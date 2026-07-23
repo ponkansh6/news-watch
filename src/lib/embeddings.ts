@@ -10,7 +10,7 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
  *
  * Google's embedding API rate-limits concurrent requests (returns 429). Firing
  * all article + keyword embeddings at once (e.g. 20 articles + 5 keywords in a
- * single score-articles run) reliably trips that limit and, without backoff,
+ * single scoring pipeline run) reliably trips that limit and, without backoff,
  * aborts the whole scoring run — which is why production scoring never
  * completed. A module-level semaphore caps in-flight requests, and each call is
  * retried with exponential backoff on transient failures.

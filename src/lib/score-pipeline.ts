@@ -10,6 +10,14 @@ import type { ArticleWithTag } from "@/lib/types";
 /** Max articles sent to the LLM in a single scoring request. */
 const LLM_BATCH_SIZE = 20;
 
+function getBatchSize(articles: ArticleWithTag[]): number {
+  if (articles.length === 0) return LLM_BATCH_SIZE;
+  const japaneseRatio =
+    articles.filter((a) => /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(a.article.title))
+      .length / articles.length;
+  return japaneseRatio > 0.5 ? 8 : LLM_BATCH_SIZE;
+}
+
 /** Group tagged articles by assigned keyword (including null-keyword articles
  *  which are below the tagging threshold), score each group in batches of
  *  LLM_BATCH_SIZE via LLM, and save. Returns count of LLM-scored (saved)
@@ -36,16 +44,20 @@ export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<numb
 
   // Score and save keyword-grouped articles
   for (const [keyword, group] of taggedByKeyword) {
-    for (let start = 0; start < group.length; start += LLM_BATCH_SIZE) {
-      const batch = group.slice(start, start + LLM_BATCH_SIZE);
+    for (let start = 0; start < group.length; ) {
+      const batchSize = getBatchSize(group.slice(start));
+      const batch = group.slice(start, start + batchSize);
       savedCount += await scoreAndSaveBatch(batch, keyword);
+      start += batchSize;
     }
   }
 
   // Score and save untagged articles (below threshold, keyword=null)
-  for (let start = 0; start < untagged.length; start += LLM_BATCH_SIZE) {
-    const batch = untagged.slice(start, start + LLM_BATCH_SIZE);
+  for (let start = 0; start < untagged.length; ) {
+    const batchSize = getBatchSize(untagged.slice(start));
+    const batch = untagged.slice(start, start + batchSize);
     savedCount += await scoreAndSaveBatch(batch, null);
+    start += batchSize;
   }
 
   return savedCount;

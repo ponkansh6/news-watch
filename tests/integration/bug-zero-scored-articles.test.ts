@@ -222,10 +222,14 @@ describe("Scenario 3: deleteLowScoredArticles interaction", () => {
 // ═══════════════════════════════════════════════════════════════════
 describe("Scenario 4: LLM returns partial results", () => {
   it("only articles with valid scores appear in getScoredArticles", async () => {
+    // NOTE: The pipeline batches articles by keyword group (4 articles each).
+    // Use a persisting counter across batch calls to return exactly 10 valid scores.
+    let remainingValid = 10;
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) =>
-        items.map((item, i) => {
-          if (i < 10) {
+        items.map((item) => {
+          if (remainingValid > 0) {
+            remainingValid--;
             return {
               summary: `要約: ${item.title}`,
               usefulness: 7,

@@ -39,7 +39,7 @@ function backoffMs(attempt: number, baseMs = 2000): number {
 async function callGemini(
   prompt: string,
   maxTokens: number,
-  _timeoutMs: number, // Kept for signature compatibility, though Gemini SDK handles timeouts differently
+  timeoutMs: number,
   retries = 3,
 ): Promise<string | null> {
   const apiKey = process.env.GOOGLE_API_KEY;
@@ -57,7 +57,7 @@ async function callGemini(
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const result = await model.generateContent(prompt);
+      const result = await model.generateContent(prompt, { timeout: timeoutMs });
       const response = await result.response;
       const text = response.text();
       return text;
@@ -87,8 +87,6 @@ async function callGemini(
 
 /** Score a single article via Gemini LLM. */
 export async function scoreArticle(article: ArticleInput): Promise<LLMResponse | null> {
-  if (!process.env.GOOGLE_API_KEY) return null;
-
   const prompt = SCORING_PROMPT.replace("{{title}}", article.title).replace(
     "{{description}}",
     article.description ?? "(no description)",
@@ -164,13 +162,13 @@ export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMRespo
   for (let attempt = 0; attempt <= maxParseRetries; attempt++) {
     let text: string | null;
     try {
-      text = await callGemini(prompt, 6000, 55_000);
+      text = await callGemini(prompt, 16000, 55_000);
     } catch (err) {
       console.error(`[llm] Batch scoring failed:`, err);
-      return articles.map(() => null);
+      break;
     }
     if (!text) {
-      return articles.map(() => null);
+      break;
     }
 
     let parsed: unknown;
@@ -185,7 +183,7 @@ export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMRespo
         await new Promise((r) => setTimeout(r, backoffMs(attempt)));
         continue;
       }
-      return articles.map(() => null);
+      break;
     }
 
     // Accept either a bare array or an object wrapping it under `results`
@@ -199,11 +197,16 @@ export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMRespo
       console.warn(
         `[llm] batch: expected array or {results:[...]} (attempt ${attempt + 1}/${maxParseRetries + 1})`,
       );
+      if (articles.length > 0) {
+        console.warn(`[llm] Batch scoring invalid array, falling back to single-article scoring`);
+        const singleResults = await Promise.all(articles.map((a) => scoreArticle(a)));
+        return singleResults;
+      }
       if (attempt < maxParseRetries) {
         await new Promise((r) => setTimeout(r, backoffMs(attempt)));
         continue;
       }
-      return articles.map(() => null);
+      break;
     }
 
     try {
@@ -217,6 +220,15 @@ export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMRespo
           reason: r.reason || "(no reason)",
         };
       });
+
+      // 全記事がnullの場合、個別スコアリングにフォールバック
+      if (padded.every((r) => r === null) && articles.length > 0) {
+        console.warn(
+          `[llm] Batch scoring returned all nulls for ${articles.length} articles, falling back to single-article scoring`,
+        );
+        return await Promise.all(articles.map((a) => scoreArticle(a)));
+      }
+
       return padded;
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -229,8 +241,25 @@ export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMRespo
         await new Promise((r) => setTimeout(r, backoffMs(attempt)));
         continue;
       }
-      return articles.map(() => null);
+      // zod parse 失敗が最終試行でも起きたら、個別スコアリングにフォールバック
+      console.warn(
+        `[llm] Batch scoring Zod validation failed all attempts, falling back to single-article scoring`,
+      );
+      return await Promise.all(articles.map((a) => scoreArticle(a)));
     }
   }
+
+  // 全リトライが尽きても失敗した場合のフォールバック
+  if (articles.length > 0) {
+    console.warn(
+      `[llm] Batch scoring failed all attempts for ${articles.length} articles, falling back to single-article scoring`,
+    );
+    const singleResults = [];
+    for (const a of articles) {
+      singleResults.push(await scoreArticle(a));
+    }
+    return singleResults;
+  }
+
   return articles.map(() => null);
 }
