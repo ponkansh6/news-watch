@@ -278,7 +278,7 @@ Hybrid scoring combines LLM-based relevance/usefulness scoring with a vector pre
 ### 9.2 Architecture
 
 - **Embeddings**: `src/lib/embeddings.ts` generates query and article embeddings using Google's gemini-embedding-001 model (uses `GOOGLE_API_KEY`)
-- **Vector Filter**: `src/lib/vector-filter.ts` implements `tagArticlesByKeyword()` which tags each article with the keyword (from the `KEYWORDS` vocabulary) that has the highest vector similarity via cosine similarity. Articles are then grouped by keyword before scoring.
+- **Vector Filter**: `src/lib/vector-filter.ts` implements `tagArticlesByKeyword()` which tags each article with the keyword/descriptive phrase (from the `KEYWORDS` vocabulary, updated to descriptive phrases to improve semantic tagging accuracy and prevent mis-categorization) that has the highest vector similarity via cosine similarity. Articles are then grouped by keyword before scoring (UI keyword badge display has been deprecated).
 - **Scoring Pipeline**: `src/lib/score-pipeline.ts` exports `scoreAndSaveTagged()` which processes articles grouped by keyword and saves them to the database.
 
 ### 9.3 Environment Variables

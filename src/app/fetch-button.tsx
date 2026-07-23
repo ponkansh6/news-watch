@@ -211,7 +211,7 @@ export default function FetchButton() {
             <div className="mt-3 space-y-1.5 border-t border-neutral-100 pt-3">
               {results.map((r) => (
                 <div key={r.keyword} className="flex items-center justify-between">
-                  <span className="font-medium text-neutral-600">{r.keyword}</span>
+                  <span className="font-medium text-neutral-600">合計</span>
                   <span className="flex items-center gap-1.5">
                     {r.errors.length > 0 ? (
                       <span className="text-red-500" title={r.errors.join("; ")}>

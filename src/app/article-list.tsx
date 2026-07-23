@@ -1,5 +1,7 @@
 "use client";
 
+import { KEYWORD_LABELS } from "@/lib/config";
+
 interface Article {
   id: number;
   title: string;
@@ -80,12 +82,10 @@ function getKeywordColor(keyword: string): string {
     "bg-indigo-50 text-indigo-600 border-indigo-200",
     "bg-pink-50 text-pink-600 border-pink-200",
   ];
-
   let hash = 0;
   for (let i = 0; i < keyword.length; i++) {
     hash = keyword.charCodeAt(i) + ((hash << 5) - hash);
   }
-
   const index = Math.abs(hash) % colors.length;
   return colors[index];
 }
@@ -121,13 +121,13 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
               <time dateTime={article.publishedAt} className="text-neutral-500">
                 {formatDate(article.publishedAt)}
               </time>
-              {article.keyword ? (
-                <span className={`rounded border px-2 py-0.5 ${getKeywordColor(article.keyword)}`}>
-                  {article.keyword}
-                </span>
-              ) : (
-                <span className="rounded border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-neutral-400">
-                  タグなし
+              {article.keyword && (
+                <span
+                  className={`rounded border px-2 py-0.5 ${getKeywordColor(
+                    KEYWORD_LABELS[article.keyword] || article.keyword.split(" ")[0],
+                  )}`}
+                >
+                  {KEYWORD_LABELS[article.keyword] || article.keyword.split(" ")[0]}
                 </span>
               )}
               {article.reason && (
