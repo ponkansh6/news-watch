@@ -17,7 +17,7 @@ export function calcRecencyScore(publishedAt: string): number {
 }
 
 /**
- * Composite score: similarity (30%) + usefulness (40%) + recency (30%).
+ * Composite score: similarity (20%) + usefulness (50%) + recency (30%).
  * Returns null if usefulness is missing.
  */
 export function calcCompositeScore(
@@ -28,7 +28,7 @@ export function calcCompositeScore(
   if (usefulness === null) return null;
   // similarity is already normalized to 0-10 by normalizeSimilaritiesWithTagged
   const normalizedSimilarity = Math.max(0, Math.min(10, similarity));
-  return Math.round((normalizedSimilarity * 0.3 + usefulness * 0.4 + recency * 0.3) * 10) / 10;
+  return Math.round((normalizedSimilarity * 0.2 + usefulness * 0.5 + recency * 0.3) * 10) / 10;
 }
 
 export function softmax(values: number[], temperature = 1.0): number[] {

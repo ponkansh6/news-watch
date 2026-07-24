@@ -166,7 +166,7 @@ describe("Scenario 3: deleteLowScoredArticles interaction", () => {
       async (items: { title: string; description: string | null }[]) =>
         items.map(() => ({
           summary: "低スコア",
-          usefulness: 2, // 10*0.3 + 2*0.4 + 10*0.3 = 3 + 0.8 + 3 = 6.8 (above 5)
+          usefulness: 2, // 10*0.2 + 2*0.5 + 10*0.3 = 2 + 1.0 + 3 = 6.0 (above 5)
           reason: "低い",
         })),
     );
@@ -196,7 +196,7 @@ describe("Scenario 3: deleteLowScoredArticles interaction", () => {
       async (items: { title: string; description: string | null }[]) =>
         items.map(() => ({
           summary: "低スコア",
-          usefulness: 0, // 10*0.3 + 0*0.4 + 0*0.3 = 3.0 (below 5)
+          usefulness: 0, // 10*0.2 + 0*0.5 + 0*0.3 = 2.0 (below 5)
           reason: "低い",
         })),
     );
@@ -346,7 +346,7 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
   });
 
   it("BUG REPRO: very low LLM scores + subsequent deleteLowScoredArticles → articles gone", async () => {
-    // LLM returns very low scores (0/10) → composite = 10*0.3 + 0*0.4 + 10*0.3 = 3 + 0 + 3 = 6.0 (above 5)
+    // LLM returns very low scores (0/10) → composite = 10*0.2 + 0*0.5 + 10*0.3 = 2 + 0 + 3 = 5.0 (above 5)
     // NOTE: The recency boost (10/10 for <1 day) inflates the composite significantly.
     // To get score < 5, we need usefulness=0 and recency=0 (old article).
     mockScoreArticles.mockImplementation(
@@ -367,7 +367,7 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
     expect(saved).toBe(ARTICLE_COUNT);
 
     // Verify composite is indeed < 5 for old articles
-    // 10*0.3 + 0*0.4 + 0*0.3 = 3.0
+    // 10*0.2 + 0*0.5 + 0*0.3 = 2.0
     const dbScores = await (dbMod as any).__client.execute("SELECT score FROM articles LIMIT 1");
     const score = dbScores.rows[0].score as number;
     expect(score).toBeLessThan(5); // 3.0

@@ -228,10 +228,10 @@ describe("Non-matching source filter", () => {
 describe("Low-score articles with valid source appear in filtered results", () => {
   it("articles with score=0.1 (non-null) from specific source are returned", async () => {
     // Mock LLM to return very low usefulness (0) for old articles
-    // composite = relevance*0.3 + usefulness*0.4 + recency*0.3
-    // For old article: recency=0, so composite = 0*0.3 + 0*0.4 + 0*0.3 = 0
+    // composite = relevance*0.2 + usefulness*0.5 + recency*0.3
+    // For old article: recency=0, so composite = 0*0.2 + 0*0.5 + 0*0.3 = 0
     // But score is set by calcCompositeScore which uses similarity (0.9 from mock)
-    // composite = 0.9*0.3 + 0*0.4 + 0*0.3 = 0.27 (non-null!)
+    // composite = 0.9*0.2 + 0*0.5 + 0*0.3 = 0.18 (non-null!)
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) =>
         items.map(() => ({
@@ -406,7 +406,7 @@ describe("Score boundary after deleteLowScoredArticles", () => {
     await scoreAndSaveTagged(tagged);
 
     // All articles have score = composite(similarity=0.9, usefulness=5, recency≈10)
-    // = 0.9*0.3 + 5*0.4 + 10*0.3 = 0.27 + 2.0 + 3.0 = 5.27
+    // = 0.9*0.2 + 5*0.5 + 10*0.3 = 0.18 + 2.5 + 3.0 = 5.68
     // This is above minScore=5, so they should survive deleteLowScoredArticles
     const all = await getScoredArticles(100, ["newsapi"]);
     expect(all.length).toBeGreaterThan(0);
@@ -605,7 +605,7 @@ describe('BUG REPRO: "N件スコアリング完了" but "スコアリング済�
     // savedCount = 10 because llmResult is truthy for all
     expect(saved).toBe(10);
 
-    // All 10 in DB with score = 0.27 (composite with similarity=0.9, usefulness=0, recency=0)
+    // All 10 in DB with score = 0.18 (composite with similarity=0.9, usefulness=0, recency=0)
     const beforeDelete = await getScoredArticles(100);
     expect(beforeDelete).toHaveLength(10);
 

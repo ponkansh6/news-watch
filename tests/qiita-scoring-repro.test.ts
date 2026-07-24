@@ -232,9 +232,9 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
   /**
    * テスト4: 75件取得・0件スコアリング → deleteLowScoredArticles 後の状態
    *
-   * LLM が全件失敗した場合、composite score = (5*0.3 + 5*0.4 + recency*0.3)
-   * 新しい記事（recency=10）: 1.5 + 2.0 + 3.0 = 6.5 ≥ 5 → 削除されない
-   * 古い記事（recency=0）: 1.5 + 2.0 + 0 = 3.5 < 5 → 削除される
+   * LLM が全件失敗した場合、composite score = (5*0.2 + 5*0.5 + recency*0.3)
+   * 新しい記事（recency=10）: 1.0 + 2.5 + 3.0 = 6.5 ≥ 5 → 削除されない
+   * 古い記事（recency=0）: 1.0 + 2.5 + 0 = 3.5 < 5 → 削除される
    */
   test("should keep fresh articles and delete old ones when LLM fails", async () => {
     mockScoreArticles.mockResolvedValue([]);
