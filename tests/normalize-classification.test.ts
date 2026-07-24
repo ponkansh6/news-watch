@@ -93,7 +93,7 @@ describe("normalize: 各データソースの誤判定検知", () => {
     expect(r.publishedAt).toBe("2026-07-04T00:00:00Z");
   });
 
-  test("ITmedia: sourceName=ITmedia", () => {
+  test("ITmedia: sourceName=@IT", () => {
     const a: ItmediaItem = {
       title: "I",
       link: "https://www.itmedia.co.jp/i",
@@ -103,7 +103,7 @@ describe("normalize: 各データソースの誤判定検知", () => {
     };
     const r = normalize(a, "itmedia");
     expect(r.sourceId).toBe("itmedia");
-    expect(r.sourceName).toBe("ITmedia");
+    expect(r.sourceName).toBe("@IT");
     expect(r.url).toBe("https://www.itmedia.co.jp/i");
     expect(r.author).toBeNull();
     expect(r.publishedAt).toBe("2026-07-05T00:00:00Z");

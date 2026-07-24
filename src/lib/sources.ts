@@ -8,7 +8,7 @@ export const SOURCES: SourceDef[] = [
   { id: "newsapi", name: "NewsAPI", color: "bg-green-500" },
   { id: "qiita", name: "Qiita", color: "bg-purple-500" },
   { id: "yamadashy", name: "Tech Blog", color: "bg-emerald-500" },
-  { id: "itmedia", name: "ITmedia", color: "bg-red-500" },
+  { id: "itmedia", name: "@IT", color: "bg-red-500" },
   { id: "codezine", name: "CodeZine", color: "bg-orange-600" },
   { id: "zdnet", name: "ZDNet Japan", color: "bg-blue-600" },
   { id: "xtech", name: "日経クロステック", color: "bg-sky-700" },

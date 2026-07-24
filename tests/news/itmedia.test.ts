@@ -23,7 +23,7 @@ describe("searchITmedia", () => {
     expect(result[0].title).toBe("Test Article 1");
     expect(result[1].title).toBe("Another Article");
     expect(result[2].title).toBe("Test Article 2");
-    expect(fetchMock).toHaveBeenCalledWith("https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml", {
+    expect(fetchMock).toHaveBeenCalledWith("https://rss.itmedia.co.jp/rss/0.91/ait.xml", {
       signal: expect.any(Object),
     });
   });

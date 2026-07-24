@@ -90,7 +90,7 @@ export function normalize(
       title = it.title;
       url = it.link;
       publishedAt = it.pubDate ?? new Date().toISOString();
-      sourceName = "ITmedia";
+      sourceName = "@IT";
       author = null;
       break;
     }

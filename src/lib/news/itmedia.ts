@@ -1,6 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 
-const FEED_URL = "https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml";
+const FEED_URL = "https://rss.itmedia.co.jp/rss/0.91/ait.xml";
 
 export interface ItmediaItem {
   title: string;
