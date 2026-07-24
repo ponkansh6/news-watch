@@ -64,7 +64,7 @@ function ScoreBadge({
   return (
     <span
       className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${color}`}
-      title={`関連性: ${relevance?.toFixed(1) || "N/A"} (30%)\n有用性: ${usefulness?.toFixed(1) || "N/A"} (40%)\n新しさ: ${recency?.toFixed(1) || "N/A"} (30%)\n━━━━━━━━━━━━━━━\n合成: ${score.toFixed(1)}`}
+      title={`関連性: ${relevance?.toFixed(1) || "N/A"} (20%)\n有用性: ${usefulness?.toFixed(1) || "N/A"} (50%)\n新しさ: ${recency?.toFixed(1) || "N/A"} (30%)\n━━━━━━━━━━━━━━━\n合成: ${score.toFixed(1)}`}
     >
       {score}
     </span>
@@ -132,7 +132,7 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
               )}
               {article.reason && (
                 <span className="italic text-neutral-400" title={article.reason}>
-                  {article.reason.length > 30 ? article.reason.slice(0, 30) + "…" : article.reason}
+                  {article.reason}
                 </span>
               )}
             </div>
