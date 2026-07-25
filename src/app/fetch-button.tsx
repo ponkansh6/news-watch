@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useTransition } from "react";
+import { useState, useEffect, useCallback, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { SOURCES } from "@/lib/sources";
 import { useRefresh } from "./refresh-context";
@@ -20,6 +20,7 @@ export default function FetchButton() {
   const [showDetail, setShowDetail] = useState(false);
   const [, startTransition] = useTransition();
   const { isRefreshing, setRefreshing } = useRefresh();
+  const refreshFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedSources, setSelectedSources] = useState<string[]>(() => {
     // Load from localStorage on mount
     if (typeof window !== "undefined") {
@@ -54,6 +55,16 @@ export default function FetchButton() {
     }, 30_000);
     return () => clearTimeout(timer);
   }, [isRefreshing, setRefreshing]);
+
+  // Cleanup fallback timer on unmount
+  useEffect(() => {
+    return () => {
+      if (refreshFallbackRef.current) {
+        clearTimeout(refreshFallbackRef.current);
+        refreshFallbackRef.current = null;
+      }
+    };
+  }, []);
 
   const handleSourceToggle = useCallback(
     (sourceId: string) => {
@@ -124,6 +135,16 @@ export default function FetchButton() {
         startTransition(() => {
           router.refresh();
         });
+        // Fallback: if NewsSection doesn't detect new articles within 5s
+        // (e.g., API returned saved=0 so no new IDs appear), clear refreshing
+        // to prevent stuck skeleton.
+        if (refreshFallbackRef.current) {
+          clearTimeout(refreshFallbackRef.current);
+        }
+        refreshFallbackRef.current = setTimeout(() => {
+          setRefreshing(false);
+          refreshFallbackRef.current = null;
+        }, 5_000);
       } else {
         setFetchError("ニュース取得に失敗しました");
         setRefreshing(false);

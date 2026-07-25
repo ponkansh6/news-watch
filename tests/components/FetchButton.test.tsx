@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, useEffect, useRef } from "react";
 import FetchButton from "../../src/app/fetch-button";
@@ -342,6 +342,87 @@ describe("Refresh lifecycle integration", () => {
         refresh: mockRefresh,
       }),
     }));
+  });
+
+  it("clears refreshing when API returns saved=0 and no new article IDs appear", async () => {
+    // This test reproduces the "never fires" bug:
+    // When saved=0, RSC returns the same articles (no new IDs),
+    // so NewsSection's hasNewIds check never fires setRefreshing(false).
+    // The fallback timeout in handleFetch must clear it.
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    let rscRefresh: ((articles: Article[]) => void) | null = null;
+
+    function RscSimulatorPage() {
+      const [articles, setArticles] = useState<Article[]>(initialMockArticles);
+      const setArticlesRef = useRef(setArticles);
+      useEffect(() => {
+        setArticlesRef.current = setArticles;
+      });
+      useEffect(() => {
+        rscRefresh = (newArticles: Article[]) => {
+          setArticlesRef.current(newArticles);
+        };
+      }, []);
+
+      return (
+        <RefreshProvider>
+          <FetchButton />
+          <NewsSection articles={articles} />
+        </RefreshProvider>
+      );
+    }
+
+    // mockRefresh returns SAME articles (no new IDs — simulates saved=0)
+    mockRefresh.mockImplementation(() => {
+      if (rscRefresh) {
+        rscRefresh([...initialMockArticles]);
+      }
+    });
+
+    let resolveFetch: (value: any) => void = () => {};
+    const fetchPromise = new Promise((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.spyOn(globalThis, "fetch").mockReturnValue(fetchPromise as Promise<Response>);
+
+    render(<RscSimulatorPage />);
+
+    // ----- Phase 1: Initial state -----
+    expect(screen.getByText("既存記事 1")).toBeInTheDocument();
+    expect(screen.getByText("(2件)")).toBeInTheDocument();
+
+    // ----- Phase 2: Click fetch → skeleton shows -----
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
+    });
+
+    expect(screen.getByText("(更新中...)")).toBeInTheDocument();
+
+    // ----- Phase 3: API responds with saved=0 -----
+    await act(async () => {
+      resolveFetch({
+        ok: true,
+        json: async () => ({ ok: true, results: [{ fetched: 5, saved: 0, errors: [] }] }),
+      });
+    });
+
+    // "0件 スコアリング完了" result appears
+    expect(screen.getByText("0件 スコアリング完了")).toBeInTheDocument();
+
+    // BUG: skeleton is still visible (stuck — no new IDs detected)
+    // After the fix, the fallback timeout should clear it within ~5s.
+    // For now, advance past the fallback to verify it fires.
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    // After fix: articles should be visible again, skeleton gone
+    await waitFor(() => {
+      expect(screen.getByText("既存記事 1")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("(更新中...)")).not.toBeInTheDocument();
+
+    vi.useRealTimers();
   });
 
   it("keeps skeleton visible until new articles arrive after refresh", async () => {
