@@ -4,7 +4,7 @@ export const KEYWORDS = [
   "GPT5 チャットGPT Codex",
   "Softbank ソフトバンク モバイル通信 AI投資 テクノロジー",
   "KDDI au 通信キャリア UQモバイル",
-  "NTT 日本電信電話 NTTデータ NTTドコモ 通信インフラ",
+  "NTT 日本電信電話 NTTデータ NTTドコモ",
   "Gemini 3 Flash Pro Antigravity TPU",
   "docomo ドコモ NTTドコモ モバイル通信 キャリア",
 ] as const;
