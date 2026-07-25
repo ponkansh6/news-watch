@@ -1,13 +1,10 @@
-import { KEYWORD_LABELS } from "@/lib/config";
 import { SkeletonList } from "./article-list";
 
 export default function Loading() {
-  const labels = Object.values(KEYWORD_LABELS);
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
       <header className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight">News Watch</h1>
-        <p className="mt-1 text-neutral-500">監視キーワード: {labels.join(", ")}</p>
       </header>
 
       <section className="mb-12">
