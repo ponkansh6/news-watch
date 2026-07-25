@@ -1,6 +1,6 @@
 import { getScoredArticles } from "@/lib/db/actions";
-import ArticleList from "./article-list";
 import FetchButton from "./fetch-button";
+import NewsSection from "./news-section";
 
 export const dynamic = "force-dynamic";
 
@@ -23,23 +23,7 @@ export default async function Home(props: { searchParams: Promise<{ sources?: st
       </section>
 
       <section className="mb-12">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">
-            スコアリング済み記事
-            <span className="ml-2 text-sm font-normal text-neutral-400">({scored.length}件)</span>
-          </h2>
-        </div>
-
-        {scored.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-neutral-300 p-12 text-center text-neutral-400">
-            <p className="mb-2 text-lg">まだ記事がありません</p>
-            <p className="text-sm">
-              「ニュースを取得」ボタンで最新ニュースを取得・スコアリングできます
-            </p>
-          </div>
-        ) : (
-          <ArticleList articles={scored} />
-        )}
+        <NewsSection articles={scored} />
       </section>
     </main>
   );

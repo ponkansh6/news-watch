@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { SOURCES } from "@/lib/sources";
+import { useRefresh } from "./refresh-context";
 
 interface FetchResult {
   keyword: string;
@@ -13,10 +14,12 @@ interface FetchResult {
 }
 
 export default function FetchButton() {
-  const [loading, setLoading] = useState(false);
+  const [apiInFlight, setApiInFlight] = useState(false);
   const [results, setResults] = useState<FetchResult[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false);
+  const [, startTransition] = useTransition();
+  const { isRefreshing, setRefreshing } = useRefresh();
   const [selectedSources, setSelectedSources] = useState<string[]>(() => {
     // Load from localStorage on mount
     if (typeof window !== "undefined") {
@@ -71,7 +74,7 @@ export default function FetchButton() {
   }, [router]);
 
   const handleFetch = useCallback(async () => {
-    setLoading(true);
+    setApiInFlight(true);
     setResults(null);
     setFetchError(null);
     setShowDetail(false);
@@ -105,21 +108,20 @@ export default function FetchButton() {
             errors: hasErrors ? ["一部の処理でエラーが発生しました"] : [],
           },
         ]);
-        setLoading(false);
-        router.refresh();
+        // Keep loading visible during RSC refresh
+        setRefreshing(true);
+        startTransition(() => {
+          router.refresh();
+        });
       } else {
         setFetchError("ニュース取得に失敗しました");
-        setLoading(false);
       }
     } catch {
       setFetchError("通信エラーが発生しました");
-      setLoading(false);
+    } finally {
+      setApiInFlight(false);
     }
-  }, [router, selectedSources]);
-
-  const hasAnyErrors = results?.some((r) => r.errors.length > 0);
-
-  const selectedSourcesList = SOURCES.filter((s) => selectedSources.includes(s.id));
+  }, [router, selectedSources, setRefreshing]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -175,10 +177,10 @@ export default function FetchButton() {
         <button
           type="button"
           onClick={handleFetch}
-          disabled={loading || selectedSources.length === 0}
+          disabled={apiInFlight || selectedSources.length === 0}
           className="rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? "取得・スコアリング中..." : "ニュースを取得してスコアリング"}
+          {apiInFlight ? "取得・スコアリング中..." : "ニュースを取得してスコアリング"}
         </button>
         <span className="text-xs text-neutral-400">NewsAPI → LLMスコアリング</span>
       </div>
@@ -230,10 +232,17 @@ export default function FetchButton() {
         </div>
       )}
 
-      {loading && (
+      {apiInFlight && !isRefreshing && (
         <div className="flex items-center gap-2 text-sm text-neutral-400">
           <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-neutral-400" />
           キーワードを処理中...
+        </div>
+      )}
+
+      {isRefreshing && (
+        <div className="flex items-center gap-2 text-sm text-neutral-400">
+          <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-neutral-400" />
+          スコアリング完了、記事を更新中...
         </div>
       )}
     </div>

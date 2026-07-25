@@ -179,9 +179,12 @@ authors: [shunki]
 
 ```
 Layout (src/app/layout.tsx)
-└── Page (src/app/page.tsx - RSC)
-    ├── FetchButton (src/app/fetch-button.tsx - Client)
-    └── ArticleList (src/app/article-list.tsx - Client)
+└── RefreshProvider (src/app/refresh-context.tsx - Client Context)
+    └── Page (src/app/page.tsx - RSC)
+        ├── FetchButton (src/app/fetch-button.tsx - Client)
+        └── NewsSection (src/app/news-section.tsx - Client)
+            ├── ArticleList (src/app/article-list.tsx - Client)
+            └── SkeletonList (src/app/article-list.tsx - Client, skeleton placeholder)
 ```
 
 ### Data Flow
@@ -194,7 +197,8 @@ External APIs (NewsAPI, Qiita, GitHub, Hatena Bookmark, RSS feeds)
       → src/lib/db/actions.ts (Persistence)
           → SQLite Database (articles + hatena_feeds)
             → src/app/page.tsx (RSC: Data Fetching)
-              → src/app/article-list.tsx (Client: Rendering + tooltip breakdown)
+              → src/app/news-section.tsx (Client: isRefreshing → skeleton / ArticleList rendering)
+                → src/app/article-list.tsx (Client: Rendering + tooltip breakdown)
             → src/app/dashboard/feeds/page.tsx (RSC: Feed Health Dashboard)
               → src/app/dashboard/feeds/feed-dashboard.tsx (Client: Reactivate action)
                 → POST /api/feeds (reactivateHatenaFeed)
