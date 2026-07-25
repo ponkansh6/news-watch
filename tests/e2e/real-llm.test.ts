@@ -124,6 +124,6 @@ describe("Real LLM E2E Tests (all real services)", () => {
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(data).toHaveProperty("success", true);
+    expect(data).toHaveProperty("ok", true);
   }, 120000);
 });
