@@ -58,5 +58,15 @@ export default function NewsSection({
     );
   }
 
-  return <ArticleList articles={articles} />;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold">
+          スコアリング済み記事
+          <span className="ml-2 text-sm font-normal text-neutral-400">({articles.length}件)</span>
+        </h2>
+      </div>
+      <ArticleList articles={articles} />
+    </div>
+  );
 }

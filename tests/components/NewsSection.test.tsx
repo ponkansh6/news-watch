@@ -133,6 +133,8 @@ describe("NewsSection", () => {
       </Wrapper>,
     );
 
+    expect(screen.getByText("スコアリング済み記事")).toBeInTheDocument();
+    expect(screen.getByText(`(${mockArticles.length}件)`)).toBeInTheDocument();
     expect(screen.getByText("テスト記事 1")).toBeInTheDocument();
     expect(screen.getByText("テスト記事 2")).toBeInTheDocument();
   });
