@@ -1,4 +1,5 @@
 import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
+import { EMBEDDING_DIMENSIONS } from "../embeddings";
 
 /**
  * Scored news articles.
@@ -45,7 +46,7 @@ export const keywordEmbeddings = sqliteTable("keyword_embeddings", {
   keyword: text("keyword").notNull().unique(),
   embedding: text("embedding").notNull(),
   model: text("model").notNull().default("gemini-embedding-2"),
-  dimensions: integer("dimensions").notNull().default(768),
+  dimensions: integer("dimensions").notNull().default(EMBEDDING_DIMENSIONS),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),

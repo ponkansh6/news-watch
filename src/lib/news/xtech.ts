@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+import { DEFAULT_REQUEST_TIMEOUT_MS } from "../constants";
 
 const FEED_URL = "https://xtech.nikkei.com/rss/xtech-it.rdf";
 
@@ -20,20 +21,20 @@ export function parseXtechRss(xml: string): XtechItem[] {
   const parsed = parser.parse(xml);
   const root = parsed["rdf:RDF"];
   if (!root?.item) return [];
-  const items: any[] = Array.isArray(root.item) ? root.item : [root.item];
+  const items: Record<string, unknown>[] = Array.isArray(root.item) ? root.item : [root.item];
   return items.map((i) => ({
-    title: i.title,
-    link: i.link,
-    description: i.description,
-    date: i["dc:date"],
-    creator: i["dc:creator"],
-    about: i["@_rdf:about"],
+    title: String(i.title ?? ""),
+    link: String(i.link ?? ""),
+    description: typeof i.description === "string" ? i.description : undefined,
+    date: typeof i["dc:date"] === "string" ? i["dc:date"] : undefined,
+    creator: typeof i["dc:creator"] === "string" ? i["dc:creator"] : undefined,
+    about: typeof i["@_rdf:about"] === "string" ? i["@_rdf:about"] : undefined,
   }));
 }
 
 export async function searchXtech(limit = 20): Promise<XtechItem[]> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
+  const timer = setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
 
   try {
     const res = await fetch(FEED_URL, {

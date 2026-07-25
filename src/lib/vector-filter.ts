@@ -8,14 +8,7 @@ import {
   keywordEmbeddings as keywordEmbeddingsTable,
 } from "@/lib/db/schema";
 import { and, inArray, isNotNull } from "drizzle-orm";
-
-/**
- * Minimum normalized similarity score (0-10 scale) required for a keyword tag
- * to be assigned. Articles whose best-matching keyword scores below this
- * threshold are returned with `keyword: null` (no tag assigned) but are still
- * saved to the DB and displayed.
- */
-export const TAGGING_THRESHOLD = 6.0;
+import { TAGGING_THRESHOLD, SOFTMAX_SCALE } from "./constants";
 
 /**
  * Tag each article with the keyword (from the provided vocabulary) that has the
@@ -159,7 +152,7 @@ export async function tagArticlesByKeyword(
       }
     }
     // Apply threshold: articles below TAGGING_THRESHOLD are not tagged
-    if (bestSim * 10 < TAGGING_THRESHOLD) {
+    if (bestSim * SOFTMAX_SCALE < TAGGING_THRESHOLD) {
       return { article, embedding, keyword: null, similarity: bestSim };
     }
     return { article, embedding, keyword: bestKeyword, similarity: bestSim };

@@ -2,6 +2,13 @@ import { db } from "./index";
 import { articles, hatenaFeeds } from "./schema";
 import { desc, isNotNull, notInArray, and, lt, inArray, eq } from "drizzle-orm";
 import { calcRecencyScore } from "../scoring";
+import {
+  DEFAULT_SCORED_ARTICLES_LIMIT,
+  DEFAULT_DELETE_LOW_SCORE,
+  DEFAULT_ALL_ARTICLES_LIMIT,
+  WEIGHT_RECENCY,
+  SOFTMAX_SCALE,
+} from "../constants";
 
 export interface ArticleInsert {
   title: string;
@@ -59,7 +66,10 @@ export async function upsertArticle(data: ArticleInsert) {
 }
 
 /** Articles with composite score, ordered by score then date. */
-export async function getScoredArticles(limit = 50, sourceIds?: string[]) {
+export async function getScoredArticles(
+  limit = DEFAULT_SCORED_ARTICLES_LIMIT,
+  sourceIds?: string[],
+) {
   try {
     const conditions = [isNotNull(articles.score)];
     if (sourceIds && sourceIds.length > 0) {
@@ -88,7 +98,7 @@ export async function deleteOrphanedArticles(activeKeywords: string[]) {
 }
 
 /** Delete articles with composite score below minScore. */
-export async function deleteLowScoredArticles(minScore = 5, since?: string) {
+export async function deleteLowScoredArticles(minScore = DEFAULT_DELETE_LOW_SCORE, since?: string) {
   try {
     const conditions = [isNotNull(articles.score), lt(articles.score, minScore)];
     // Protect the current fetch batch: only delete articles scored before
@@ -102,7 +112,7 @@ export async function deleteLowScoredArticles(minScore = 5, since?: string) {
 }
 
 /** All articles, newest first (for "last updated" timestamp). */
-export async function getAllArticles(limit = 10) {
+export async function getAllArticles(limit = DEFAULT_ALL_ARTICLES_LIMIT) {
   try {
     return await db.select().from(articles).orderBy(desc(articles.createdAt)).limit(limit);
   } catch (err) {
@@ -164,8 +174,10 @@ export async function refreshRecencyForSources(
 
       const oldRecency = article.recency ?? 0;
       const newRecency = calcRecencyScore(article.publishedAt);
-      const delta = (newRecency - oldRecency) * 0.3;
-      const newScore = Math.round(Math.max(0, Math.min(10, article.score + delta)) * 10) / 10;
+      const delta = (newRecency - oldRecency) * WEIGHT_RECENCY;
+      const newScore =
+        Math.round(Math.max(0, Math.min(SOFTMAX_SCALE, article.score + delta)) * SOFTMAX_SCALE) /
+        SOFTMAX_SCALE;
 
       await db
         .update(articles)

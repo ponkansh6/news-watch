@@ -1,22 +1,36 @@
 import { z } from "zod/v4";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { SCORING_PROMPT, BATCH_SCORING_PROMPT } from "./prompts";
+import {
+  LLM_RESPONSE_SUMMARY_MAX,
+  LLM_RESPONSE_USEFULNESS_MAX,
+  LLM_RESPONSE_REASON_MAX,
+  LLM_SINGLE_MAX_TOKENS,
+  LLM_SINGLE_TIMEOUT_MS,
+  LLM_BATCH_MAX_TOKENS,
+  LLM_BATCH_TIMEOUT_MS,
+  LLM_GEN_TEMPERATURE,
+  LLM_MAX_RETRIES,
+  LLM_MAX_PARSE_RETRIES,
+  LLM_BACKOFF_BASE_MS,
+  DEBUG_LOG_TRUNCATE_LENGTH,
+} from "../constants";
 
 /** LLM model used for article scoring (Gemini). */
 export const LLM_MODEL = "gemini-3.1-flash-lite";
 
 const LLMResponseSchema = z.object({
-  summary: z.string().min(1).max(100),
-  usefulness: z.number().min(0).max(10),
-  reason: z.string().min(1).max(200),
+  summary: z.string().min(1).max(LLM_RESPONSE_SUMMARY_MAX),
+  usefulness: z.number().min(0).max(LLM_RESPONSE_USEFULNESS_MAX),
+  reason: z.string().min(1).max(LLM_RESPONSE_REASON_MAX),
 });
 
 /** Lenient schema for batch mode — Gemini sometimes returns empty strings for
  *  summary/reason in batch responses. We accept and pad them with defaults. */
 const LLMBatchItemSchema = z.object({
-  summary: z.string().max(100),
-  usefulness: z.number().min(0).max(10),
-  reason: z.string().max(200),
+  summary: z.string().max(LLM_RESPONSE_SUMMARY_MAX),
+  usefulness: z.number().min(0).max(LLM_RESPONSE_USEFULNESS_MAX),
+  reason: z.string().max(LLM_RESPONSE_REASON_MAX),
 });
 
 type LLMResponse = z.infer<typeof LLMResponseSchema>;
@@ -32,7 +46,7 @@ export interface ArticleInput {
  * Exponential backoff with jitter to avoid thundering herd.
  * Base delay * 2^attempt + random jitter [0, baseDelay).
  */
-function backoffMs(attempt: number, baseMs = 2000): number {
+function backoffMs(attempt: number, baseMs = LLM_BACKOFF_BASE_MS): number {
   return baseMs * 2 ** attempt + Math.floor(Math.random() * baseMs);
 }
 
@@ -40,7 +54,7 @@ async function callGemini(
   prompt: string,
   maxTokens: number,
   timeoutMs: number,
-  retries = 3,
+  retries = LLM_MAX_RETRIES,
 ): Promise<string | null> {
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_API_KEY environment variable is not set");
@@ -51,7 +65,7 @@ async function callGemini(
     generationConfig: {
       responseMimeType: "application/json",
       maxOutputTokens: maxTokens,
-      temperature: 0.1,
+      temperature: LLM_GEN_TEMPERATURE,
     },
   });
 
@@ -61,24 +75,26 @@ async function callGemini(
       const response = await result.response;
       const text = response.text();
       return text;
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Check for rate limit (429) or transient errors
-      const isRateLimit = err.status === 429 || /429|rate limit/i.test(err.message);
-      const isTransient = /5\d\d|overloaded|unavailable|timeout/i.test(err.message);
+      const apiError = err as { status?: number; message?: string };
+      const isRateLimit =
+        apiError.status === 429; /* eslint-disable-line @typescript-eslint/no-magic-numbers */
+      const isTransient = /5\d\d|overloaded|unavailable|timeout/i.test(apiError.message ?? "");
 
       if ((isRateLimit || isTransient) && attempt < retries) {
         const waitMs = backoffMs(attempt);
         console.warn(
-          `[llm] Gemini ${isRateLimit ? "rate limit" : "transient error"}: ${err.message} (retry ${attempt + 1}/${retries}), waiting ${waitMs}ms`,
+          `[llm] Gemini ${isRateLimit ? "rate limit" : "transient error"}: ${apiError.message} (retry ${attempt + 1}/${retries}), waiting ${waitMs}ms`,
         );
         await new Promise((r) => setTimeout(r, waitMs));
         continue;
       }
 
       const error = new Error(
-        `Gemini API error: ${err.message} (status: ${err.status ?? "unknown"})`,
+        `Gemini API error: ${apiError.message} (status: ${apiError.status ?? "unknown"})`,
       );
-      error.cause = err;
+      error.cause = apiError;
       throw error;
     }
   }
@@ -93,11 +109,11 @@ export async function scoreArticle(article: ArticleInput): Promise<LLMResponse |
   );
 
   // Retry on JSON/parse failures (unstable model may produce bad output)
-  const maxParseRetries = 2;
+  const maxParseRetries = LLM_MAX_PARSE_RETRIES;
   for (let attempt = 0; attempt <= maxParseRetries; attempt++) {
     let text: string | null;
     try {
-      text = await callGemini(prompt, 500, 30_000);
+      text = await callGemini(prompt, LLM_SINGLE_MAX_TOKENS, LLM_SINGLE_TIMEOUT_MS);
     } catch (err) {
       console.error(`[llm] Scoring failed for "${article.title}":`, err);
       return null;
@@ -112,7 +128,7 @@ export async function scoreArticle(article: ArticleInput): Promise<LLMResponse |
     } catch {
       console.warn(
         `[llm] invalid JSON (attempt ${attempt + 1}/${maxParseRetries + 1}):`,
-        text.slice(0, 100),
+        text.slice(0, DEBUG_LOG_TRUNCATE_LENGTH),
       );
       if (attempt < maxParseRetries) {
         await new Promise((r) => setTimeout(r, backoffMs(attempt)));
@@ -158,11 +174,11 @@ export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMRespo
   );
 
   // Retry on JSON/parse failures
-  const maxParseRetries = 2;
+  const maxParseRetries = LLM_MAX_PARSE_RETRIES;
   for (let attempt = 0; attempt <= maxParseRetries; attempt++) {
     let text: string | null;
     try {
-      text = await callGemini(prompt, 16000, 55_000);
+      text = await callGemini(prompt, LLM_BATCH_MAX_TOKENS, LLM_BATCH_TIMEOUT_MS);
     } catch (err) {
       console.error(`[llm] Batch scoring failed:`, err);
       break;
@@ -177,7 +193,7 @@ export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMRespo
     } catch {
       console.warn(
         `[llm] batch invalid JSON (attempt ${attempt + 1}/${maxParseRetries + 1}):`,
-        text.slice(0, 100),
+        text.slice(0, DEBUG_LOG_TRUNCATE_LENGTH),
       );
       if (attempt < maxParseRetries) {
         await new Promise((r) => setTimeout(r, backoffMs(attempt)));
@@ -189,8 +205,8 @@ export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMRespo
     // Accept either a bare array or an object wrapping it under `results`
     const arr = Array.isArray(parsed)
       ? parsed
-      : Array.isArray((parsed as any)?.results)
-        ? (parsed as any).results
+      : Array.isArray((parsed as Record<string, unknown>)?.results)
+        ? ((parsed as Record<string, unknown>).results as unknown[])
         : null;
 
     if (!arr) {

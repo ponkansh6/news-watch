@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import { HATENA_HOTENTRY_RSS_URL, HATENA_ENTRYLIST_RSS_URL } from "@/lib/news/hatena-discovery";
+import { HATENA_TIMEOUT_MS } from "../constants";
 
 export interface HatenaItem {
   title: string;
@@ -15,7 +16,10 @@ const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_
 
 export function decodeEntities(input: unknown): string {
   if (input == null) return "";
-  const str = typeof input === "object" ? ((input as any)["#text"] ?? "") : String(input);
+  const str =
+    typeof input === "object"
+      ? String((input as Record<string, unknown>)["#text"] ?? "")
+      : String(input);
   if (!str) return "";
   return str
     .replace(/&#x([0-9a-fA-F]+);/g, (_: string, hex: string) =>
@@ -34,21 +38,26 @@ function parseHatenaRss(xml: string): HatenaItem[] {
   const parsed = parser.parse(xml);
   const items = parsed?.["rdf:RDF"]?.item ?? parsed?.rss?.channel?.item ?? [];
   const itemList = Array.isArray(items) ? items : [items];
-  return itemList.map((i: any) => ({
+  return itemList.map((i: Record<string, unknown>) => ({
     title: decodeEntities(i.title),
-    link: i.link ?? i["@_rdf:about"],
+    link: String(i.link ?? i["@_rdf:about"]),
     description: decodeEntities(i.description),
-    pubDate: i.pubDate,
-    author: i["dc:creator"] ?? i.author ?? null,
-    guid: i.guid ?? i.link,
-    category: i.category,
+    pubDate: typeof i.pubDate === "string" ? i.pubDate : undefined,
+    author:
+      typeof i["dc:creator"] === "string"
+        ? i["dc:creator"]
+        : typeof i.author === "string"
+          ? i.author
+          : undefined,
+    guid: typeof i.guid === "string" ? i.guid : String(i.link ?? ""),
+    category: i.category as string | string[] | undefined,
   }));
 }
 
 export async function searchHatena(limit = 50): Promise<HatenaItem[]> {
   const rssUrls = [HATENA_HOTENTRY_RSS_URL, HATENA_ENTRYLIST_RSS_URL];
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
+  const timer = setTimeout(() => controller.abort(), HATENA_TIMEOUT_MS);
   try {
     const results = await Promise.all(
       rssUrls.map(async (url) => {

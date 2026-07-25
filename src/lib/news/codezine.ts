@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+import { DEFAULT_REQUEST_TIMEOUT_MS } from "../constants";
 
 const FEED_URL = "https://codezine.jp/rss/new/20/index.xml";
 
@@ -17,7 +18,7 @@ const parser = new XMLParser({
 
 export async function searchCodeZine(limit = 50): Promise<CodeZineItem[]> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
+  const timer = setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
 
   try {
     const res = await fetch(FEED_URL, { signal: controller.signal });

@@ -1,6 +1,15 @@
 import { db } from "@/lib/db";
 import { hatenaFeeds } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import {
+  HATENA_DISCOVERY_TIMEOUT_MS,
+  HATENA_DISCOVERY_BACKOFF_MS,
+  MS_PER_SECOND,
+  SECONDS_PER_MINUTE,
+  HTTP_STATUS_TOO_MANY_REQUESTS,
+  HTTP_STATUS_SERVER_ERROR_MIN,
+} from "../constants";
+import { XMLParser } from "fast-xml-parser";
 
 export const HATENA_HOTENTRY_RSS_URL = "https://b.hatena.ne.jp/hotentry/it.rss";
 export const HATENA_ENTRYLIST_RSS_URL = "https://b.hatena.ne.jp/entrylist/it.rss";
@@ -9,15 +18,13 @@ const MAX_RETRIES = 3;
 const MAX_ERROR_COUNT = 5; // auto-disable after 5 consecutive errors
 const HATENA_PROXY_URL = process.env.HATENA_PROXY_URL;
 
-import { XMLParser } from "fast-xml-parser";
-
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let proxyDispatcher: any = undefined;
 try {
   if (HATENA_PROXY_URL) {
     try {
-      require.resolve("undici");
-      // @ts-ignore
-      const { ProxyAgent } = require("undici");
+      // @ts-expect-error — undici is bundled with Node.js 18+, no separate install needed
+      const { ProxyAgent } = await import("undici");
       proxyDispatcher = new ProxyAgent(HATENA_PROXY_URL);
     } catch {
       // undici not found, ignore
@@ -37,7 +44,7 @@ export async function politeFetch(url: string, init?: RequestInit): Promise<Resp
   lastRequestAt = Date.now();
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const timeout = setTimeout(() => controller.abort(), HATENA_DISCOVERY_TIMEOUT_MS);
 
   const dispatcher = proxyDispatcher;
 
@@ -62,23 +69,25 @@ async function fetchWithRetry(url: string, retries = MAX_RETRIES): Promise<Respo
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await politeFetch(url);
-      if (res.status === 429) {
+      if (res.status === HTTP_STATUS_TOO_MANY_REQUESTS) {
         const retryAfter = res.headers.get("Retry-After");
-        const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 60_000;
+        const waitMs = retryAfter
+          ? parseInt(retryAfter, 10) * MS_PER_SECOND
+          : SECONDS_PER_MINUTE * MS_PER_SECOND;
         console.warn(`[hatena-discovery] Rate limited (429), waiting ${waitMs}ms`);
         await new Promise((r) => setTimeout(r, waitMs));
         continue;
       }
       if (res.ok) return res;
-      if (res.status >= 500 && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
+      if (res.status >= HTTP_STATUS_SERVER_ERROR_MIN && attempt < retries) {
+        await new Promise((r) => setTimeout(r, HATENA_DISCOVERY_BACKOFF_MS * 2 ** attempt));
         continue;
       }
       console.warn(`[hatena-discovery] HTTP ${res.status} for ${url}`);
       return res;
     } catch (err) {
       if (attempt === retries) throw err;
-      await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
+      await new Promise((r) => setTimeout(r, HATENA_DISCOVERY_BACKOFF_MS * 2 ** attempt));
     }
   }
   return null;

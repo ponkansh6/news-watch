@@ -1,25 +1,17 @@
 import { GoogleGenerativeAI, TaskType } from "@google/generative-ai";
 import { cosineSimilarity } from "./vector-math";
+import {
+  MAX_CONCURRENT_EMBEDDINGS,
+  EMBED_MAX_RETRIES,
+  EMBED_BACKOFF_MS,
+  EMBED_BATCH_SIZE,
+} from "./constants";
 export { cosineSimilarity };
 
 export const EMBEDDING_MODEL_VERSION = "gemini-embedding-2";
 export const EMBEDDING_DIMENSIONS = 768;
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
-
-/**
- * Limit concurrent embedding requests.
- *
- * Google's embedding API rate-limits concurrent requests (returns 429). Firing
- * all article + keyword embeddings at once (e.g. 20 articles + 5 keywords in a
- * single scoring pipeline run) reliably trips that limit and, without backoff,
- * aborts the whole scoring run — which is why production scoring never
- * completed. A module-level semaphore caps in-flight requests, and each call is
- * retried with exponential backoff on transient failures.
- */
-const MAX_CONCURRENT_EMBEDDINGS = 5;
-const EMBED_MAX_RETRIES = 3;
-const EMBED_BACKOFF_MS = 400;
 
 // --- Request counter (for monitoring & tests) ---
 let embeddingRequestCount = 0;
@@ -120,7 +112,7 @@ interface BatchEmbedItem {
   taskType: TaskType;
 }
 
-const BATCH_SIZE = 100; // Google API batch limit
+const BATCH_SIZE = EMBED_BATCH_SIZE; // Google API batch limit
 
 /**
  * Embed multiple texts in a single API call using batchEmbedContents.

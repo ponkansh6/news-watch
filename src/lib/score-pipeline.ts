@@ -5,17 +5,16 @@ import {
   calcCompositeScore,
   normalizeSimilaritiesWithTagged,
 } from "@/lib/scoring";
+import { LLM_BATCH_SIZE, JAPANESE_RATIO_THRESHOLD, JAPANESE_LARGE_BATCH } from "./constants";
+import { SOFTMAX_SCALE } from "./constants";
 import type { ArticleWithTag } from "@/lib/types";
-
-/** Max articles sent to the LLM in a single scoring request. */
-const LLM_BATCH_SIZE = 20;
 
 function getBatchSize(articles: ArticleWithTag[]): number {
   if (articles.length === 0) return LLM_BATCH_SIZE;
   const japaneseRatio =
     articles.filter((a) => /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(a.article.title))
       .length / articles.length;
-  return japaneseRatio > 0.5 ? 8 : LLM_BATCH_SIZE;
+  return japaneseRatio > JAPANESE_RATIO_THRESHOLD ? JAPANESE_LARGE_BATCH : LLM_BATCH_SIZE;
 }
 
 /** Group tagged articles by assigned keyword (including null-keyword articles
@@ -76,7 +75,8 @@ async function scoreAndSaveBatch(batch: ArticleWithTag[], keyword: string | null
     const recency = calcRecencyScore(article.publishedAt);
     const composite = calcCompositeScore(similarity, usefulness, recency);
     // similarity is already normalized to 0-10 by normalizeSimilaritiesWithTagged
-    const relevance = Math.round(Math.max(0, Math.min(10, similarity)) * 10) / 10;
+    const relevance =
+      Math.round(Math.max(0, Math.min(SOFTMAX_SCALE, similarity)) * SOFTMAX_SCALE) / SOFTMAX_SCALE;
     try {
       await upsertArticle({
         title: article.title,

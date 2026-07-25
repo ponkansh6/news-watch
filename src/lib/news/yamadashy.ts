@@ -1,4 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
+import { DEFAULT_REQUEST_TIMEOUT_MS } from "../constants";
 
 const FEED_URL = "https://yamadashy.github.io/tech-blog-rss-feed/feeds/rss.xml";
 
@@ -19,7 +20,7 @@ const parser = new XMLParser({
 
 export async function searchYamadashy(limit = 50): Promise<YamadashyItem[]> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
+  const timer = setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
 
   try {
     const res = await fetch(FEED_URL, { signal: controller.signal });

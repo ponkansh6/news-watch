@@ -1,4 +1,17 @@
 import type { ArticleWithTag } from "@/lib/types";
+import {
+  RECENCY_TIERS,
+  SOFTMAX_SCALE,
+  WEIGHT_SIMILARITY,
+  WEIGHT_USEFULNESS,
+  WEIGHT_RECENCY,
+} from "./constants";
+
+// ── Time constants ──
+const MS_PER_SECOND = 1000;
+const SECONDS_PER_MINUTE = 60;
+const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
 
 /**
  * Algorithmic recency score (0-10) based on publishedAt freshness.
@@ -7,12 +20,11 @@ import type { ArticleWithTag } from "@/lib/types";
 export function calcRecencyScore(publishedAt: string): number {
   const now = Date.now();
   const pub = new Date(publishedAt).getTime();
-  const days = (now - pub) / (1000 * 60 * 60 * 24);
-  if (days <= 1) return 10;
-  if (days <= 3) return 8;
-  if (days <= 7) return 6;
-  if (days <= 14) return 4;
-  if (days <= 30) return 2;
+  const days =
+    (now - pub) / (MS_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY);
+  for (const tier of RECENCY_TIERS) {
+    if (days <= tier.days) return tier.score;
+  }
   return 0;
 }
 
@@ -27,8 +39,15 @@ export function calcCompositeScore(
 ): number | null {
   if (usefulness === null) return null;
   // similarity is already normalized to 0-10 by normalizeSimilaritiesWithTagged
-  const normalizedSimilarity = Math.max(0, Math.min(10, similarity));
-  return Math.round((normalizedSimilarity * 0.2 + usefulness * 0.5 + recency * 0.3) * 10) / 10;
+  const normalizedSimilarity = Math.max(0, Math.min(SOFTMAX_SCALE, similarity));
+  return (
+    Math.round(
+      (normalizedSimilarity * WEIGHT_SIMILARITY +
+        usefulness * WEIGHT_USEFULNESS +
+        recency * WEIGHT_RECENCY) *
+        SOFTMAX_SCALE,
+    ) / SOFTMAX_SCALE
+  );
 }
 
 export function softmax(values: number[], temperature = 1.0): number[] {
@@ -46,11 +65,11 @@ export function normalizeSimilaritiesWithTagged(tagged: ArticleWithTag[]): Artic
     byKeyword.set(t.keyword, list);
   }
 
-  for (const [_, group] of byKeyword) {
+  for (const [, group] of byKeyword) {
     const similarities = group.map((t) => t.similarity);
     const normalized = softmax(similarities);
     for (let i = 0; i < group.length; i++) {
-      group[i].similarity = normalized[i] * 10;
+      group[i].similarity = normalized[i] * SOFTMAX_SCALE;
     }
   }
   return tagged;

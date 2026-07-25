@@ -1,4 +1,5 @@
 const BASE_URL = "https://newsapi.org/v2";
+import { DEFAULT_REQUEST_TIMEOUT_MS } from "../constants";
 
 export interface NewsApiArticle {
   title: string;
@@ -23,7 +24,7 @@ export async function searchNewsApi(limit = 50): Promise<NewsApiArticle[]> {
   const url = `${BASE_URL}/top-headlines?country=us&apiKey=${apiKey}&pageSize=${limit}&language=en`;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
+  const timer = setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
 
   try {
     const res = await fetch(url, { signal: controller.signal });
