@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { useEffect, type ReactNode } from "react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, renderHook, act } from "@testing-library/react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import NewsSection from "../../src/app/news-section";
 import { SkeletonList, type Article } from "../../src/app/article-list";
 import { RefreshProvider, useRefresh } from "../../src/app/refresh-context";
@@ -137,5 +137,42 @@ describe("NewsSection", () => {
     expect(screen.getByText(`(${mockArticles.length}件)`)).toBeInTheDocument();
     expect(screen.getByText("テスト記事 1")).toBeInTheDocument();
     expect(screen.getByText("テスト記事 2")).toBeInTheDocument();
+  });
+
+  it("does NOT prematurely clear refreshing when articles reference changes but NO new scored articles", () => {
+    // This test reproduces the bug: when isRefreshing=true and the articles
+    // reference changes (e.g., RSC re-created the same array) BEFORE new
+    // scored articles actually arrive, the useEffect in NewsSection
+    // prematurely calls setRefreshing(false) because it only checks
+    // reference equality, not whether new articles appeared.
+
+    // We use the Wrapper to set isRefreshing=true initially.
+    // Then we change the articles reference (same data, new array),
+    // simulating RSC returning the same articles during refresh.
+    // The skeleton should STILL be visible because no scored articles arrived.
+
+    const { rerender } = render(
+      <Wrapper refreshing={true}>
+        <NewsSection articles={mockArticles} />
+      </Wrapper>,
+    );
+
+    // Verify skeleton is showing
+    expect(screen.getByText("(更新中...)")).toBeInTheDocument();
+
+    // Simulate RSC re-render that returns the SAME articles (new reference).
+    // In production, router.refresh() triggers RSC which always creates
+    // new object references even for the same data.
+    rerender(
+      <Wrapper refreshing={true}>
+        <NewsSection articles={[...mockArticles]} />
+      </Wrapper>,
+    );
+
+    // BUG: skeleton gets cleared because the articles reference changed
+    // even though no new scored articles arrived.
+    // Expected: skeleton should STILL be visible
+    // Actual: skeleton disappears because setRefreshing(false) was called
+    expect(screen.getByText("(更新中...)")).toBeInTheDocument();
   });
 });

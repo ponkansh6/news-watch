@@ -12,16 +12,19 @@ export default function NewsSection({
   emptyMessage?: string;
 }) {
   const { isRefreshing, setRefreshing } = useRefresh();
-  const prevArticlesRef = useRef(articles);
+  const prevIdsRef = useRef<Set<number>>(new Set(articles.map((a) => a.id)));
 
-  // Detect when articles prop changes after refresh and clear refreshing
+  // Detect when NEW scored articles arrive after refresh and clear refreshing.
+  // Uses article ID comparison instead of reference equality to avoid
+  // premature clearing on RSC re-renders that return the same data.
   useEffect(() => {
     if (isRefreshing) {
-      // Only clear if articles reference actually changed (refresh completed)
-      if (prevArticlesRef.current !== articles) {
+      const currentIds = new Set(articles.map((a) => a.id));
+      const hasNewIds = [...currentIds].some((id) => !prevIdsRef.current.has(id));
+      if (hasNewIds) {
         setRefreshing(false);
       }
-      prevArticlesRef.current = articles;
+      prevIdsRef.current = currentIds;
     }
   }, [articles, isRefreshing, setRefreshing]);
 

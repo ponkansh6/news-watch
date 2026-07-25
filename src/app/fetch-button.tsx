@@ -45,6 +45,16 @@ export default function FetchButton() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Safety timeout: force-clear refreshing after 30 seconds to prevent
+  // infinite skeleton if no new articles are scored above threshold.
+  useEffect(() => {
+    if (!isRefreshing) return;
+    const timer = setTimeout(() => {
+      setRefreshing(false);
+    }, 30_000);
+    return () => clearTimeout(timer);
+  }, [isRefreshing, setRefreshing]);
+
   const handleSourceToggle = useCallback(
     (sourceId: string) => {
       setSelectedSources((prev) => {
