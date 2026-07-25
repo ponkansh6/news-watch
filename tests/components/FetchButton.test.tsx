@@ -150,7 +150,7 @@ describe("FetchButton", () => {
     await user.click(fetchBtn);
 
     expect(screen.getByRole("button", { name: "取得・スコアリング中..." })).toBeInTheDocument();
-    expect(screen.getByText("キーワードを処理中...")).toBeInTheDocument();
+    expect(screen.getByText("記事を更新中...")).toBeInTheDocument();
 
     resolveFetch({
       ok: true,

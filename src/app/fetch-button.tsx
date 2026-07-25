@@ -75,6 +75,7 @@ export default function FetchButton() {
 
   const handleFetch = useCallback(async () => {
     setApiInFlight(true);
+    setRefreshing(true);
     setResults(null);
     setFetchError(null);
     setShowDetail(false);
@@ -109,15 +110,17 @@ export default function FetchButton() {
           },
         ]);
         // Keep loading visible during RSC refresh
-        setRefreshing(true);
+        // isRefreshing is already true (set above)
         startTransition(() => {
           router.refresh();
         });
       } else {
         setFetchError("ニュース取得に失敗しました");
+        setRefreshing(false);
       }
     } catch {
       setFetchError("通信エラーが発生しました");
+      setRefreshing(false);
     } finally {
       setApiInFlight(false);
     }
@@ -232,17 +235,10 @@ export default function FetchButton() {
         </div>
       )}
 
-      {apiInFlight && !isRefreshing && (
-        <div className="flex items-center gap-2 text-sm text-neutral-400">
-          <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-neutral-400" />
-          キーワードを処理中...
-        </div>
-      )}
-
       {isRefreshing && (
         <div className="flex items-center gap-2 text-sm text-neutral-400">
           <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-neutral-400" />
-          スコアリング完了、記事を更新中...
+          記事を更新中...
         </div>
       )}
     </div>
