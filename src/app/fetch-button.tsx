@@ -18,8 +18,8 @@ export default function FetchButton() {
   const [results, setResults] = useState<FetchResult[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false);
-  const [, startTransition] = useTransition();
-  const { isRefreshing, setRefreshing } = useRefresh();
+  const [isPending, startTransition] = useTransition();
+  const { isRefreshing, setRefreshing, setFiltering } = useRefresh();
   const refreshFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedSources, setSelectedSources] = useState<string[]>(() => {
     // Load from localStorage on mount
@@ -56,6 +56,14 @@ export default function FetchButton() {
     return () => clearTimeout(timer);
   }, [isRefreshing, setRefreshing]);
 
+  // Sync transition pending state → isFiltering context for source filter loading indicator
+  useEffect(() => {
+    // Only set filtering when NOT in a scoring refresh (isRefreshing handles scoring)
+    if (!isRefreshing) {
+      setFiltering(isPending);
+    }
+  }, [isPending, isRefreshing, setFiltering]);
+
   // Cleanup fallback timer on unmount
   useEffect(() => {
     return () => {
@@ -72,27 +80,34 @@ export default function FetchButton() {
         const next = prev.includes(sourceId)
           ? prev.filter((id) => id !== sourceId)
           : [...prev, sourceId];
-        // Update URL search params
+        // Update URL search params inside a transition so isPending shows a
+        // loading indicator while the server component re-fetches with new filter.
         const params = new URLSearchParams();
         if (next.length > 0) params.set("sources", next.join(","));
-        router.replace(`?${params.toString()}`, { scroll: false });
+        startTransition(() => {
+          router.replace(`?${params.toString()}`, { scroll: false });
+        });
         return next;
       });
     },
-    [router],
+    [router, startTransition],
   );
 
   const handleSelectAll = useCallback(() => {
     setSelectedSources(SOURCES.map((s) => s.id));
     const params = new URLSearchParams();
     params.set("sources", SOURCES.map((s) => s.id).join(","));
-    router.replace(`?${params.toString()}`, { scroll: false });
-  }, [router]);
+    startTransition(() => {
+      router.replace(`?${params.toString()}`, { scroll: false });
+    });
+  }, [router, startTransition]);
 
   const handleSelectNone = useCallback(() => {
     setSelectedSources([]);
-    router.replace("?", { scroll: false });
-  }, [router]);
+    startTransition(() => {
+      router.replace("?", { scroll: false });
+    });
+  }, [router, startTransition]);
 
   const handleFetch = useCallback(async () => {
     setApiInFlight(true);
@@ -202,8 +217,16 @@ export default function FetchButton() {
             </label>
           ))}
         </div>
-        <div className="mt-2 text-xs text-neutral-500">
-          {selectedSources.length} / {SOURCES.length} を選択中
+        <div className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
+          <span>
+            {selectedSources.length} / {SOURCES.length} を選択中
+          </span>
+          {isPending && !isRefreshing && (
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+              フィルタリング中...
+            </span>
+          )}
         </div>
       </div>
 

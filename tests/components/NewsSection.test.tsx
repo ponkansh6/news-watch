@@ -7,18 +7,27 @@ import { SkeletonList, type Article } from "../../src/app/article-list";
 import { RefreshProvider, useRefresh } from "../../src/app/refresh-context";
 import "@testing-library/jest-dom/vitest";
 
-function RefreshSetter({ refreshing }: { refreshing: boolean }) {
-  const { setRefreshing } = useRefresh();
+function RefreshSetter({ refreshing, filtering }: { refreshing?: boolean; filtering?: boolean }) {
+  const { setRefreshing, setFiltering } = useRefresh();
   useEffect(() => {
-    setRefreshing(refreshing);
-  }, [refreshing, setRefreshing]);
+    if (refreshing !== undefined) setRefreshing(refreshing);
+    if (filtering !== undefined) setFiltering(filtering);
+  }, [refreshing, filtering, setRefreshing, setFiltering]);
   return null;
 }
 
-function Wrapper({ refreshing = false, children }: { refreshing?: boolean; children: ReactNode }) {
+function Wrapper({
+  refreshing = false,
+  filtering = false,
+  children,
+}: {
+  refreshing?: boolean;
+  filtering?: boolean;
+  children: ReactNode;
+}) {
   return (
     <RefreshProvider>
-      <RefreshSetter refreshing={refreshing} />
+      <RefreshSetter refreshing={refreshing} filtering={filtering} />
       {children}
     </RefreshProvider>
   );
@@ -135,6 +144,20 @@ describe("NewsSection", () => {
 
     expect(screen.getByText("スコアリング済み記事")).toBeInTheDocument();
     expect(screen.getByText(`(${mockArticles.length}件)`)).toBeInTheDocument();
+    expect(screen.getByText("テスト記事 1")).toBeInTheDocument();
+    expect(screen.getByText("テスト記事 2")).toBeInTheDocument();
+  });
+
+  it("shows filtering indicator when isFiltering=true and keeps articles visible", () => {
+    render(
+      <Wrapper refreshing={false} filtering={true}>
+        <NewsSection articles={mockArticles} />
+      </Wrapper>,
+    );
+
+    expect(screen.getByText("スコアリング済み記事")).toBeInTheDocument();
+    expect(screen.getByText("フィルタリング中...")).toBeInTheDocument();
+    // Articles should still be visible (not skeleton)
     expect(screen.getByText("テスト記事 1")).toBeInTheDocument();
     expect(screen.getByText("テスト記事 2")).toBeInTheDocument();
   });

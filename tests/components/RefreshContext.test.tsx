@@ -10,28 +10,48 @@ import type { ReactNode } from "react";
  * to assert on the context value.
  */
 function TestConsumer() {
-  const { isRefreshing, setRefreshing } = useRefresh();
+  const { isRefreshing, setRefreshing, isFiltering, setFiltering } = useRefresh();
   return (
     <div>
       <span data-testid="refreshing">{isRefreshing ? "true" : "false"}</span>
+      <span data-testid="filtering">{isFiltering ? "true" : "false"}</span>
       <button data-testid="set-true" type="button" onClick={() => setRefreshing(true)}>
         Set True
       </button>
       <button data-testid="set-false" type="button" onClick={() => setRefreshing(false)}>
         Set False
       </button>
+      <button data-testid="set-filtering-true" type="button" onClick={() => setFiltering(true)}>
+        Set Filtering True
+      </button>
+      <button data-testid="set-filtering-false" type="button" onClick={() => setFiltering(false)}>
+        Set Filtering False
+      </button>
     </div>
   );
 }
 
 describe("RefreshProvider / useRefresh", () => {
-  it("provides isRefreshing=false by default", () => {
+  it("provides isRefreshing=false and isFiltering=false by default", () => {
     render(
       <RefreshProvider>
         <TestConsumer />
       </RefreshProvider>,
     );
     expect(screen.getByTestId("refreshing").textContent).toBe("false");
+    expect(screen.getByTestId("filtering").textContent).toBe("false");
+  });
+
+  it("setFiltering(true) updates isFiltering to true", async () => {
+    const user = userEvent.setup();
+    render(
+      <RefreshProvider>
+        <TestConsumer />
+      </RefreshProvider>,
+    );
+
+    await user.click(screen.getByTestId("set-filtering-true"));
+    expect(screen.getByTestId("filtering").textContent).toBe("true");
   });
 
   it("setRefreshing(true) updates isRefreshing to true", async () => {

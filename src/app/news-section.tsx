@@ -11,7 +11,7 @@ export default function NewsSection({
   articles: import("./article-list").Article[];
   emptyMessage?: string;
 }) {
-  const { isRefreshing, setRefreshing } = useRefresh();
+  const { isRefreshing, setRefreshing, isFiltering } = useRefresh();
   const prevIdsRef = useRef<Set<number>>(new Set(articles.map((a) => a.id)));
 
   // Detect when NEW scored articles arrive after refresh and clear refreshing.
@@ -28,48 +28,35 @@ export default function NewsSection({
     }
   }, [articles, isRefreshing, setRefreshing]);
 
-  if (isRefreshing) {
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">
-            スコアリング済み記事
-            <span className="ml-2 text-sm font-normal text-neutral-400">(更新中...)</span>
-          </h2>
-        </div>
-        <SkeletonList count={5} />
-      </div>
-    );
-  }
-
-  if (articles.length === 0) {
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">
-            スコアリング済み記事
-            <span className="ml-2 text-sm font-normal text-neutral-400">(0件)</span>
-          </h2>
-        </div>
-        <div className="rounded-lg border border-dashed border-neutral-300 p-12 text-center text-neutral-400">
-          <p className="mb-2 text-lg">まだ記事がありません</p>
-          <p className="text-sm">
-            {emptyMessage || "「ニュースを取得」ボタンで最新ニュースを取得・スコアリングできます"}
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const headerSuffix = isRefreshing ? "(更新中...)" : `(${articles.length}件)`;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">
           スコアリング済み記事
-          <span className="ml-2 text-sm font-normal text-neutral-400">({articles.length}件)</span>
+          <span className="ml-2 text-sm font-normal text-neutral-400">{headerSuffix}</span>
+          {isFiltering && !isRefreshing && (
+            <span className="ml-2 inline-flex items-center gap-1 text-sm font-normal text-blue-500">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+              フィルタリング中...
+            </span>
+          )}
         </h2>
       </div>
-      <ArticleList articles={articles} />
+
+      {isRefreshing ? (
+        <SkeletonList count={5} />
+      ) : articles.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-neutral-300 p-12 text-center text-neutral-400">
+          <p className="mb-2 text-lg">まだ記事がありません</p>
+          <p className="text-sm">
+            {emptyMessage || "「ニュースを取得」ボタンで最新ニュースを取得・スコアリングできます"}
+          </p>
+        </div>
+      ) : (
+        <ArticleList articles={articles} />
+      )}
     </div>
   );
 }
