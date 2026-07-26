@@ -5,15 +5,19 @@ import * as gemini from "@/lib/llm/gemini";
 import * as db from "@/lib/db/actions";
 
 // Mock all external dependencies
-vi.mock("@/lib/news/newsapi", () => ({
-  searchNewsApi: vi.fn().mockResolvedValue([
+vi.mock("@/lib/news/zenn", () => ({
+  searchZenn: vi.fn().mockResolvedValue([
     {
-      title: "NewsAPI Article",
-      url: "https://newsapi.com/1",
-      description: "desc",
-      urlToImage: "img.jpg",
-      source: { name: "NewsAPI" },
-      publishedAt: new Date().toISOString(),
+      id: 1,
+      title: "Zenn Article",
+      slug: "zenn-article",
+      liked_count: 5,
+      bookmarked_count: 2,
+      article_type: "tech",
+      emoji: "📝",
+      published_at: new Date().toISOString(),
+      path: "/articles/zenn-article",
+      user: { username: "user1", name: "User One" },
     },
   ]),
 }));
@@ -63,6 +67,7 @@ vi.mock("@/lib/db/actions", () => ({
   upsertArticle: vi.fn().mockResolvedValue(undefined),
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
+  refreshRecencyForSources: vi.fn().mockResolvedValue(0),
 }));
 
 let mockKeywords = ["test-keyword"];
@@ -98,7 +103,7 @@ describe("e2e pipeline (local dev mode)", () => {
     mockKeywords = ["test-keyword"];
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["newsapi"] }),
+      body: JSON.stringify({ sources: ["zenn"] }),
       headers: { "Content-Type": "application/json" },
     });
 
@@ -121,13 +126,13 @@ describe("e2e pipeline (local dev mode)", () => {
   });
 
   test("should handle empty articles (no scoring)", async () => {
-    // Mock searchNewsApi to return empty array
-    const newsapi = await import("@/lib/news/newsapi");
-    vi.mocked(newsapi.searchNewsApi).mockResolvedValue([]);
+    // Mock searchZenn to return empty array
+    const zenn = await import("@/lib/news/zenn");
+    vi.mocked(zenn.searchZenn).mockResolvedValue([]);
 
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["newsapi"] }),
+      body: JSON.stringify({ sources: ["zenn"] }),
       headers: { "Content-Type": "application/json" },
     });
 

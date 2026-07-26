@@ -1,4 +1,4 @@
-import type { NewsApiArticle } from "@/lib/news/newsapi";
+import type { ZennArticle } from "@/lib/news/zenn";
 import type { QiitaFeedItem } from "@/lib/news/qiita";
 import type { YamadashyItem } from "@/lib/news/yamadashy";
 import type { HatenaItem } from "@/lib/news/hatena";
@@ -26,4 +26,4 @@ export type ArticleInput = {
   description: string | null;
 };
 
-export type { NewsApiArticle, QiitaFeedItem as QiitaArticle, YamadashyItem, HatenaItem };
+export type { ZennArticle, QiitaFeedItem as QiitaArticle, YamadashyItem, HatenaItem };

@@ -239,7 +239,7 @@ export default function FetchButton() {
         >
           {apiInFlight ? "取得・スコアリング中..." : "ニュースを取得してスコアリング"}
         </button>
-        <span className="text-xs text-neutral-400">NewsAPI → LLMスコアリング</span>
+        <span className="text-xs text-neutral-400">Zenn → LLMスコアリング</span>
       </div>
 
       {fetchError && (

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { KEYWORDS } from "@/lib/config";
-import { searchNewsApi, type NewsApiArticle } from "@/lib/news/newsapi";
+import { searchZenn, type ZennArticle } from "@/lib/news/zenn";
 import { searchQiita, type QiitaFeedItem } from "@/lib/news/qiita";
 import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
 import { searchITmedia, type ItmediaItem } from "@/lib/news/itmedia";
@@ -24,7 +24,7 @@ import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 export const maxDuration = 60;
 
 export const SUPPORTED_SOURCE_IDS = [
-  "newsapi",
+  "zenn",
   "qiita",
   "yamadashy",
   "itmedia",
@@ -38,7 +38,7 @@ const MAX_ARTICLES = 20;
 
 export function normalize(
   article:
-    | NewsApiArticle
+    | ZennArticle
     | QiitaFeedItem
     | YamadashyItem
     | ItmediaItem
@@ -48,22 +48,21 @@ export function normalize(
     | HatenaItem,
   sourceId: string,
 ): NormalizedArticle {
-  const n = article as NewsApiArticle;
-
   let sourceName: string | null = null;
   let author: string | null = null;
   let title = "";
   let url = "";
   let publishedAt = "";
+  let urlToImage: string | null = null;
 
   switch (sourceId) {
-    case "newsapi": {
-      const a = article as NewsApiArticle;
-      title = a.title;
-      url = a.url ?? "";
-      publishedAt = a.publishedAt ?? new Date().toISOString();
-      sourceName = a.source?.name ?? null;
-      author = a.author ?? null;
+    case "zenn": {
+      const z = article as ZennArticle;
+      title = z.title;
+      url = `https://zenn.dev${z.path}`;
+      publishedAt = z.published_at ?? new Date().toISOString();
+      sourceName = "Zenn";
+      author = z.user?.name ?? z.user?.username ?? null;
       break;
     }
     case "qiita": {
@@ -131,12 +130,12 @@ export function normalize(
       break;
     }
     default: {
-      const a = article as NewsApiArticle;
+      const a = article as any;
       title = a.title;
-      url = a.url ?? "";
-      publishedAt = a.publishedAt ?? new Date().toISOString();
+      url = a.url ?? a.link ?? "";
+      publishedAt = a.publishedAt ?? a.published ?? a.pubDate ?? a.date ?? new Date().toISOString();
       sourceName = a.source?.name ?? null;
-      author = a.author ?? null;
+      author = a.author ?? a.creator ?? null;
     }
   }
 
@@ -144,12 +143,12 @@ export function normalize(
     title,
     description:
       "description" in article
-        ? (article.description ?? null)
+        ? ((article as any).description ?? null)
         : "content" in article
-          ? (article.content ?? null)
+          ? ((article as any).content ?? null)
           : null,
     url,
-    urlToImage: n.urlToImage ?? null,
+    urlToImage,
     publishedAt,
     sourceName,
     sourceId,
@@ -203,9 +202,9 @@ export async function POST(request: Request) {
   const fetchPromises: Array<Promise<any>> = [];
   const sourceOrder: string[] = [];
 
-  if (selectedSources.includes("newsapi")) {
-    fetchPromises.push(searchNewsApi(20));
-    sourceOrder.push("newsapi");
+  if (selectedSources.includes("zenn")) {
+    fetchPromises.push(searchZenn(20));
+    sourceOrder.push("zenn");
   }
   if (selectedSources.includes("qiita")) {
     fetchPromises.push(searchQiita(20));
@@ -259,7 +258,7 @@ export async function POST(request: Request) {
   });
 
   const all = deduplicate([
-    ...(resultsBySource.newsapi ? resultsBySource.newsapi.map((a) => normalize(a, "newsapi")) : []),
+    ...(resultsBySource.zenn ? resultsBySource.zenn.map((a) => normalize(a, "zenn")) : []),
     ...(resultsBySource.qiita ? resultsBySource.qiita.map((a) => normalize(a, "qiita")) : []),
 
     ...(resultsBySource.yamadashy

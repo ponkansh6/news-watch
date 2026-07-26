@@ -109,7 +109,7 @@ describe("Multi-source scored articles appear in unfiltered list", () => {
     mockLlmSuccess();
 
     const sources = [
-      { id: "newsapi", name: "NewsAPI" },
+      { id: "zenn", name: "Zenn" },
       { id: "qiita", name: "Qiita" },
       { id: "github", name: "GitHub" },
       { id: "hatena", name: "Hatena" },
@@ -128,7 +128,7 @@ describe("Multi-source scored articles appear in unfiltered list", () => {
 
     // Verify each source is represented
     const sourceIds = all.map((a) => a.sourceId);
-    expect(sourceIds).toContain("newsapi");
+    expect(sourceIds).toContain("zenn");
     expect(sourceIds).toContain("qiita");
     expect(sourceIds).toContain("github");
     expect(sourceIds).toContain("hatena");
@@ -145,14 +145,14 @@ describe("Multi-source scored articles appear in unfiltered list", () => {
 // Scenario 2: Per-source filtering returns correct subset
 // ═══════════════════════════════════════════════════════════════════
 describe("Per-source filtering after scoring", () => {
-  it("filtering by 'newsapi' returns only newsapi articles", async () => {
+  it("filtering by 'zenn' returns only zenn articles", async () => {
     mockLlmSuccess();
 
-    const newsapiArticles = makeArticles(5, "newsapi", "NewsAPI");
+    const zennArticles = makeArticles(5, "zenn", "Zenn");
     const qiitaArticles = makeArticles(5, "qiita", "Qiita");
     const githubArticles = makeArticles(5, "github", "GitHub");
 
-    for (const arts of [newsapiArticles, qiitaArticles, githubArticles]) {
+    for (const arts of [zennArticles, qiitaArticles, githubArticles]) {
       const tagged = await tagArticlesByKeyword(arts, KEYWORDS);
       await scoreAndSaveTagged(tagged);
     }
@@ -161,11 +161,11 @@ describe("Per-source filtering after scoring", () => {
     const all = await getScoredArticles(100);
     expect(all).toHaveLength(15);
 
-    // Filter by newsapi only
-    const newsapiOnly = await getScoredArticles(100, ["newsapi"]);
-    expect(newsapiOnly).toHaveLength(5);
-    for (const a of newsapiOnly) {
-      expect(a.sourceId).toBe("newsapi");
+    // Filter by zenn only
+    const zennOnly = await getScoredArticles(100, ["zenn"]);
+    expect(zennOnly).toHaveLength(5);
+    for (const a of zennOnly) {
+      expect(a.sourceId).toBe("zenn");
     }
 
     // Filter by qiita only
@@ -186,20 +186,20 @@ describe("Per-source filtering after scoring", () => {
   it("filtering by multiple sources returns union", async () => {
     mockLlmSuccess();
 
-    const newsapiArticles = makeArticles(3, "newsapi", "NewsAPI");
+    const zennArticles = makeArticles(3, "zenn", "Zenn");
     const qiitaArticles = makeArticles(3, "qiita", "Qiita");
     const githubArticles = makeArticles(3, "github", "GitHub");
 
-    for (const arts of [newsapiArticles, qiitaArticles, githubArticles]) {
+    for (const arts of [zennArticles, qiitaArticles, githubArticles]) {
       const tagged = await tagArticlesByKeyword(arts, KEYWORDS);
       await scoreAndSaveTagged(tagged);
     }
 
-    // Filter by newsapi + github
-    const filtered = await getScoredArticles(100, ["newsapi", "github"]);
+    // Filter by zenn + github
+    const filtered = await getScoredArticles(100, ["zenn", "github"]);
     expect(filtered).toHaveLength(6);
     const sourceIds = filtered.map((a) => a.sourceId);
-    expect(sourceIds).toContain("newsapi");
+    expect(sourceIds).toContain("zenn");
     expect(sourceIds).toContain("github");
     expect(sourceIds).not.toContain("qiita");
   });
@@ -212,7 +212,7 @@ describe("Non-matching source filter", () => {
   it("filtering by non-existent source returns 0", async () => {
     mockLlmSuccess();
 
-    const articles = makeArticles(5, "newsapi", "NewsAPI");
+    const articles = makeArticles(5, "zenn", "Zenn");
     const tagged = await tagArticlesByKeyword(articles, KEYWORDS);
     await scoreAndSaveTagged(tagged);
 
@@ -243,18 +243,18 @@ describe("Low-score articles with valid source appear in filtered results", () =
 
     // Use very old date to get recency=0
     const oldDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
-    const newsapiArticles = Array.from({ length: 3 }).map((_, i) => ({
-      title: `Old NewsAPI Article ${i}`,
+    const zennArticles = Array.from({ length: 3 }).map((_, i) => ({
+      title: `Old Zenn Article ${i}`,
       description: `Old description ${i}`,
-      url: `http://test.com/old-newsapi/${i}`,
+      url: `http://test.com/old-zenn/${i}`,
       urlToImage: null,
       publishedAt: oldDate,
-      sourceName: "NewsAPI",
-      sourceId: "newsapi",
+      sourceName: "Zenn",
+      sourceId: "zenn",
       author: `Author ${i}`,
     }));
 
-    const tagged = await tagArticlesByKeyword(newsapiArticles, KEYWORDS);
+    const tagged = await tagArticlesByKeyword(zennArticles, KEYWORDS);
     const saved = await scoreAndSaveTagged(tagged);
 
     // Verify articles were saved with non-null score
@@ -262,7 +262,7 @@ describe("Low-score articles with valid source appear in filtered results", () =
 
     // Check DB directly for score values
     const dbRows = await (dbMod as any).__client.execute(
-      "SELECT source_id, score FROM articles WHERE source_id = 'newsapi'",
+      "SELECT source_id, score FROM articles WHERE source_id = 'zenn'",
     );
     expect(dbRows.rows).toHaveLength(3);
     for (const row of dbRows.rows) {
@@ -270,10 +270,10 @@ describe("Low-score articles with valid source appear in filtered results", () =
     }
 
     // getScoredArticles should return these articles (score IS NOT NULL)
-    const scored = await getScoredArticles(100, ["newsapi"]);
+    const scored = await getScoredArticles(100, ["zenn"]);
     expect(scored).toHaveLength(3);
     for (const a of scored) {
-      expect(a.sourceId).toBe("newsapi");
+      expect(a.sourceId).toBe("zenn");
       expect(a.score).not.toBeNull();
     }
   });
@@ -283,11 +283,11 @@ describe("Low-score articles with valid source appear in filtered results", () =
 // Scenario 5: Full pipeline simulation - score then filter per source
 // ═══════════════════════════════════════════════════════════════════
 describe("Full pipeline: score all sources → filter per source", () => {
-  it("simulates page.tsx ?sources=newsapi returns only newsapi scored articles", async () => {
+  it("simulates page.tsx ?sources=zenn returns only zenn scored articles", async () => {
     mockLlmSuccess();
 
     const sources = [
-      { id: "newsapi", name: "NewsAPI", count: 4 },
+      { id: "zenn", name: "Zenn", count: 4 },
       { id: "qiita", name: "Qiita", count: 3 },
       { id: "github", name: "GitHub", count: 3 },
       { id: "hatena", name: "Hatena", count: 2 },
@@ -302,23 +302,23 @@ describe("Full pipeline: score all sources → filter per source", () => {
     const saved = await scoreAndSaveTagged(tagged);
     expect(saved).toBe(12);
 
-    // Simulate page.tsx: ?sources=newsapi
-    const newsapiParam = "newsapi";
-    const selectedSources = newsapiParam.split(",").filter(Boolean);
+    // Simulate page.tsx: ?sources=zenn
+    const zennParam = "zenn";
+    const selectedSources = zennParam.split(",").filter(Boolean);
     const scored = await getScoredArticles(
       100,
       selectedSources.length > 0 ? selectedSources : undefined,
     );
 
-    // Should return only newsapi articles
+    // Should return only zenn articles
     expect(scored).toHaveLength(4);
     for (const a of scored) {
-      expect(a.sourceId).toBe("newsapi");
+      expect(a.sourceId).toBe("zenn");
       expect(a.score).not.toBeNull();
     }
 
-    // Simulate page.tsx: ?sources=newsapi,qiita
-    const multiParam = "newsapi,qiita";
+    // Simulate page.tsx: ?sources=zenn,qiita
+    const multiParam = "zenn,qiita";
     const multiSelected = multiParam.split(",").filter(Boolean);
     const multiScored = await getScoredArticles(
       100,
@@ -327,7 +327,7 @@ describe("Full pipeline: score all sources → filter per source", () => {
 
     expect(multiScored).toHaveLength(7);
     const multiSourceIds = multiScored.map((a) => a.sourceId);
-    expect(multiSourceIds).toContain("newsapi");
+    expect(multiSourceIds).toContain("zenn");
     expect(multiSourceIds).toContain("qiita");
     expect(multiSourceIds).not.toContain("github");
     expect(multiSourceIds).not.toContain("hatena");
@@ -361,11 +361,11 @@ describe("Articles with sourceId=null", () => {
         embedding: "[]",
       },
       {
-        title: "Article with sourceId=newsapi",
+        title: "Article with sourceId=zenn",
         description: "desc",
-        url: "http://test.com/newsapi/1",
+        url: "http://test.com/zenn/1",
         publishedAt: new Date().toISOString(),
-        sourceId: "newsapi",
+        sourceId: "zenn",
         keyword: KEYWORDS[0],
         summary: "summary",
         usefulness: 7,
@@ -380,10 +380,10 @@ describe("Articles with sourceId=null", () => {
     const all = await getScoredArticles(100);
     expect(all).toHaveLength(2);
 
-    // Filter by newsapi: only newsapi article appears (null excluded by inArray)
-    const filtered = await getScoredArticles(100, ["newsapi"]);
+    // Filter by zenn: only zenn article appears (null excluded by inArray)
+    const filtered = await getScoredArticles(100, ["zenn"]);
     expect(filtered).toHaveLength(1);
-    expect(filtered[0].sourceId).toBe("newsapi");
+    expect(filtered[0].sourceId).toBe("zenn");
   });
 });
 
@@ -401,14 +401,14 @@ describe("Score boundary after deleteLowScoredArticles", () => {
         })),
     );
 
-    const articles = makeArticles(5, "newsapi", "NewsAPI");
+    const articles = makeArticles(5, "zenn", "Zenn");
     const tagged = await tagArticlesByKeyword(articles, KEYWORDS);
     await scoreAndSaveTagged(tagged);
 
     // All articles have score = composite(similarity=0.9, usefulness=5, recency≈10)
     // = 0.9*0.2 + 5*0.5 + 10*0.3 = 0.18 + 2.5 + 3.0 = 5.68
     // This is above minScore=5, so they should survive deleteLowScoredArticles
-    const all = await getScoredArticles(100, ["newsapi"]);
+    const all = await getScoredArticles(100, ["zenn"]);
     expect(all.length).toBeGreaterThan(0);
 
     for (const a of all) {
@@ -445,10 +445,10 @@ describe('BUG REPRO: "N件スコアリング完了" but "スコアリング済�
         items.map(() => null),
     );
 
-    const newsapiArticles = makeArticles(5, "newsapi", "NewsAPI");
+    const zennArticles = makeArticles(5, "zenn", "Zenn");
     const qiitaArticles = makeArticles(5, "qiita", "Qiita");
 
-    const allArticles = [...newsapiArticles, ...qiitaArticles];
+    const allArticles = [...zennArticles, ...qiitaArticles];
     const tagged = await tagArticlesByKeyword(allArticles, KEYWORDS);
     const saved = await scoreAndSaveTagged(tagged);
 
@@ -470,8 +470,8 @@ describe('BUG REPRO: "N件スコアリング完了" but "スコアリング済�
     expect(scored).toHaveLength(0);
 
     // Per-source also returns 0
-    const newsapiScored = await getScoredArticles(100, ["newsapi"]);
-    expect(newsapiScored).toHaveLength(0);
+    const zennScored = await getScoredArticles(100, ["zenn"]);
+    expect(zennScored).toHaveLength(0);
 
     const qiitaScored = await getScoredArticles(100, ["qiita"]);
     expect(qiitaScored).toHaveLength(0);
@@ -483,11 +483,11 @@ describe('BUG REPRO: "N件スコアリング完了" but "スコアリング済�
    * but the user might expect ALL fetched articles to appear.
    */
   it("partial LLM failure: savedCount < fetched, only scored ones displayed", async () => {
-    // LLM succeeds for newsapi, fails for qiita
+    // LLM succeeds for zenn, fails for qiita
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) =>
         items.map((item) => {
-          if (item.title.startsWith("NewsAPI")) {
+          if (item.title.startsWith("Zenn")) {
             return {
               summary: `要約: ${item.title}`,
               usefulness: 6,
@@ -498,14 +498,14 @@ describe('BUG REPRO: "N件スコアリング完了" but "スコアリング済�
         }),
     );
 
-    const newsapiArticles = makeArticles(5, "newsapi", "NewsAPI");
+    const zennArticles = makeArticles(5, "zenn", "Zenn");
     const qiitaArticles = makeArticles(5, "qiita", "Qiita");
-    const allArticles = [...newsapiArticles, ...qiitaArticles];
+    const allArticles = [...zennArticles, ...qiitaArticles];
 
     const tagged = await tagArticlesByKeyword(allArticles, KEYWORDS);
     const saved = await scoreAndSaveTagged(tagged);
 
-    // Only newsapi scored
+    // Only zenn scored
     expect(saved).toBe(5);
 
     // All 10 in DB
@@ -516,9 +516,9 @@ describe('BUG REPRO: "N件スコアリング完了" but "スコアリング済�
     const allScored = await getScoredArticles(100);
     expect(allScored).toHaveLength(5);
 
-    // Newsapi: 5 articles displayed
-    const newsapiScored = await getScoredArticles(100, ["newsapi"]);
-    expect(newsapiScored).toHaveLength(5);
+    // Zenn: 5 articles displayed
+    const zennScored = await getScoredArticles(100, ["zenn"]);
+    expect(zennScored).toHaveLength(5);
 
     // Qiita: 0 articles displayed (all score=null)
     const qiitaScored = await getScoredArticles(100, ["qiita"]);
@@ -534,7 +534,7 @@ describe('BUG REPRO: "N件スコアリング完了" but "スコアリング済�
    * Tests the exact sequence in route.ts + page.tsx.
    */
   it("full route.ts → page.tsx flow: fetch 2 sources, only 1 scores → filter mismatch", async () => {
-    // Simulate: newsapi scores well, qiita LLM times out
+    // Simulate: zenn scores well, qiita LLM times out
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) =>
         items.map((item) => ({
@@ -544,11 +544,11 @@ describe('BUG REPRO: "N件スコアリング完了" but "スコアリング済�
         })),
     );
 
-    // Step 1: Fetch + score newsapi (route.ts flow)
-    const newsapiFetched = makeArticles(8, "newsapi", "NewsAPI");
-    const newsapiTagged = await tagArticlesByKeyword(newsapiFetched, KEYWORDS);
-    const newsapiSaved = await scoreAndSaveTagged(newsapiTagged);
-    expect(newsapiSaved).toBe(8);
+    // Step 1: Fetch + score zenn (route.ts flow)
+    const zennFetched = makeArticles(8, "zenn", "Zenn");
+    const zennTagged = await tagArticlesByKeyword(zennFetched, KEYWORDS);
+    const zennSaved = await scoreAndSaveTagged(zennTagged);
+    expect(zennSaved).toBe(8);
 
     // Step 2: Fetch + score qiita (same route.ts flow)
     const qiitaFetched = makeArticles(8, "qiita", "Qiita");
@@ -560,11 +560,11 @@ describe('BUG REPRO: "N件スコアリング完了" but "スコアリング済�
     const allDisplayed = await getScoredArticles(100);
     expect(allDisplayed).toHaveLength(16);
 
-    // Step 4: User selects only newsapi
-    const newsapiOnly = await getScoredArticles(100, ["newsapi"]);
-    expect(newsapiOnly).toHaveLength(8);
-    for (const a of newsapiOnly) {
-      expect(a.sourceId).toBe("newsapi");
+    // Step 4: User selects only zenn
+    const zennOnly = await getScoredArticles(100, ["zenn"]);
+    expect(zennOnly).toHaveLength(8);
+    for (const a of zennOnly) {
+      expect(a.sourceId).toBe("zenn");
     }
 
     // Step 5: User selects only qiita
@@ -591,15 +591,15 @@ describe('BUG REPRO: "N件スコアリング完了" but "スコアリング済�
     );
 
     const oldDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
-    const newsapiArticles = makeArticles(5, "newsapi", "NewsAPI");
+    const zennArticles = makeArticles(5, "zenn", "Zenn");
     // Override publishedAt to old date
-    newsapiArticles.forEach((a) => (a.publishedAt = oldDate));
+    zennArticles.forEach((a) => (a.publishedAt = oldDate));
 
     const qiitaArticles = makeArticles(5, "qiita", "Qiita");
     qiitaArticles.forEach((a) => (a.publishedAt = oldDate));
 
     // Score all
-    const allArticles = [...newsapiArticles, ...qiitaArticles];
+    const allArticles = [...zennArticles, ...qiitaArticles];
     const tagged = await tagArticlesByKeyword(allArticles, KEYWORDS);
     const saved = await scoreAndSaveTagged(tagged);
     // savedCount = 10 because llmResult is truthy for all
@@ -645,7 +645,7 @@ describe('BUG REPRO: "N件スコアリング完了" but "スコアリング済�
     // BUT the Drizzle schema expects it → potential type mismatch.
 
     mockLlmSuccess();
-    const articles = makeArticles(3, "newsapi", "NewsAPI");
+    const articles = makeArticles(3, "zenn", "Zenn");
     const tagged = await tagArticlesByKeyword(articles, KEYWORDS);
 
     // scoreAndSaveTagged sends recencyRefreshedAt — this should work
@@ -654,7 +654,7 @@ describe('BUG REPRO: "N件スコアリング完了" but "スコアリング済�
     expect(saved).toBe(3);
 
     // Verify articles are in DB with scores
-    const scored = await getScoredArticles(100, ["newsapi"]);
+    const scored = await getScoredArticles(100, ["zenn"]);
     expect(scored).toHaveLength(3);
     for (const a of scored) {
       expect(a.score).not.toBeNull();

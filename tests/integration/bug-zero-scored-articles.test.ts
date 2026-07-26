@@ -275,8 +275,8 @@ describe("Scenario 5: sourceIds filter mismatch", () => {
     const tagged = await tagArticlesByKeyword(articles, KEYWORDS);
     await scoreAndSaveTagged(tagged);
 
-    // Articles have sourceId="gnews", but we filter by "newsapi" → 0 results
-    const scoredWrongSource = await getScoredArticles(100, ["newsapi"]);
+    // Articles have sourceId="gnews", but we filter by "zenn" → 0 results
+    const scoredWrongSource = await getScoredArticles(100, ["zenn"]);
     expect(scoredWrongSource.length).toBe(0);
 
     // Correct sourceId → all results

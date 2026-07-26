@@ -10,7 +10,7 @@
  */
 import { describe, expect, test, vi } from "vitest";
 import { normalize } from "@/app/api/fetch-news/route";
-import type { NewsApiArticle } from "@/lib/news/newsapi";
+import type { ZennArticle } from "@/lib/news/zenn";
 import type { QiitaFeedItem } from "@/lib/news/qiita";
 import type { YamadashyItem } from "@/lib/news/yamadashy";
 import type { ItmediaItem } from "@/lib/news/itmedia";
@@ -41,20 +41,23 @@ vi.mock("@/lib/vector-filter", () => ({ tagArticlesByKeyword: vi.fn().mockResolv
 vi.mock("@/lib/scoring", () => ({ calcRecencyScore: vi.fn(), calcCompositeScore: vi.fn() }));
 
 describe("normalize: 各データソースの誤判定検知", () => {
-  test("NewsAPI: sourceName にメディア名、url/author が正しくマップされる", () => {
-    const a: NewsApiArticle = {
-      title: "N",
-      description: "d",
-      url: "https://example.com/n",
-      urlToImage: null,
-      publishedAt: "2026-07-01T00:00:00Z",
-      source: { name: "Example News", id: null },
-      author: "John",
+  test("Zenn: sourceName=Zenn, URL path is mapped correctly", () => {
+    const a: ZennArticle = {
+      id: 123,
+      title: "Z",
+      slug: "zenn-article",
+      liked_count: 5,
+      bookmarked_count: 2,
+      article_type: "tech",
+      emoji: "📝",
+      published_at: "2026-07-01T00:00:00Z",
+      path: "/articles/zenn-article",
+      user: { username: "john", name: "John" },
     };
-    const r = normalize(a, "newsapi");
-    expect(r.sourceId).toBe("newsapi");
-    expect(r.sourceName).toBe("Example News");
-    expect(r.url).toBe("https://example.com/n");
+    const r = normalize(a, "zenn");
+    expect(r.sourceId).toBe("zenn");
+    expect(r.sourceName).toBe("Zenn");
+    expect(r.url).toBe("https://zenn.dev/articles/zenn-article");
     expect(r.author).toBe("John");
     expect(r.publishedAt).toBe("2026-07-01T00:00:00Z");
   });

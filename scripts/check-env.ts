@@ -15,9 +15,7 @@ const REQUIRED = {
   GOOGLE_API_KEY: "Google API key for article scoring (Gemini/Gemma) AND embeddings",
 } as const;
 
-const OPTIONAL = {
-  NEWS_API_KEY: "NewsAPI key (required if newsapi source selected)",
-};
+const OPTIONAL = {} as const;
 
 let hasError = false;
 

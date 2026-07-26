@@ -3,15 +3,19 @@ import { NextRequest } from "next/server";
 import { POST } from "@/app/api/fetch-news/route";
 
 // Mock all external dependencies
-vi.mock("@/lib/news/newsapi", () => ({
-  searchNewsApi: vi.fn().mockResolvedValue([
+vi.mock("@/lib/news/zenn", () => ({
+  searchZenn: vi.fn().mockResolvedValue([
     {
-      title: "NewsAPI Article",
-      url: "https://newsapi.com/1",
-      description: "desc",
-      urlToImage: "img.jpg",
-      source: { name: "NewsAPI" },
-      publishedAt: new Date().toISOString(),
+      id: 1,
+      title: "Zenn Article",
+      slug: "zenn-article",
+      liked_count: 5,
+      bookmarked_count: 2,
+      article_type: "tech",
+      emoji: "📝",
+      published_at: new Date().toISOString(),
+      path: "/articles/zenn-article",
+      user: { username: "user1", name: "User One" },
     },
   ]),
 }));
@@ -129,10 +133,10 @@ describe("fetch-news route source selection", () => {
     expect(data.results[0].errors).toHaveLength(0);
   });
 
-  test("should work when only newsapi is selected", async () => {
+  test("should work when only zenn is selected", async () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["newsapi"] }),
+      body: JSON.stringify({ sources: ["zenn"] }),
       headers: { "Content-Type": "application/json" },
     });
 

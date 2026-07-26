@@ -19,7 +19,7 @@ authors: [shunki]
 
 ### 2.1 In Scope
 
-- Fetching news from multiple external providers (NewsAPI)
+- Fetching news from multiple external providers (Zenn)
 - Dynamic discovery of Hatena Blog feeds via Hatena Bookmark API
 - Periodic feed discovery via scheduled cron (QStash)
 - Vector similarity (relevance) + LLM-based usefulness scoring + algorithmic recency scoring
@@ -51,7 +51,7 @@ authors: [shunki]
 
 - **Priority**: Must
 - **Acceptance Criteria**:
-  - WHEN news is fetched from NewsAPI
+  - WHEN news is fetched
   - THEN each article is scored along three dimensions:
     - Relevance (20%): Vector similarity between article and keyword embedding, normalized from 0-1 to 0-10
     - Usefulness (50%): LLM judges technical/engineering value (0-10)
@@ -132,7 +132,7 @@ authors: [shunki]
 | `recency`            | real    | Algorithmic score based on publication freshness (0-10)          |
 | `score`              | real    | Composite score = relevance×0.3 + usefulness×0.4 + recency×0.3   |
 | `reason`             | text    | LLM-generated explanation (Japanese)                             |
-| `sourceId`           | text    | Internal source identifier (e.g., newsapi, hatena, qiita, zdnet) |
+| `sourceId`           | text    | Internal source identifier (e.g., zenn, hatena, qiita, zdnet)    |
 | `recencyRefreshedAt` | text    | Timestamp of last recency delta refresh                          |
 | `scoredAt`           | text    | Timestamp when scoring occurred                                  |
 | `createdAt`          | text    | Timestamp when the record was created in the local DB            |
@@ -248,7 +248,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 - **ORM**: Drizzle ORM + Drizzle Kit
 - **Styling**: Tailwind CSS v4
 - **LLM**: Gemini 3.1 Flash Lite (via OpenRouter)
-- **News Sources**: NewsAPI, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, Hatena Blog
+- **News Sources**: Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, Hatena Blog
 - **Deployment**: Vercel
 
 ## 7. Test Strategy

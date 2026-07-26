@@ -26,7 +26,7 @@ vi.mock("@/lib/news/hatena", () => ({
 // 他のソースは空配列を返す
 vi.mock("@/lib/news/qiita", () => ({ searchQiita: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/news/yamadashy", () => ({ searchYamadashy: vi.fn().mockResolvedValue([]) }));
-vi.mock("@/lib/news/newsapi", () => ({ searchNewsApi: vi.fn().mockResolvedValue([]) }));
+vi.mock("@/lib/news/zenn", () => ({ searchZenn: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/news/itmedia", () => ({ searchITmedia: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/news/codezine", () => ({ searchCodeZine: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/news/zdnet", () => ({ searchZdnet: vi.fn().mockResolvedValue([]) }));

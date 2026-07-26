@@ -52,8 +52,8 @@ vi.mock("@/lib/news/yamadashy", () => ({
 }));
 
 // 他のソースは空配列を返す
-vi.mock("@/lib/news/newsapi", () => ({
-  searchNewsApi: vi.fn().mockResolvedValue([]),
+vi.mock("@/lib/news/zenn", () => ({
+  searchZenn: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/lib/news/itmedia", () => ({

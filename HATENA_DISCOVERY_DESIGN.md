@@ -585,7 +585,7 @@ If set, `politeFetch` prepends this proxy URL: `fetch(`${HATENA_PROXY_URL}?url=$
 ### 9.3 Section 6 (Architecture) — Update Data Flow Diagram:
 
 ```
-External APIs (NewsAPI, Qiita, GitHub, Hatena Bookmark, RSS feeds)
+External APIs (Zenn, Qiita, GitHub, Hatena Bookmark, RSS feeds)
   → src/lib/news/ (Fetchers + Discovery)
     → src/lib/llm/openrouter.ts (LLM: relevance + usefulness + summary)
     → src/app/api/fetch-news/route.ts (calcRecencyScore + weighted composite)
