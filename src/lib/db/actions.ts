@@ -1,7 +1,8 @@
 import { db } from "./index";
-import { articles, hatenaFeeds } from "./schema";
-import { desc, isNotNull, notInArray, and, lt, inArray, eq } from "drizzle-orm";
+import { articles, hatenaFeeds, keywordEmbeddings } from "./schema";
+import { desc, asc, isNotNull, notInArray, and, lt, inArray, eq, sql } from "drizzle-orm";
 import { calcRecencyScore } from "../scoring";
+import { getAllowedSortColumns } from "@/app/admin/db/lib/table-config";
 import {
   DEFAULT_SCORED_ARTICLES_LIMIT,
   DEFAULT_DELETE_LOW_SCORE,
@@ -198,4 +199,80 @@ export async function refreshRecencyForSources(
     console.error(`[db] refreshRecencyForSources error:`, err);
     return 0;
   }
+}
+
+export type TableName = "articles" | "hatena_feeds" | "keyword_embeddings";
+
+export interface TablePageOptions {
+  table: TableName;
+  offset: number;
+  limit: number; // max 200
+  sort?: string; // column name to sort by
+  dir?: "asc" | "desc";
+}
+
+const tableMap = {
+  articles,
+  hatena_feeds: hatenaFeeds,
+  keyword_embeddings: keywordEmbeddings,
+} as const;
+
+export async function getTablePage<T extends TableName>(
+  table: T,
+  options: TablePageOptions,
+): Promise<{ rows: any[]; total: number }> {
+  try {
+    const tableObj = tableMap[table];
+    if (!tableObj) {
+      return { rows: [], total: 0 };
+    }
+
+    const allowedSort = getAllowedSortColumns(table);
+    const sortCol = options.sort && allowedSort.includes(options.sort) ? options.sort : "id";
+    const sortDir = options.dir === "asc" ? asc : desc;
+
+    // Get total count
+    const [countResult] = await db.select({ count: sql<number>`count(*)` }).from(tableObj);
+    const total = Number(countResult?.count ?? 0);
+
+    // Get rows with pagination and sorting
+    // @ts-expect-error dynamic column sorting
+    const colRef = tableObj[sortCol] ?? tableObj.id;
+
+    const rows = await db
+      .select()
+      .from(tableObj)
+      .orderBy(sortDir(colRef))
+      .limit(Math.min(options.limit, 200))
+      .offset(options.offset);
+
+    return { rows, total };
+  } catch (err) {
+    console.warn(`[db] getTablePage error for table=${table}:`, err);
+    return { rows: [], total: 0 };
+  }
+}
+
+async function countRows(tableObj: any, label: string): Promise<number> {
+  try {
+    const [result] = await db.select({ count: sql<number>`count(*)` }).from(tableObj);
+    return Number(result?.count ?? 0);
+  } catch {
+    // Table may not exist (test env, migration drift, etc.)
+    return 0;
+  }
+}
+
+export async function getTableCounts(): Promise<Record<TableName, number>> {
+  const [articlesCount, hatenaCount, embeddingsCount] = await Promise.all([
+    countRows(articles, "articles"),
+    countRows(hatenaFeeds, "hatena_feeds"),
+    countRows(keywordEmbeddings, "keyword_embeddings"),
+  ]);
+
+  return {
+    articles: articlesCount,
+    hatena_feeds: hatenaCount,
+    keyword_embeddings: embeddingsCount,
+  };
 }

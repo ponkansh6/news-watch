@@ -15,12 +15,15 @@ vi.mock("@/lib/db", async () => {
 
 // モックされたモジュールから client を取り出す
 import * as dbMod from "@/lib/db";
+import type { ArticleInsert } from "../../src/lib/db/actions";
 import {
   upsertArticle,
   getScoredArticles,
   deleteOrphanedArticles,
   deleteLowScoredArticles,
   getAllArticles,
+  getTablePage,
+  getTableCounts,
 } from "../../src/lib/db/actions";
 
 const CREATE_SQL = `
@@ -455,5 +458,156 @@ describe("Database actions tests", () => {
     expect(allArticles[0].url).toBe("https://example.com/article3");
     expect(allArticles[1].url).toBe("https://example.com/article2");
     expect(allArticles[2].url).toBe("https://example.com/article1");
+  });
+
+  // ── getTablePage ────────────────────────────────────────────────────
+
+  function makeArticleData(
+    url: string,
+    overrides: Partial<{
+      title?: string;
+      keyword?: string;
+      score?: number;
+      sourceId?: string;
+    }> = {},
+  ): ArticleInsert {
+    return {
+      title: overrides.title ?? "Admin Article",
+      description: null,
+      url,
+      urlToImage: null,
+      publishedAt: "2026-07-27T00:00:00Z",
+      sourceName: "admin",
+      sourceId: overrides.sourceId ?? "admin",
+      author: null,
+      keyword: overrides.keyword ?? "admin",
+      summary: null,
+      relevance: null,
+      usefulness: null,
+      recency: null,
+      reason: null,
+      scoredAt: null,
+      score: overrides.score ?? null,
+      embedding: null,
+    };
+  }
+
+  describe("getTablePage", () => {
+    it("returns paginated articles with total count", async () => {
+      for (let i = 0; i < 5; i++) {
+        await upsertArticle(
+          makeArticleData(`https://example.com/pg-${i}`, { title: `Page Article ${i}`, score: i }),
+        );
+      }
+
+      const page1 = await getTablePage("articles", {
+        table: "articles",
+        offset: 0,
+        limit: 2,
+        dir: "asc",
+        sort: "id",
+      });
+      expect(page1.rows).toHaveLength(2);
+      expect(page1.rows[0].id).toBeLessThan(page1.rows[1].id);
+      expect(page1.total).toBeGreaterThanOrEqual(5);
+
+      const page2 = await getTablePage("articles", {
+        table: "articles",
+        offset: 2,
+        limit: 2,
+        dir: "asc",
+        sort: "id",
+      });
+      expect(page2.rows).toHaveLength(2);
+    });
+
+    it("returns empty rows for out-of-range offset", async () => {
+      const result = await getTablePage("articles", { table: "articles", offset: 9999, limit: 10 });
+      expect(result.rows).toHaveLength(0);
+      expect(result.total).toBeGreaterThanOrEqual(0);
+    });
+
+    it("sorts by specified column and direction", async () => {
+      for (let i = 0; i < 3; i++) {
+        await upsertArticle(
+          makeArticleData(`https://example.com/sort-${i}`, {
+            title: `Sort Article ${i}`,
+            score: i,
+          }),
+        );
+      }
+
+      const desc = await getTablePage("articles", {
+        table: "articles",
+        offset: 0,
+        limit: 10,
+        sort: "score",
+        dir: "desc",
+      });
+      expect(Number(desc.rows[0].score)).toBeGreaterThanOrEqual(
+        Number(desc.rows[desc.rows.length - 1].score),
+      );
+
+      const asc = await getTablePage("articles", {
+        table: "articles",
+        offset: 0,
+        limit: 10,
+        sort: "score",
+        dir: "asc",
+      });
+      expect(Number(asc.rows[0].score)).toBeLessThanOrEqual(
+        Number(asc.rows[asc.rows.length - 1].score),
+      );
+    });
+
+    it("rejects invalid sort column and falls back to id desc", async () => {
+      const result = await getTablePage("articles", {
+        table: "articles",
+        offset: 0,
+        limit: 10,
+        sort: "nonexistent",
+      });
+      expect(result.rows).toBeDefined();
+      expect(Array.isArray(result.rows)).toBe(true);
+    });
+
+    it("works for hatena_feeds table", async () => {
+      const result = await getTablePage("hatena_feeds", {
+        table: "hatena_feeds",
+        offset: 0,
+        limit: 5,
+      });
+      expect(result.rows).toBeDefined();
+      expect(typeof result.total).toBe("number");
+    });
+
+    it("works for keyword_embeddings table", async () => {
+      const result = await getTablePage("keyword_embeddings", {
+        table: "keyword_embeddings",
+        offset: 0,
+        limit: 5,
+      });
+      expect(result.rows).toBeDefined();
+      expect(typeof result.total).toBe("number");
+    });
+  });
+
+  // ── getTableCounts ─────────────────────────────────────────────────
+
+  describe("getTableCounts", () => {
+    it("returns counts for all tables", async () => {
+      await upsertArticle(
+        makeArticleData("https://example.com/count-test", { title: "Count", score: 1 }),
+      );
+
+      const counts = await getTableCounts();
+      expect(counts).toHaveProperty("articles");
+      expect(counts).toHaveProperty("hatena_feeds");
+      expect(counts).toHaveProperty("keyword_embeddings");
+      expect(typeof counts.articles).toBe("number");
+      expect(typeof counts.hatena_feeds).toBe("number");
+      expect(typeof counts.keyword_embeddings).toBe("number");
+      expect(counts.articles).toBeGreaterThan(0);
+    });
   });
 });

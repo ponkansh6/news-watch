@@ -1,0 +1,49 @@
+import { notFound } from "next/navigation";
+import { getTablePage, TableName } from "@/lib/db/actions";
+import { TABLE_CONFIG } from "../lib/table-config";
+import DataTable from "./components/DataTable";
+
+export const dynamic = "force-dynamic";
+
+export default async function TablePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ table: string }>;
+  searchParams: Promise<{ page?: string; limit?: string; sort?: string; dir?: string }>;
+}) {
+  const { table } = await params;
+  const { page = "1", limit = "50", sort, dir } = await searchParams;
+
+  const validTables = ["articles", "hatena_feeds", "keyword_embeddings"];
+  if (!validTables.includes(table)) {
+    notFound();
+  }
+
+  const parsedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const parsedPage = Math.max(Number(page) || 1, 1);
+  const offset = (parsedPage - 1) * parsedLimit;
+
+  const { rows, total } = await getTablePage(table as TableName, {
+    table: table as TableName,
+    offset,
+    limit: parsedLimit,
+    sort,
+    dir: (dir === "asc" ? "asc" : "desc") as any,
+  });
+
+  return (
+    <div className="space-y-6">
+      <DataTable
+        table={table}
+        rows={rows}
+        columns={TABLE_CONFIG[table].columns}
+        total={total}
+        page={parsedPage}
+        limit={parsedLimit}
+        currentSort={sort}
+        currentDir={dir}
+      />
+    </div>
+  );
+}
