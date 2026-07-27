@@ -19,6 +19,22 @@ fi
 # --- Schema consistency check (local in-memory DB) ---
 pnpm exec vitest run tests/db/schema-consistency.test.ts
 
+# --- Coverage tier validation ---
+# Run only when src/ files changed (coverage run is ~30s).
+if echo "$PUSH_FILES" | grep -qE "^src/"; then
+  echo ""
+  echo "📊 Running coverage tier validation..."
+  pnpm exec vitest run --coverage --reporter=compact 2>/dev/null
+  node scripts/check-coverage-tiers.mjs
+  COV_EXIT=$?
+  if [ "$COV_EXIT" -ne 0 ]; then
+    echo "❌ Coverage validation failed (exit=$COV_EXIT)."
+    echo "   Run 'node scripts/check-coverage-tiers.mjs' locally for details."
+    exit "$COV_EXIT"
+  fi
+  echo ""
+fi
+
 # --- Production schema drift detection ---
 # If .env.local is present, load Turso credentials and check that the
 # production DB schema matches schema.ts.  This catches drift when columns
