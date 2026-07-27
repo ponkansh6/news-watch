@@ -24,7 +24,7 @@ pnpm exec vitest run tests/db/schema-consistency.test.ts
 if echo "$PUSH_FILES" | grep -qE "^src/"; then
   echo ""
   echo "📊 Running coverage tier validation..."
-  pnpm exec vitest run --coverage --reporter=compact 2>/dev/null
+  pnpm exec vitest run --coverage 2>/dev/null
   node scripts/check-coverage-tiers.mjs
   COV_EXIT=$?
   if [ "$COV_EXIT" -ne 0 ]; then
