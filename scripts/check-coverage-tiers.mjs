@@ -26,7 +26,7 @@ const ROOT = resolve(HERE, "..");
 const TIERS = [
   {
     name: "Tier 1: Core Business Logic",
-    target: 90,
+    target: 95,
     metric: "statements",
     patterns: [
       /\/scoring\.ts$/,
@@ -38,7 +38,7 @@ const TIERS = [
   },
   {
     name: "Tier 2: Pipeline Orchestration",
-    target: 80,
+    target: 85,
     metric: "statements",
     patterns: [
       /\/api\/fetch-news\/route\.ts$/,
@@ -48,7 +48,7 @@ const TIERS = [
   },
   {
     name: "Tier 3: Source Adapters",
-    target: 70,
+    target: 80,
     metric: "statements",
     patterns: [
       /\/news\/zenn\.ts$/,
@@ -64,13 +64,13 @@ const TIERS = [
   },
   {
     name: "Tier 4: Data Access",
-    target: 60,
+    target: 65,
     metric: "statements",
     patterns: [/\/db\/actions\.ts$/],
   },
   {
     name: "Tier 5: UI Components",
-    target: null, // Key paths only — checked differently
+    target: 80,
     metric: "statements",
     patterns: [
       /\/article-list\.tsx$/,
@@ -82,7 +82,7 @@ const TIERS = [
   },
   {
     name: "Tier 6: External API Wrappers",
-    target: 60,
+    target: 65,
     metric: "statements",
     patterns: [/\/llm\/gemini\.ts$/, /\/embeddings\.ts$/],
     // embeddings.ts は vector-filter.ts (100%) で統合テスト済みのため、

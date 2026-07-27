@@ -253,15 +253,37 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 
 ## 7. Test Strategy
 
-| Test Type                       | Coverage Target |
-| ------------------------------- | --------------- |
-| Unit (data processing, scoring) | >80%            |
-| Component (UI rendering)        | Key components  |
-| Schema Consistency              | Automated       |
+| Test Type                       | Coverage Target | Measured (2026-07-27) |
+| ------------------------------- | --------------- | --------------------- |
+| Unit (data processing, scoring) | >80%            | 81.47% ✅             |
+| Component (UI rendering)        | Key components  | 100% component files  |
+| Schema Consistency              | Automated       | Automated ✅          |
 
-### 7.1 Schema Consistency Testing
+### 7.1 Tiered Coverage Targets
 
-- **Mechanism**: `tests/db/schema-consistency.test.ts` verifies that all tables defined in `src/lib/db/schema.ts` exist in the database and are present in migration SQL files.
+プロジェクトの全ソースファイルをカバレッジ計測対象としているが、コードの性質によってテストの優先度と目標値を明確に区分する。
+
+| Tier                               | 対象モジュール                                                                                          | 性質                                                 | Stmts目標                          | 備考                                                                                                                                         |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Tier 1: Core Business Logic**    | `scoring.ts`, `constants.ts`, `score-pipeline.ts`, `vector-filter.ts`, `vector-math.ts`                 | 純粋関数・ビジネスロジック。副作用なし、外部依存なし | **>95%**                           | 単体テストの効果が最大。分岐網羅を重視                                                                                                       |
+| **Tier 2: Pipeline Orchestration** | `fetch-news/route.ts`, `api/feeds/route.ts`, `api/discover-hatena/route.ts`                             | リクエスト処理＋パイプライン制御                     | **>85%**                           | 正常系 + 主要エラー系をカバー                                                                                                                |
+| **Tier 3: Source Adapters**        | `news/{zenn,qiita,hatena,itmedia,codezine,xtech,yamadashy,zdnet}.ts`, `news/hatena-discovery.ts`        | IO + XML/JSONパース。外部API呼び出し含む             | **>80%**                           | パースロジックとソース選択を網羅。ネットワーク部分はモック                                                                                   |
+| **Tier 4: Data Access**            | `db/actions.ts`                                                                                         | DB CRUD操作。Drizzle ORMラッパー                     | **>65%**                           | 全CRUD操作の正常系をカバー。catch節のエラーハンドリングは軽量で可                                                                            |
+| **Tier 5: UI Components**          | `article-list.tsx`, `news-section.tsx`, `fetch-button.tsx`, `feed-dashboard.tsx`, `refresh-context.tsx` | Client Component。Reactレンダリング                  | **>80%**                           | 主要レンダリングパス・状態遷移（loading/empty/error）をカバー                                                                                |
+| **Tier 6: External API Wrappers**  | `llm/gemini.ts`, `embeddings.ts`                                                                        | 外部APIの薄いラッパー                                | **gemini: >65%, embeddings: skip** | embeddings.ts は vector-filter.ts (100%) で統合テスト済みのため、単体カバレッジ計測対象外。API自体のテストは `RUN_LIVE_TESTS=1` でオプトイン |
+| **Tier 7: RSC Pages**              | `app/page.tsx`, `app/dashboard/feeds/page.tsx`                                                          | React Server Component                               | **対象外**                         | ロジックはClient Componentに委譲されており、単体テストは実質不可能                                                                           |
+| **Schema Consistency**             | `db/schema.ts`, migrations/\*.sql                                                                       | DDL定義                                              | **Automated**                      | pre-push hookで自動検証                                                                                                                      |
+
+### 7.2 適用ルール
+
+- **新規モジュール追加時**: 上記Tier分類に従い、対応する目標値を満たすまでテストを追加する
+- **既存モジュール変更時**: 変更行のカバレッジが当該Tierの目標値を下回らないようにする
+- **測定除外**: `src/lib/db/migrations/**`, `src/lib/db/index.ts`, `src/lib/config.ts`, `src/lib/types.ts`, `**/*.d.ts` はカバレッジ計測から除外（定義・設定のみ）
+- **全体Stmts目標**: 80%（spec最低要件）
+
+### 7.3 Schema Consistency Testing
+
+- **Mechanism**: `tests/db/schema-consistency.test.ts` verifies that all tables defined in `src/lib/db/schema.ts` exist in the database, are present in migration SQL files, and that all defined indexes exist in the database.
 - **Automation**: Executed automatically via `husky` pre-push hook (`pnpm exec vitest run tests/db/schema-consistency.test.ts`) to prevent migration omissions.
 - **Setup**: `tests/setup-env.ts` automatically applies all migrations to the in-memory SQLite database before running any tests.
 
