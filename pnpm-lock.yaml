@@ -42,6 +42,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@sbougerel/eslint-plugin-next-use-client-boundary':
+        specifier: ^1.0.3
+        version: 1.0.3(@typescript-eslint/parser@8.62.1(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3))(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3)
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.2
@@ -1926,6 +1929,14 @@ packages:
 
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
+
+  '@sbougerel/eslint-plugin-next-use-client-boundary@1.0.3':
+    resolution: {integrity: sha512-fLbz42s4fLTg6ylfRwKJ+8SzXDrKkOOanvuucYul6gNAK87bJoaWpneCBBfBH8600EjJ49Pu5rCfP2ZlNF3YlA==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      '@typescript-eslint/parser': ^8.0.0
+      eslint: ^9.0.0
+      typescript: '>=5.0.0'
 
   '@secretlint/config-creator@12.0.0':
     resolution: {integrity: sha512-bn4kqQ9UzS0qkzpwCPZ/X8CMGR76KwziIt7qhmYgVEUd3Amd3AL4e95+GbtbMrMb9FwtzlIFKcHpzBR21YV5lA==}
@@ -6701,6 +6712,15 @@ snapshots:
       picomatch: 4.0.5
 
   '@rtsao/scc@1.1.0': {}
+
+  '@sbougerel/eslint-plugin-next-use-client-boundary@1.0.3(@typescript-eslint/parser@8.62.1(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3))(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3)':
+    dependencies:
+      '@typescript-eslint/parser': 8.62.1(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3)
+      '@typescript-eslint/utils': 8.65.0(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3)
+      eslint: 9.39.4(jiti@2.7.0)
+      typescript: 6.0.3
+    transitivePeerDependencies:
+      - supports-color
 
   '@secretlint/config-creator@12.0.0':
     dependencies:

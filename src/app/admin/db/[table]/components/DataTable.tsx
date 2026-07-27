@@ -2,19 +2,28 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ColumnDef } from "../../lib/table-config";
+import type { AssertSerializable } from "@/lib/serializable";
 import RowDetail from "./RowDetail";
 
-interface DataTableProps {
+// Serializable column type (without format function — pre-formatted on server)
+interface Column {
+  key: string;
+  label: string;
+  sortable: boolean;
+  hidden?: boolean;
+  align?: "left" | "right" | "center";
+}
+
+type DataTableProps = AssertSerializable<{
   table: string;
-  rows: any[];
-  columns: ColumnDef[];
+  rows: Record<string, unknown>[];
+  columns: Column[];
   total: number;
   page: number;
   limit: number;
   currentSort?: string;
   currentDir?: string;
-}
+}>;
 
 export default function DataTable({
   table,
@@ -29,9 +38,7 @@ export default function DataTable({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // State for showing hidden columns (e.g. embeddings, large summaries)
   const [showHidden, setShowHidden] = useState(false);
-  // Selected row for detail modal
   const [selectedRow, setSelectedRow] = useState<any | null>(null);
 
   const visibleColumns = columns.filter((col) => !col.hidden || showHidden);
@@ -39,7 +46,7 @@ export default function DataTable({
   const handleSort = (colKey: string, sortable: boolean) => {
     if (!sortable) return;
     const params = new URLSearchParams(searchParams.toString());
-    params.set("page", "1"); // reset to page 1 on sort change
+    params.set("page", "1");
 
     if (currentSort === colKey) {
       if (currentDir === "asc") {
@@ -68,7 +75,6 @@ export default function DataTable({
 
   return (
     <div className="space-y-4">
-      {/* Table Header Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-4 border border-neutral-200 rounded-lg shadow-xs">
         <div>
           <div className="flex items-center space-x-2">
@@ -98,7 +104,6 @@ export default function DataTable({
         </div>
       </div>
 
-      {/* Main Table */}
       <div className="bg-white border border-neutral-200 rounded-lg shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
@@ -148,13 +153,14 @@ export default function DataTable({
               ) : (
                 rows.map((row, idx) => (
                   <tr
-                    key={row.id ?? idx}
+                    key={(row.id as string | number) ?? idx}
                     onClick={() => setSelectedRow(row)}
                     className="hover:bg-neutral-50 cursor-pointer transition"
                   >
                     {visibleColumns.map((col) => {
                       const rawVal = row[col.key];
-                      const displayVal = col.format ? col.format(rawVal) : (rawVal ?? "—");
+                      const displayVal =
+                        (row[`_fmt_${col.key}`] as string | undefined) ?? rawVal ?? "—";
 
                       return (
                         <td
@@ -168,7 +174,7 @@ export default function DataTable({
                           } ${col.key === "id" ? "font-mono text-xs text-neutral-500" : ""}`}
                         >
                           <span title={typeof rawVal === "string" ? rawVal : undefined}>
-                            {displayVal}
+                            {displayVal as string}
                           </span>
                         </td>
                       );
@@ -180,7 +186,6 @@ export default function DataTable({
           </table>
         </div>
 
-        {/* Pagination bar */}
         <div className="bg-white border-t border-neutral-200 px-4 py-3 flex items-center justify-between">
           <div className="text-xs text-neutral-500">
             Page <span className="font-semibold text-neutral-900">{page}</span> of{" "}
@@ -206,10 +211,7 @@ export default function DataTable({
         </div>
       </div>
 
-      {/* Row Detail Modal */}
-      {selectedRow && (
-        <RowDetail row={selectedRow} columns={columns} onClose={() => setSelectedRow(null)} />
-      )}
+      {selectedRow && <RowDetail row={selectedRow} onClose={() => setSelectedRow(null)} />}
     </div>
   );
 }

@@ -32,12 +32,28 @@ export default async function TablePage({
     dir: (dir === "asc" ? "asc" : "desc") as any,
   });
 
+  // Pre-format display values on the server
+  // (format functions are not serializable across Server → Client boundary)
+  const columns = TABLE_CONFIG[table].columns;
+  const formattedRows = rows.map((row: Record<string, unknown>) => {
+    const enriched = { ...row };
+    for (const col of columns) {
+      if (col.format) {
+        enriched[`_fmt_${col.key}`] = col.format(row[col.key]);
+      }
+    }
+    return enriched;
+  });
+
+  // Strip non-serializable format functions from column definitions
+  const serializableColumns = columns.map(({ format, ...rest }) => rest);
+
   return (
     <div className="space-y-6">
       <DataTable
         table={table}
-        rows={rows}
-        columns={TABLE_CONFIG[table].columns}
+        rows={formattedRows}
+        columns={serializableColumns}
         total={total}
         page={parsedPage}
         limit={parsedLimit}

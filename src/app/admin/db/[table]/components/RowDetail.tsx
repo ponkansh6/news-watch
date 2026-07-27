@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { ColumnDef } from "../../lib/table-config";
+import type { AssertSerializable } from "@/lib/serializable";
 
-interface RowDetailProps {
-  row: any;
-  columns: ColumnDef[];
-  onClose: () => void;
-}
+type RowDetailProps = AssertSerializable<{
+  row: Record<string, unknown>;
+}> & {
+  onClose: () => void; // function is allowed cross client-to-client
+};
 
-export default function RowDetail({ row, columns, onClose }: RowDetailProps) {
+export default function RowDetail({ row, onClose }: RowDetailProps) {
   const [showEmbeddingFull, setShowEmbeddingFull] = useState(false);
 
   return (
@@ -24,7 +24,9 @@ export default function RowDetail({ row, columns, onClose }: RowDetailProps) {
         <div className="px-6 py-4 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
           <h3 className="font-bold text-neutral-900 text-base">
             Row Detail{" "}
-            <span className="font-mono text-xs text-neutral-500 font-normal"># {row.id}</span>
+            <span className="font-mono text-xs text-neutral-500 font-normal">
+              # {String(row.id ?? "")}
+            </span>
           </h3>
           <button
             onClick={onClose}
@@ -35,7 +37,7 @@ export default function RowDetail({ row, columns, onClose }: RowDetailProps) {
         </div>
 
         <div className="p-6 overflow-y-auto space-y-4 divide-y divide-neutral-100">
-          {Object.entries(row).map(([key, val]) => {
+          {Object.entries(row as Record<string, unknown>).map(([key, val]) => {
             const isEmbedding = key === "embedding";
             const stringVal = val === null || val === undefined ? "—" : String(val);
 
