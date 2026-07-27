@@ -75,8 +75,6 @@ describe("schema consistency", () => {
       { table: "articles", index: "idx_relevance_pub" },
       { table: "articles", index: "idx_recency_pub" },
       { table: "articles", index: "idx_created_at" },
-      { table: "hatena_feeds", index: "idx_hatena_feeds_status" },
-      { table: "hatena_feeds", index: "idx_hatena_feeds_domain" },
     ];
 
     for (const { table, index } of expectedIndexes) {

@@ -8,7 +8,6 @@ import { searchCodeZine, type CodeZineItem } from "@/lib/news/codezine";
 import { searchZdnet, type ZdnetItem } from "@/lib/news/zdnet";
 import { searchXtech, type XtechItem } from "@/lib/news/xtech";
 import { searchHatena, type HatenaItem } from "@/lib/news/hatena";
-import { discoverHatenaFeeds } from "@/lib/news/hatena-discovery";
 import {
   deleteOrphanedArticles,
   deleteLowScoredArticles,
@@ -231,12 +230,7 @@ export async function POST(request: Request) {
     sourceOrder.push("xtech");
   }
   if (selectedSource === "hatena") {
-    let hatena = await searchHatena(20);
-    if (hatena.length === 0) {
-      console.log("[hatena] No active feeds, running discovery...");
-      await discoverHatenaFeeds();
-      hatena = await searchHatena(20);
-    }
+    const hatena = await searchHatena(20);
     fetchPromises.push(Promise.resolve(hatena));
     sourceOrder.push("hatena");
   }

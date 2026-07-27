@@ -1,6 +1,8 @@
 import { XMLParser } from "fast-xml-parser";
-import { HATENA_HOTENTRY_RSS_URL, HATENA_ENTRYLIST_RSS_URL } from "@/lib/news/hatena-discovery";
 import { HATENA_TIMEOUT_MS } from "../constants";
+
+const HATENA_HOTENTRY_RSS_URL = "https://b.hatena.ne.jp/hotentry/it.rss";
+const HATENA_ENTRYLIST_RSS_URL = "https://b.hatena.ne.jp/entrylist/it.rss";
 
 export interface HatenaItem {
   title: string;

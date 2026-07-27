@@ -1,5 +1,5 @@
 import { db } from "./index";
-import { articles, hatenaFeeds, keywordEmbeddings } from "./schema";
+import { articles, keywordEmbeddings } from "./schema";
 import { desc, asc, isNotNull, notInArray, and, lt, inArray, eq, sql } from "drizzle-orm";
 import { calcRecencyScore } from "../scoring";
 import { getAllowedSortColumns } from "@/app/admin/db/lib/table-config";
@@ -126,37 +126,6 @@ export async function getAllArticles(limit = DEFAULT_ALL_ARTICLES_LIMIT) {
   }
 }
 
-/** Get all Hatena feeds, ordered by error count (desc) then last fetched (desc). */
-export async function getHatenaFeeds() {
-  try {
-    return await db
-      .select()
-      .from(hatenaFeeds)
-      .orderBy(desc(hatenaFeeds.errorCount), desc(hatenaFeeds.lastFetchedAt));
-  } catch (err) {
-    console.warn(`[db] getHatenaFeeds error:`, err);
-    return [];
-  }
-}
-
-/** Reactivate a Hatena feed by ID. */
-export async function reactivateHatenaFeed(id: number) {
-  try {
-    const result = await db
-      .update(hatenaFeeds)
-      .set({
-        status: "active",
-        errorCount: 0,
-        lastError: null,
-      })
-      .where(eq(hatenaFeeds.id, id));
-    return result.rowsAffected > 0;
-  } catch (err) {
-    console.error(`[db] reactivateHatenaFeed error for id=${id}:`, err);
-    return false;
-  }
-}
-
 /** Refresh recency and update score for existing articles in sources. */
 export async function refreshRecencyForSources(
   sourceIds: string[],
@@ -201,7 +170,7 @@ export async function refreshRecencyForSources(
   }
 }
 
-export type TableName = "articles" | "hatena_feeds" | "keyword_embeddings";
+export type TableName = "articles" | "keyword_embeddings";
 
 export interface TablePageOptions {
   table: TableName;
@@ -213,7 +182,6 @@ export interface TablePageOptions {
 
 const tableMap = {
   articles,
-  hatena_feeds: hatenaFeeds,
   keyword_embeddings: keywordEmbeddings,
 } as const;
 
@@ -264,15 +232,13 @@ async function countRows(tableObj: any, label: string): Promise<number> {
 }
 
 export async function getTableCounts(): Promise<Record<TableName, number>> {
-  const [articlesCount, hatenaCount, embeddingsCount] = await Promise.all([
+  const [articlesCount, embeddingsCount] = await Promise.all([
     countRows(articles, "articles"),
-    countRows(hatenaFeeds, "hatena_feeds"),
     countRows(keywordEmbeddings, "keyword_embeddings"),
   ]);
 
   return {
     articles: articlesCount,
-    hatena_feeds: hatenaCount,
     keyword_embeddings: embeddingsCount,
   };
 }

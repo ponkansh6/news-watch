@@ -571,16 +571,6 @@ describe("Database actions tests", () => {
       expect(Array.isArray(result.rows)).toBe(true);
     });
 
-    it("works for hatena_feeds table", async () => {
-      const result = await getTablePage("hatena_feeds", {
-        table: "hatena_feeds",
-        offset: 0,
-        limit: 5,
-      });
-      expect(result.rows).toBeDefined();
-      expect(typeof result.total).toBe("number");
-    });
-
     it("works for keyword_embeddings table", async () => {
       const result = await getTablePage("keyword_embeddings", {
         table: "keyword_embeddings",
@@ -602,10 +592,8 @@ describe("Database actions tests", () => {
 
       const counts = await getTableCounts();
       expect(counts).toHaveProperty("articles");
-      expect(counts).toHaveProperty("hatena_feeds");
       expect(counts).toHaveProperty("keyword_embeddings");
       expect(typeof counts.articles).toBe("number");
-      expect(typeof counts.hatena_feeds).toBe("number");
       expect(typeof counts.keyword_embeddings).toBe("number");
       expect(counts.articles).toBeGreaterThan(0);
     });

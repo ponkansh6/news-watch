@@ -8,10 +8,6 @@ const TABLE_DESCRIPTIONS: Record<string, { name: string; desc: string }> = {
     name: "Articles",
     desc: "Fetched news articles, scoring details, summaries, and embeddings.",
   },
-  hatena_feeds: {
-    name: "Hatena Feeds",
-    desc: "Hatena bookmark RSS feed configurations, status, and error counts.",
-  },
   keyword_embeddings: {
     name: "Keyword Embeddings",
     desc: "Precomputed vector embeddings for keywords used in similarity search.",
@@ -30,7 +26,7 @@ export default async function AdminDbLandingPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {Object.entries(TABLE_DESCRIPTIONS).map(([key, info]) => {
           const count = counts[key as keyof typeof counts] ?? 0;
           return (

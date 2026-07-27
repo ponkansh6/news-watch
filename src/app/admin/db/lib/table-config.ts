@@ -44,35 +44,6 @@ export const TABLE_CONFIG: Record<string, { columns: ColumnDef[] }> = {
       { key: "embedding", label: "Embedding", sortable: false, hidden: true },
     ],
   },
-  hatena_feeds: {
-    columns: [
-      { key: "id", label: "ID", sortable: true, align: "right" },
-      { key: "domain", label: "Domain", sortable: true },
-      { key: "feedUrl", label: "Feed URL", sortable: true },
-      { key: "status", label: "Status", sortable: true },
-      { key: "bookmarkCount", label: "Bookmarks", sortable: true, align: "right" },
-      { key: "errorCount", label: "Errors", sortable: true, align: "right" },
-      { key: "lastError", label: "Last Error", sortable: false, hidden: true },
-      {
-        key: "lastFetchedAt",
-        label: "Last Fetched",
-        sortable: true,
-        format: (v) => (v ? new Date(v).toLocaleDateString("ja-JP") : "—"),
-      },
-      {
-        key: "discoveredAt",
-        label: "Discovered",
-        sortable: true,
-        format: (v) => (v ? new Date(v).toLocaleDateString("ja-JP") : "—"),
-      },
-      {
-        key: "updatedAt",
-        label: "Updated",
-        sortable: true,
-        format: (v) => (v ? new Date(v).toLocaleDateString("ja-JP") : "—"),
-      },
-    ],
-  },
   keyword_embeddings: {
     columns: [
       { key: "id", label: "ID", sortable: true, align: "right" },

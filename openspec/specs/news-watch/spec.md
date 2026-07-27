@@ -145,23 +145,6 @@ authors: [shunki]
 - `idx_recency_pub`: On `recency` and `publishedAt` for freshness-based queries
 - `idx_created_at`: On `createdAt` for chronological sorting
 
-### hatena_feeds (SQLite via Drizzle ORM)
-
-| Field           | Type    | Description                                                     |
-| --------------- | ------- | --------------------------------------------------------------- |
-| `id`            | integer | Primary key (auto-increment)                                    |
-| `domain`        | text    | Hatena Blog domain (e.g., `user.hatenablog.com`), UNIQUE        |
-| `feedUrl`       | text    | Resolved RSS feed URL (e.g., `https://user.hatenablog.com/rss`) |
-| `status`        | text    | `active` \| `inactive` \| `error` — controls ingestion          |
-| `bookmarkCount` | integer | Max bookmark count seen from Hatena Bookmark (popularity)       |
-| `lastFetchedAt` | text    | ISO timestamp of last successful RSS fetch                      |
-| `errorCount`    | integer | Consecutive fetch errors (auto-disables at 5)                   |
-| `lastError`     | text    | Last error message                                              |
-| `discoveredAt`  | text    | ISO timestamp when first discovered                             |
-| `updatedAt`     | text    | ISO timestamp of last update                                    |
-
-**Indexes:** `idx_hatena_feeds_status`, `idx_hatena_feeds_domain`
-
 ### keyword_embeddings (SQLite via Drizzle ORM)
 
 | Field        | Type    | Description                                              |
@@ -197,47 +180,18 @@ Layout (src/app/layout.tsx)
 
 ```
 External APIs (NewsAPI, Qiita, GitHub, Hatena Bookmark, RSS feeds)
-  → src/lib/news/ (Fetchers + Discovery)
+  → src/lib/news/ (Fetchers)
     → src/lib/llm/gemini.ts (LLM: usefulness + summary) + src/lib/vector-filter.ts (vector similarity: relevance)
     → src/app/api/fetch-news/route.ts (calcRecencyScore + weighted composite)
       → src/lib/db/actions.ts (Persistence)
-          → SQLite Database (articles + hatena_feeds)
+          → SQLite Database (articles)
             → src/app/page.tsx (RSC: Data Fetching)
               → src/app/news-section.tsx (Client: isRefreshing → skeleton / ArticleList rendering)
                 → src/app/article-list.tsx (Client: Rendering + tooltip breakdown)
-            → src/app/dashboard/feeds/page.tsx (RSC: Feed Health Dashboard)
-              → src/app/dashboard/feeds/feed-dashboard.tsx (Client: Reactivate action)
-                → POST /api/feeds (reactivateHatenaFeed)
             → src/app/admin/db/page.tsx (RSC: table list)
               → src/app/admin/db/[table]/page.tsx (RSC: paginated table view)
                 → DataTable + Pagination + RowDetail (Client: read-only browsing)
 ```
-
-### Hatena Discovery Pipeline
-
-**Trigger**: `fetch-news` API 呼び出し時に Hatena 記事が 0 件の場合、自動的に実行。
-
-**Steps**:
-
-1. Call Hatena Hotentry/Entrylist RSS `https://b.hatena.ne.jp/hotentry/it.rss` および `https://b.hatena.ne.jp/entrylist/it.rss`
-2. Parse response as XML (RSS 1.0)
-3. Extract `*.hatenablog.com` domains from `<link>` elements
-4. Deduplicate by domain
-5. UPSERT into `hatena_feeds` table (`status='active'`, `feedUrl='https://{domain}/rss'`)
-6. Ingestion (`fetch-news`) reads `feedUrl` from `hatena_feeds WHERE status='active'`
-
-**Rate Limit Mitigation**:
-
-- Max 3 API calls per discovery run (1 per page)
-- 1s delay between requests
-- Respect `Retry-After` on 429
-- `HATENA_PROXY_URL` env var is used by `politeFetch` to route requests through a dedicated IP (via `undici` ProxyAgent) to avoid Vercel's shared egress IP rate limits.
-
-**Failure Handling**:
-
-- RSS fetch errors increment `errorCount`; auto-disable at 5 consecutive failures
-- Discovery errors logged but don't block other domains
-- **Test Strategy**: Real-connection integration tests (enabled via `RUN_LIVE_TESTS=1`) are available to reproduce commercial connection errors locally.
 
 ### Scoring Formula
 

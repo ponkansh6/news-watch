@@ -1,13 +1,5 @@
 import { beforeAll, afterAll, describe, expect, test, vi } from "vitest";
 import { searchHatena } from "@/lib/news/hatena";
-import { getActiveFeedUrls, recordFeedError, recordFeedSuccess } from "@/lib/news/hatena-discovery";
-
-// searchHatena now reads feed URLs from the DB via hatena-discovery.
-// Mock that module so this test stays DB-free and controls the feed list.
-vi.mock("@/lib/news/hatena-discovery", () => ({
-  HATENA_HOTENTRY_RSS_URL: "https://b.hatena.ne.jp/hotentry/it.rss",
-  HATENA_ENTRYLIST_RSS_URL: "https://b.hatena.ne.jp/entrylist/it.rss",
-}));
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
