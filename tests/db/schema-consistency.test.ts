@@ -68,4 +68,40 @@ describe("schema consistency", () => {
       }
     }
   });
+
+  test("all defined indexes exist in the database and can be queried", async () => {
+    const expectedIndexes = [
+      { table: "articles", index: "idx_keyword" },
+      { table: "articles", index: "idx_relevance_pub" },
+      { table: "articles", index: "idx_recency_pub" },
+      { table: "articles", index: "idx_created_at" },
+      { table: "hatena_feeds", index: "idx_hatena_feeds_status" },
+      { table: "hatena_feeds", index: "idx_hatena_feeds_domain" },
+    ];
+
+    for (const { table, index } of expectedIndexes) {
+      // Query PRAGMA index_list for the table
+      const result = await db.$client.execute(`PRAGMA index_list("${table}")`);
+      const rows = Array.isArray(result) ? result : (result as any).rows || [];
+      const indexNames = rows.map((r: any) => r.name);
+
+      expect(indexNames, `Index ${index} should exist on table ${table}`).toContain(index);
+
+      // Verify that the index can be queried via PRAGMA index_info
+      const infoResult = await db.$client.execute(`PRAGMA index_info("${index}")`);
+      const infoRows = Array.isArray(infoResult) ? infoResult : (infoResult as any).rows || [];
+      expect(infoRows.length, `Index ${index} should have columns defined`).toBeGreaterThan(0);
+    }
+  });
+
+  test("keyword_embeddings table exists with correct columns", async () => {
+    const result = await db.$client.execute(`PRAGMA table_info(keyword_embeddings)`);
+    const rows = Array.isArray(result) ? result : (result as any).rows || [];
+    const actualColumns = rows.map((row: any) => row.name);
+
+    const expectedColumns = ["id", "keyword", "embedding", "model", "dimensions", "created_at"];
+    for (const col of expectedColumns) {
+      expect(actualColumns, `Column ${col} missing in keyword_embeddings`).toContain(col);
+    }
+  });
 });

@@ -19,7 +19,7 @@ import {
 /** LLM model used for article scoring (Gemini). */
 export const LLM_MODEL = "gemini-3.1-flash-lite";
 
-const LLMResponseSchema = z.object({
+export const LLMResponseSchema = z.object({
   summary: z.string().min(1).max(LLM_RESPONSE_SUMMARY_MAX),
   usefulness: z.number().min(0).max(LLM_RESPONSE_USEFULNESS_MAX),
   reason: z.string().min(1).max(LLM_RESPONSE_REASON_MAX),

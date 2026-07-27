@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
 
+const RUN_LIVE = process.env.RUN_LIVE_TESTS === "1";
+const describeIfLive = RUN_LIVE ? describe : describe.skip;
+
 // Mock DB before imports
 vi.mock("@/lib/db", async () => {
   const { createInMemoryDb } = await import("../helpers/db-setup");
@@ -28,7 +31,7 @@ beforeAll(async () => {
   await (dbMod as any).__client.execute(CREATE_ARTICLES_TABLE_SQL);
 });
 
-describe("Real LLM Scale E2E Tests (all real services)", () => {
+describeIfLive("Real LLM Scale E2E Tests (all real services)", () => {
   beforeEach(() => {
     vi.stubEnv("NODE_ENV", "development");
     resetEmbeddingRequestCount();

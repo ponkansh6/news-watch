@@ -148,6 +148,38 @@ describe("NewsSection", () => {
     expect(screen.getByText("テスト記事 2")).toBeInTheDocument();
   });
 
+  it("sorts articles by score descending by default", () => {
+    const unsorted: Article[] = [
+      { ...mockArticles[0], id: 1, score: 5, title: "Low Score" },
+      { ...mockArticles[0], id: 2, score: 9, title: "High Score" },
+    ];
+    render(
+      <Wrapper refreshing={false}>
+        <NewsSection articles={unsorted} />
+      </Wrapper>,
+    );
+
+    const articles = screen.getAllByRole("article");
+    expect(articles[0]).toHaveTextContent("High Score");
+    expect(articles[1]).toHaveTextContent("Low Score");
+  });
+
+  it("sorts articles by publishedAt descending as alternative", () => {
+    const dateSorted: Article[] = [
+      { ...mockArticles[0], id: 1, score: 8, publishedAt: "2026-03-29T00:00:00Z", title: "Older" },
+      { ...mockArticles[0], id: 2, score: 8, publishedAt: "2026-03-30T00:00:00Z", title: "Newer" },
+    ];
+    render(
+      <Wrapper refreshing={false}>
+        <NewsSection articles={dateSorted} />
+      </Wrapper>,
+    );
+
+    const articles = screen.getAllByRole("article");
+    expect(articles[0]).toHaveTextContent("Newer");
+    expect(articles[1]).toHaveTextContent("Older");
+  });
+
   it("shows filtering indicator when isFiltering=true and keeps articles visible", () => {
     render(
       <Wrapper refreshing={false} filtering={true}>

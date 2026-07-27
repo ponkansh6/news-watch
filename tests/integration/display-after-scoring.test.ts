@@ -148,6 +148,18 @@ describe("Display after scoring (scored articles appear in the view)", () => {
     // Each ScoreBadge renders the numeric composite score.
     for (const a of scored) {
       expect(html).toContain(String(a.score));
+      // Check score breakdown includes relevance, usefulness, recency values
+      expect(html).toContain(`関連性: ${a.relevance?.toFixed(1)}`);
+      expect(html).toContain(`有用性: ${a.usefulness?.toFixed(1)}`);
+      expect(html).toContain(`新しさ: ${a.recency?.toFixed(1)}`);
+      // Summary is in Japanese
+      if (a.summary) {
+        expect(a.summary).toMatch(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u);
+      }
     }
+
+    // Verify articles without scores are not displayed in scored list (filter out nulls or verify none are null)
+    const unscoredList = scored.filter((a) => a.score === null);
+    expect(unscoredList).toHaveLength(0);
   }, 30000);
 });

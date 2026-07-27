@@ -66,7 +66,7 @@
   "lint-staged": {
     "*.{ts,tsx}": [
       "oxfmt --write",
-      "vitest related --passWithNoTests --exclude 'tests/e2e/real-llm*'"
+      "vitest related --passWithNoTests"
     ],
     "*.{js,jsx,json,md,mjs,cjs}": "oxfmt --write"
   },

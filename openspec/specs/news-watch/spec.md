@@ -130,7 +130,7 @@ authors: [shunki]
 | `relevance`          | real    | Vector similarity score to the keyword (0-1, normalized to 0-10) |
 | `usefulness`         | real    | LLM-scored technical usefulness (0-10)                           |
 | `recency`            | real    | Algorithmic score based on publication freshness (0-10)          |
-| `score`              | real    | Composite score = relevance×0.3 + usefulness×0.4 + recency×0.3   |
+| `score`              | real    | Composite score = relevance×0.2 + usefulness×0.5 + recency×0.3   |
 | `reason`             | text    | LLM-generated explanation (Japanese)                             |
 | `sourceId`           | text    | Internal source identifier (e.g., zenn, hatena, qiita, zdnet)    |
 | `recencyRefreshedAt` | text    | Timestamp of last recency delta refresh                          |
@@ -233,9 +233,9 @@ External APIs (NewsAPI, Qiita, GitHub, Hatena Bookmark, RSS feeds)
 ### Scoring Formula
 
 ```
-composite = relevance × 0.3 + usefulness × 0.4 + recency × 0.3
+composite = similarity × 0.2 + usefulness × 0.5 + recency × 0.3
 
-relevance  : ベクトル類似度 (0-1→0-10正規化) — キーワード埋め込みとの余弦類似度
+similarity : ベクトル類似度 (0-1→0-10正規化) — キーワード埋め込みとの余弦類似度
 usefulness : LLM判定 (0-10) — 技術者視点での有用性
 recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準）
 ```

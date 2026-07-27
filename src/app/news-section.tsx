@@ -28,6 +28,16 @@ export default function NewsSection({
     }
   }, [articles, isRefreshing, setRefreshing]);
 
+  // Sort articles: primary by score desc (null last), secondary by publishedAt desc
+  const sortedArticles = [...articles].sort((a, b) => {
+    const scoreA = a.score ?? -1;
+    const scoreB = b.score ?? -1;
+    if (scoreA !== scoreB) {
+      return scoreB - scoreA;
+    }
+    return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+  });
+
   const headerSuffix = isRefreshing ? "(更新中...)" : `(${articles.length}件)`;
 
   return (
@@ -55,7 +65,7 @@ export default function NewsSection({
           </p>
         </div>
       ) : (
-        <ArticleList articles={articles} />
+        <ArticleList articles={sortedArticles} />
       )}
     </div>
   );
