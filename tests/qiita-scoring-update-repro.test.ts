@@ -134,7 +134,7 @@ describe("Qiita Atomフィード記事のスコアリング更新 - 修正後の
 
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["qiita"] }),
+      body: JSON.stringify({ source: "qiita" }),
       headers: { "Content-Type": "application/json" },
     });
 
@@ -180,7 +180,7 @@ describe("Qiita Atomフィード記事のスコアリング更新 - 修正後の
 
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["yamadashy"] }),
+      body: JSON.stringify({ source: "yamadashy" }),
       headers: { "Content-Type": "application/json" },
     });
 

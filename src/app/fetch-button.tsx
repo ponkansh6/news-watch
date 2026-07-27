@@ -21,26 +21,26 @@ export default function FetchButton() {
   const [isPending, startTransition] = useTransition();
   const { isRefreshing, setRefreshing, setFiltering } = useRefresh();
   const refreshFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [selectedSources, setSelectedSources] = useState<string[]>(() => {
+  const [selectedSource, setSelectedSource] = useState<string>(() => {
     // Load from localStorage on mount
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("selectedSources");
-      return saved ? JSON.parse(saved) : SOURCES.map((s) => s.id);
+      const saved = localStorage.getItem("selectedSource");
+      return saved ? saved : "zenn";
     }
-    return SOURCES.map((s) => s.id);
+    return "zenn";
   });
   const router = useRouter();
 
   // Save to localStorage when selection changes
   useEffect(() => {
-    localStorage.setItem("selectedSources", JSON.stringify(selectedSources));
-  }, [selectedSources]);
+    localStorage.setItem("selectedSource", selectedSource);
+  }, [selectedSource]);
 
-  // Mount effect: sync URL with localStorage (initial load from localStorage may have saved state)
+  // Mount effect: sync URL with localStorage
   useEffect(() => {
     const params = new URLSearchParams();
-    if (selectedSources.length > 0) {
-      params.set("sources", selectedSources.join(","));
+    if (selectedSource) {
+      params.set("source", selectedSource);
     }
     router.replace(`?${params.toString()}`, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,40 +74,18 @@ export default function FetchButton() {
     };
   }, []);
 
-  const handleSourceToggle = useCallback(
-    (sourceId: string) => {
-      setSelectedSources((prev) => {
-        const next = prev.includes(sourceId)
-          ? prev.filter((id) => id !== sourceId)
-          : [...prev, sourceId];
-        // Update URL search params inside a transition so isPending shows a
-        // loading indicator while the server component re-fetches with new filter.
-        const params = new URLSearchParams();
-        if (next.length > 0) params.set("sources", next.join(","));
-        startTransition(() => {
-          router.replace(`?${params.toString()}`, { scroll: false });
-        });
-        return next;
+  const handleSourceChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const newSource = e.target.value;
+      setSelectedSource(newSource);
+      const params = new URLSearchParams();
+      params.set("source", newSource);
+      startTransition(() => {
+        router.replace(`?${params.toString()}`, { scroll: false });
       });
     },
     [router, startTransition],
   );
-
-  const handleSelectAll = useCallback(() => {
-    setSelectedSources(SOURCES.map((s) => s.id));
-    const params = new URLSearchParams();
-    params.set("sources", SOURCES.map((s) => s.id).join(","));
-    startTransition(() => {
-      router.replace(`?${params.toString()}`, { scroll: false });
-    });
-  }, [router, startTransition]);
-
-  const handleSelectNone = useCallback(() => {
-    setSelectedSources([]);
-    startTransition(() => {
-      router.replace("?", { scroll: false });
-    });
-  }, [router, startTransition]);
 
   const handleFetch = useCallback(async () => {
     setApiInFlight(true);
@@ -120,7 +98,7 @@ export default function FetchButton() {
       const res = await fetch("/api/fetch-news", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sources: selectedSources }),
+        body: JSON.stringify({ source: selectedSource }),
       });
       const data = await res.json();
 
@@ -170,76 +148,48 @@ export default function FetchButton() {
     } finally {
       setApiInFlight(false);
     }
-  }, [router, selectedSources, setRefreshing]);
+  }, [router, selectedSource, setRefreshing]);
 
   return (
     <div className="flex flex-col gap-3">
       {/* Source Selection */}
       <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-medium text-neutral-600">データソースを選択</span>
-          <div className="flex gap-1.5">
-            <button
-              type="button"
-              onClick={handleSelectAll}
-              className="text-xs text-neutral-500 hover:text-neutral-700"
-            >
-              すべて選択
-            </button>
-            <span className="text-xs text-neutral-300">|</span>
-            <button
-              type="button"
-              onClick={handleSelectNone}
-              className="text-xs text-neutral-500 hover:text-neutral-700"
-            >
-              選択解除
-            </button>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {SOURCES.map((source) => (
-            <label
-              key={source.id}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-neutral-100"
-            >
-              <div className="relative flex items-center">
-                <input
-                  type="checkbox"
-                  checked={selectedSources.includes(source.id)}
-                  onChange={() => handleSourceToggle(source.id)}
-                  className="h-4 w-4 rounded border-neutral-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div
-                  className={`absolute inset-0 rounded-full ${source.color} opacity-20 ${selectedSources.includes(source.id) ? "block" : "hidden"}`}
-                />
-              </div>
-              <span className="text-xs font-medium text-neutral-700">{source.name}</span>
-            </label>
-          ))}
-        </div>
-        <div className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
-          <span>
-            {selectedSources.length} / {SOURCES.length} を選択中
+          <span className="text-xs font-medium text-neutral-600">データソース</span>
+          <span className="text-xs text-neutral-500">
+            {isPending && !isRefreshing && (
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+                フィルタリング中...
+              </span>
+            )}
           </span>
-          {isPending && !isRefreshing && (
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-400" />
-              フィルタリング中...
-            </span>
-          )}
         </div>
+        <select
+          value={selectedSource}
+          onChange={handleSourceChange}
+          className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+        >
+          {SOURCES.map((source) => (
+            <option key={source.id} value={source.id}>
+              {source.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <button
           type="button"
           onClick={handleFetch}
-          disabled={apiInFlight || selectedSources.length === 0}
+          disabled={apiInFlight || !selectedSource}
           className="rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {apiInFlight ? "取得・スコアリング中..." : "ニュースを取得してスコアリング"}
         </button>
-        <span className="text-xs text-neutral-400">Zenn → LLMスコアリング</span>
+        <span className="text-xs text-neutral-400">
+          {SOURCES.find((s) => s.id === selectedSource)?.name} → LLMスコアリング
+        </span>
       </div>
 
       {fetchError && (

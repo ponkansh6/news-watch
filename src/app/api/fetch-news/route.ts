@@ -181,14 +181,13 @@ export async function POST(request: Request) {
   // Remove articles for keywords no longer in config
   await deleteOrphanedArticles([...KEYWORDS]);
 
-  // Parse request body to get selected sources
-  let selectedSources: string[] = [];
+  // Parse request body to get selected source
+  let selectedSource: string = "zenn";
   try {
     const body = await request.json();
-    selectedSources = body.sources || [];
+    selectedSource = body.source || "zenn";
   } catch {
-    // If parsing fails or no sources provided, default to all sources
-    selectedSources = SUPPORTED_SOURCE_IDS;
+    selectedSource = "zenn";
   }
 
   const results: {
@@ -198,40 +197,40 @@ export async function POST(request: Request) {
     errors: string[];
   }[] = [];
 
-  // Build fetchPromises and sourceOrder for all selected sources
+  // Build fetchPromises and sourceOrder for the selected source
   const fetchPromises: Array<Promise<any>> = [];
   const sourceOrder: string[] = [];
 
-  if (selectedSources.includes("zenn")) {
+  if (selectedSource === "zenn") {
     fetchPromises.push(searchZenn(20));
     sourceOrder.push("zenn");
   }
-  if (selectedSources.includes("qiita")) {
+  if (selectedSource === "qiita") {
     fetchPromises.push(searchQiita(20));
     sourceOrder.push("qiita");
   }
 
-  if (selectedSources.includes("yamadashy")) {
+  if (selectedSource === "yamadashy") {
     fetchPromises.push(searchYamadashy(20));
     sourceOrder.push("yamadashy");
   }
-  if (selectedSources.includes("itmedia")) {
+  if (selectedSource === "itmedia") {
     fetchPromises.push(searchITmedia(20));
     sourceOrder.push("itmedia");
   }
-  if (selectedSources.includes("codezine")) {
+  if (selectedSource === "codezine") {
     fetchPromises.push(searchCodeZine(20));
     sourceOrder.push("codezine");
   }
-  if (selectedSources.includes("zdnet")) {
+  if (selectedSource === "zdnet") {
     fetchPromises.push(searchZdnet(20));
     sourceOrder.push("zdnet");
   }
-  if (selectedSources.includes("xtech")) {
+  if (selectedSource === "xtech") {
     fetchPromises.push(searchXtech(20));
     sourceOrder.push("xtech");
   }
-  if (selectedSources.includes("hatena")) {
+  if (selectedSource === "hatena") {
     let hatena = await searchHatena(20);
     if (hatena.length === 0) {
       console.log("[hatena] No active feeds, running discovery...");
@@ -281,10 +280,10 @@ export async function POST(request: Request) {
     errors: string[];
   };
 
-  if (selectedSources.length > 0) {
+  if (selectedSource) {
     try {
       const fetchedUrls = all.map((a) => a.url);
-      await refreshRecencyForSources(selectedSources, fetchedUrls);
+      await refreshRecencyForSources([selectedSource], fetchedUrls);
     } catch (e) {
       console.error(`[fetch-news] Recency refresh failed:`, e);
       result.errors.push(`Recency refresh failed: ${e}`);

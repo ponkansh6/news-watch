@@ -108,7 +108,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
 
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["qiita"] }),
+      body: JSON.stringify({ source: "qiita" }),
       headers: { "Content-Type": "application/json" },
     });
 
@@ -159,7 +159,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
 
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["qiita"] }),
+      body: JSON.stringify({ source: "qiita" }),
       headers: { "Content-Type": "application/json" },
     });
 
@@ -207,7 +207,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
 
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["qiita"] }),
+      body: JSON.stringify({ source: "qiita" }),
       headers: { "Content-Type": "application/json" },
     });
 
@@ -249,7 +249,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
 
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["qiita"] }),
+      body: JSON.stringify({ source: "qiita" }),
       headers: { "Content-Type": "application/json" },
     });
 

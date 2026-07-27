@@ -76,7 +76,7 @@ describe("ZDNet RSS統合テスト", () => {
   test("ZDNet記事が正しく処理される", async () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["zdnet"] }),
+      body: JSON.stringify({ source: "zdnet" }),
       headers: { "Content-Type": "application/json" },
     });
 

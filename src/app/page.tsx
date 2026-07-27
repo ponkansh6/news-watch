@@ -4,13 +4,10 @@ import NewsSection from "./news-section";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home(props: { searchParams: Promise<{ sources?: string }> }) {
+export default async function Home(props: { searchParams: Promise<{ source?: string }> }) {
   const searchParams = await props.searchParams;
-  const selectedSources = searchParams.sources?.split(",").filter(Boolean) ?? [];
-  const scored = await getScoredArticles(
-    100,
-    selectedSources.length > 0 ? selectedSources : undefined,
-  );
+  const selectedSource = searchParams.source ?? "zenn";
+  const scored = await getScoredArticles(100, selectedSource);
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">

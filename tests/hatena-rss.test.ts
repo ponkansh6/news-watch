@@ -77,7 +77,7 @@ describe("Hatena RSS統合テスト", () => {
   test("Hatena記事が正しく処理される", async () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["hatena"] }),
+      body: JSON.stringify({ source: "hatena" }),
       headers: { "Content-Type": "application/json" },
     });
 

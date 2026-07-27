@@ -103,7 +103,7 @@ describe("e2e pipeline (local dev mode)", () => {
     mockKeywords = ["test-keyword"];
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["zenn"] }),
+      body: JSON.stringify({ source: "zenn" }),
       headers: { "Content-Type": "application/json" },
     });
 
@@ -132,7 +132,7 @@ describe("e2e pipeline (local dev mode)", () => {
 
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["zenn"] }),
+      body: JSON.stringify({ source: "zenn" }),
       headers: { "Content-Type": "application/json" },
     });
 

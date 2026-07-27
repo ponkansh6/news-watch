@@ -88,10 +88,10 @@ vi.mock("@/lib/embeddings", () => ({
 }));
 
 describe("fetch-news route source selection", () => {
-  test("should work when only qiita is selected", async () => {
+  test("should work when qiita is selected", async () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["qiita"] }),
+      body: JSON.stringify({ source: "qiita" }),
       headers: { "Content-Type": "application/json" },
     });
 
@@ -103,10 +103,10 @@ describe("fetch-news route source selection", () => {
     expect(data.results[0].errors).toHaveLength(0);
   });
 
-  test("should work when only yamadashy is selected", async () => {
+  test("should work when yamadashy is selected", async () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["yamadashy"] }),
+      body: JSON.stringify({ source: "yamadashy" }),
       headers: { "Content-Type": "application/json" },
     });
 
@@ -118,10 +118,10 @@ describe("fetch-news route source selection", () => {
     expect(data.results[0].errors).toHaveLength(0);
   });
 
-  test("should work when no sources selected (defaults to all)", async () => {
+  test("should default to zenn when no source provided", async () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: [] }),
+      body: JSON.stringify({}),
       headers: { "Content-Type": "application/json" },
     });
 
@@ -133,10 +133,10 @@ describe("fetch-news route source selection", () => {
     expect(data.results[0].errors).toHaveLength(0);
   });
 
-  test("should work when only zenn is selected", async () => {
+  test("should work when zenn is selected", async () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
-      body: JSON.stringify({ sources: ["zenn"] }),
+      body: JSON.stringify({ source: "zenn" }),
       headers: { "Content-Type": "application/json" },
     });
 

@@ -95,7 +95,7 @@ describe("FetchButton", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders all source checkboxes with correct names", () => {
+  it("renders select dropdown with correct sources", () => {
     render(
       <RefreshProvider>
         <FetchButton />
@@ -103,25 +103,22 @@ describe("FetchButton", () => {
     );
 
     for (const source of SOURCES) {
-      expect(screen.getByText(source.name)).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: source.name })).toBeInTheDocument();
     }
   });
 
-  it("all sources are selected by default", () => {
+  it("default selected source is zenn", () => {
     render(
       <RefreshProvider>
         <FetchButton />
       </RefreshProvider>,
     );
 
-    for (const source of SOURCES) {
-      const checkbox = screen.getByRole("checkbox", { name: source.name });
-      expect(checkbox).toBeChecked();
-    }
-    expect(screen.getByText(`${SOURCES.length} / ${SOURCES.length} を選択中`)).toBeInTheDocument();
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(select.value).toBe("zenn");
   });
 
-  it("source toggle works correctly", async () => {
+  it("source change works correctly", async () => {
     const user = userEvent.setup();
     render(
       <RefreshProvider>
@@ -129,74 +126,11 @@ describe("FetchButton", () => {
       </RefreshProvider>,
     );
 
-    const firstSource = SOURCES[0];
-    const checkbox = screen.getByRole("checkbox", { name: firstSource.name });
-    expect(checkbox).toBeChecked();
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(select.value).toBe("zenn");
 
-    await user.click(checkbox);
-    expect(checkbox).not.toBeChecked();
-    expect(
-      screen.getByText(`${SOURCES.length - 1} / ${SOURCES.length} を選択中`),
-    ).toBeInTheDocument();
-
-    await user.click(checkbox);
-    expect(checkbox).toBeChecked();
-    expect(screen.getByText(`${SOURCES.length} / ${SOURCES.length} を選択中`)).toBeInTheDocument();
-  });
-
-  it("Select All button works", async () => {
-    const user = userEvent.setup();
-    render(
-      <RefreshProvider>
-        <FetchButton />
-      </RefreshProvider>,
-    );
-
-    // Deselect first source
-    const firstSource = SOURCES[0];
-    const checkbox = screen.getByRole("checkbox", { name: firstSource.name });
-    await user.click(checkbox);
-    expect(checkbox).not.toBeChecked();
-
-    // Click "すべて選択"
-    const selectAllBtn = screen.getByRole("button", { name: "すべて選択" });
-    await user.click(selectAllBtn);
-
-    for (const source of SOURCES) {
-      expect(screen.getByRole("checkbox", { name: source.name })).toBeChecked();
-    }
-  });
-
-  it("Select None button works", async () => {
-    const user = userEvent.setup();
-    render(
-      <RefreshProvider>
-        <FetchButton />
-      </RefreshProvider>,
-    );
-
-    const selectNoneBtn = screen.getByRole("button", { name: "選択解除" });
-    await user.click(selectNoneBtn);
-
-    for (const source of SOURCES) {
-      expect(screen.getByRole("checkbox", { name: source.name })).not.toBeChecked();
-    }
-    expect(screen.getByText(`0 / ${SOURCES.length} を選択中`)).toBeInTheDocument();
-  });
-
-  it("Fetch button is disabled when no sources selected", async () => {
-    const user = userEvent.setup();
-    render(
-      <RefreshProvider>
-        <FetchButton />
-      </RefreshProvider>,
-    );
-
-    const selectNoneBtn = screen.getByRole("button", { name: "選択解除" });
-    await user.click(selectNoneBtn);
-
-    const fetchBtn = screen.getByRole("button", { name: "ニュースを取得してスコアリング" });
-    expect(fetchBtn).toBeDisabled();
+    await user.selectOptions(select, "qiita");
+    expect(select.value).toBe("qiita");
   });
 
   it("shows loading state during API call", async () => {

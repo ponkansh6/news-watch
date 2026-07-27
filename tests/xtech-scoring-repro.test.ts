@@ -221,7 +221,7 @@ describe("xtech: パイプライン統合（実データフィクスチャ）", 
     expect(saved).toBe(ARTICLE_COUNT);
 
     // ── Step 5: DBからの取得確認 ──
-    const scored = await getScoredArticles(100, ["xtech"]);
+    const scored = await getScoredArticles(100, "xtech");
     expect(scored.length).toBe(ARTICLE_COUNT);
 
     for (const a of scored) {
@@ -253,7 +253,7 @@ describe("xtech: パイプライン統合（実データフィクスチャ）", 
 
     expect(saved).toBe(ARTICLE_COUNT);
 
-    const scored = await getScoredArticles(100, ["xtech"]);
+    const scored = await getScoredArticles(100, "xtech");
     expect(scored.length).toBe(ARTICLE_COUNT);
   });
 

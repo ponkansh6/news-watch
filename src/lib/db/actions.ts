@@ -68,12 +68,16 @@ export async function upsertArticle(data: ArticleInsert) {
 /** Articles with composite score, ordered by score then date. */
 export async function getScoredArticles(
   limit = DEFAULT_SCORED_ARTICLES_LIMIT,
-  sourceIds?: string[],
+  sourceIds?: string[] | string,
 ) {
   try {
     const conditions = [isNotNull(articles.score)];
-    if (sourceIds && sourceIds.length > 0) {
-      conditions.push(inArray(articles.sourceId, sourceIds));
+    if (sourceIds) {
+      if (Array.isArray(sourceIds) && sourceIds.length > 0) {
+        conditions.push(inArray(articles.sourceId, sourceIds));
+      } else if (typeof sourceIds === "string") {
+        conditions.push(eq(articles.sourceId, sourceIds));
+      }
     }
     return await db
       .select()
