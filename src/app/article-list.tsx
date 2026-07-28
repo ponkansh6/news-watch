@@ -165,9 +165,10 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
               </div>
 
               <div
-                className="select-none"
+                className="select-none touch-manipulation"
                 onPointerDown={(e) => {
                   swipeStartRef.current[article.id] = { x: e.clientX, y: e.clientY };
+                  (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
                 }}
                 onPointerUp={(e) => {
                   const start = swipeStartRef.current[article.id];
@@ -180,7 +181,7 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
                     toggleFav(article.id);
                   }
                 }}
-                onPointerLeave={() => {
+                onPointerCancel={() => {
                   swipeStartRef.current[article.id] = null;
                 }}
               >
