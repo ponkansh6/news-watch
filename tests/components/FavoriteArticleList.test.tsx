@@ -85,6 +85,30 @@ describe("FavoriteArticleList Component", () => {
     expect(toggleCalls).toHaveLength(0);
   });
 
+  it("does not toggle on pointerCancel (browser takes over gesture)", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async (url) => {
+      if (url === "/api/favorites") {
+        return { ok: true, json: async () => ({ ids: [] }) } as Response;
+      }
+      return { ok: true, json: async () => ({ favorited: true }) } as Response;
+    });
+
+    render(<ArticleList articles={[mockArticle]} />);
+
+    const wrapperEl = screen.getByText("Test summary").parentElement!;
+
+    // Start swipe then browser cancels (e.g. scroll takeover)
+    fireEvent.pointerDown(wrapperEl, { clientX: 0, clientY: 0, pointerId: 1 });
+    fireEvent.pointerCancel(wrapperEl, { pointerId: 1 });
+    // pointerUp after cancel should be ignored
+    fireEvent.pointerUp(wrapperEl, { clientX: 100, clientY: 5, pointerId: 1 });
+
+    const toggleCalls = vi
+      .mocked(global.fetch)
+      .mock.calls.filter((call) => call[0] === "/api/favorites/toggle");
+    expect(toggleCalls).toHaveLength(0);
+  });
+
   it("triggers /api/favorites/toggle on horizontal swipe >= 60px", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url) => {
       if (url === "/api/favorites") {
