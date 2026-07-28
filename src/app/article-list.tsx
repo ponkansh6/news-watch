@@ -175,17 +175,18 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
     <div className="space-y-3">
       {message && (
         <div
-          className={`flex items-center justify-between rounded-lg border p-3 text-sm ${
+          className={`fixed left-1/2 top-4 z-50 flex -translate-x-1/2 items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm shadow-lg ${
             message.type === "success"
               ? "border-green-200 bg-green-50 text-green-700"
               : "border-red-200 bg-red-50 text-red-700"
           }`}
+          role="alert"
         >
           <span>{message.text}</span>
           <button
             type="button"
             onClick={() => setMessage(null)}
-            className={`ml-2 font-bold ${
+            className={`shrink-0 font-bold ${
               message.type === "success"
                 ? "text-green-700 hover:text-green-900"
                 : "text-red-700 hover:text-red-900"
