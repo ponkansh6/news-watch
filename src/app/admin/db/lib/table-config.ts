@@ -59,6 +59,18 @@ export const TABLE_CONFIG: Record<string, { columns: ColumnDef[] }> = {
       { key: "embedding", label: "Embedding", sortable: false, hidden: true },
     ],
   },
+  favorites: {
+    columns: [
+      { key: "id", label: "ID", sortable: true, align: "right" },
+      { key: "articleId", label: "Article ID", sortable: true, align: "right" },
+      {
+        key: "createdAt",
+        label: "Favorited At",
+        sortable: true,
+        format: (v) => (v ? new Date(v).toLocaleString("ja-JP") : "—"),
+      },
+    ],
+  },
 };
 
 // Helper to get sortable column keys for a table

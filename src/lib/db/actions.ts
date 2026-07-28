@@ -170,7 +170,7 @@ export async function refreshRecencyForSources(
   }
 }
 
-export type TableName = "articles" | "keyword_embeddings";
+export type TableName = "articles" | "keyword_embeddings" | "favorites";
 
 export interface TablePageOptions {
   table: TableName;
@@ -183,6 +183,7 @@ export interface TablePageOptions {
 const tableMap = {
   articles,
   keyword_embeddings: keywordEmbeddings,
+  favorites,
 } as const;
 
 export async function getTablePage<T extends TableName>(
@@ -232,14 +233,16 @@ async function countRows(tableObj: any, label: string): Promise<number> {
 }
 
 export async function getTableCounts(): Promise<Record<TableName, number>> {
-  const [articlesCount, embeddingsCount] = await Promise.all([
+  const [articlesCount, embeddingsCount, favoritesCount] = await Promise.all([
     countRows(articles, "articles"),
     countRows(keywordEmbeddings, "keyword_embeddings"),
+    countRows(favorites, "favorites"),
   ]);
 
   return {
     articles: articlesCount,
     keyword_embeddings: embeddingsCount,
+    favorites: favoritesCount,
   };
 }
 

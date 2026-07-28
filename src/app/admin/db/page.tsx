@@ -12,6 +12,10 @@ const TABLE_DESCRIPTIONS: Record<string, { name: string; desc: string }> = {
     name: "Keyword Embeddings",
     desc: "Precomputed vector embeddings for keywords used in similarity search.",
   },
+  favorites: {
+    name: "Favorites",
+    desc: "Hidden bookmarks for favorite articles (unofficial feature).",
+  },
 };
 
 export default async function AdminDbLandingPage() {
