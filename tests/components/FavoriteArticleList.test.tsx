@@ -41,7 +41,7 @@ describe("FavoriteArticleList Component", () => {
     expect(fetchSpy).toHaveBeenCalledWith("/api/favorites");
   });
 
-  it("does not toggle favorite on fewer than 5 clicks within 2 seconds", async () => {
+  it("does not toggle favorite on fewer than 4 pointerDown within 4 seconds", async () => {
     vi.spyOn(global, "fetch").mockImplementation(async (url) => {
       if (url === "/api/favorites") {
         return { ok: true, json: async () => ({ ids: [] }) } as Response;
@@ -53,9 +53,9 @@ describe("FavoriteArticleList Component", () => {
 
     const summaryEl = screen.getByText("Test summary");
 
-    // Click 4 times
-    for (let i = 0; i < 4; i++) {
-      fireEvent.click(summaryEl);
+    // Tap 3 times (below threshold)
+    for (let i = 0; i < 3; i++) {
+      fireEvent.pointerDown(summaryEl);
     }
 
     // Verify /api/favorites/toggle was NOT called
@@ -65,7 +65,7 @@ describe("FavoriteArticleList Component", () => {
     expect(toggleCalls).toHaveLength(0);
   });
 
-  it("triggers /api/favorites/toggle on 5 consecutive clicks within 2 seconds", async () => {
+  it("triggers /api/favorites/toggle on 4 consecutive pointerDown within 4 seconds", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url) => {
       if (url === "/api/favorites") {
         return { ok: true, json: async () => ({ ids: [] }) };
@@ -86,9 +86,9 @@ describe("FavoriteArticleList Component", () => {
 
     const summaryEl = screen.getByText("Test summary");
 
-    // Click 5 times rapidly
-    for (let i = 0; i < 5; i++) {
-      fireEvent.click(summaryEl);
+    // Tap 4 times rapidly
+    for (let i = 0; i < 4; i++) {
+      fireEvent.pointerDown(summaryEl);
     }
 
     await waitFor(() => {

@@ -110,7 +110,7 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
       });
   }, []);
 
-  const handleReasonClick = (articleId: number) => {
+  const handleTap = (articleId: number) => {
     const record = clickCountsRef.current[articleId] || { count: 0, timer: null };
 
     if (record.timer) {
@@ -119,9 +119,8 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
 
     record.count += 1;
 
-    if (record.count >= 5) {
+    if (record.count >= 4) {
       record.count = 0;
-      // Toggle favorite
       fetch("/api/favorites/toggle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -147,7 +146,7 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
     } else {
       record.timer = setTimeout(() => {
         record.count = 0;
-      }, 2000);
+      }, 4000);
     }
 
     clickCountsRef.current[articleId] = record;
@@ -182,36 +181,41 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
                 )}
               </div>
 
-              {article.summary && (
-                <p
-                  className="mt-1 text-sm leading-relaxed text-neutral-500 line-clamp-2 cursor-pointer select-none"
-                  onClick={() => handleReasonClick(article.id)}
-                >
-                  {article.summary}
-                </p>
-              )}
+              <div
+                className="touch-manipulation select-none"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  handleTap(article.id);
+                }}
+              >
+                {article.summary && (
+                  <p className="mt-1 text-sm leading-relaxed text-neutral-500 line-clamp-2">
+                    {article.summary}
+                  </p>
+                )}
 
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                {article.sourceName && (
-                  <span className="font-medium text-neutral-600">{article.sourceName}</span>
-                )}
-                <time dateTime={article.publishedAt} className="text-neutral-500">
-                  {formatDate(article.publishedAt)}
-                </time>
-                {article.keyword && (
-                  <span
-                    className={`rounded border px-2 py-0.5 ${getKeywordColor(
-                      KEYWORD_LABELS[article.keyword] || article.keyword.split(" ")[0],
-                    )}`}
-                  >
-                    {KEYWORD_LABELS[article.keyword] || article.keyword.split(" ")[0]}
-                  </span>
-                )}
-                {article.reason && (
-                  <span className="italic text-neutral-400 select-none" title={article.reason}>
-                    {article.reason}
-                  </span>
-                )}
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  {article.sourceName && (
+                    <span className="font-medium text-neutral-600">{article.sourceName}</span>
+                  )}
+                  <time dateTime={article.publishedAt} className="text-neutral-500">
+                    {formatDate(article.publishedAt)}
+                  </time>
+                  {article.keyword && (
+                    <span
+                      className={`rounded border px-2 py-0.5 ${getKeywordColor(
+                        KEYWORD_LABELS[article.keyword] || article.keyword.split(" ")[0],
+                      )}`}
+                    >
+                      {KEYWORD_LABELS[article.keyword] || article.keyword.split(" ")[0]}
+                    </span>
+                  )}
+                  {article.reason && (
+                    <span className="italic text-neutral-400" title={article.reason}>
+                      {article.reason}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
