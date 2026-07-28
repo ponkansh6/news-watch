@@ -3,7 +3,7 @@ title: News Watch
 status: Active
 version: 1.0.0
 created_at: 2026-06-01
-updated_at: 2026-07-20
+updated_at: 2026-07-29
 authors: [shunki]
 ---
 
@@ -19,9 +19,8 @@ authors: [shunki]
 
 ### 2.1 In Scope
 
-- Fetching news from multiple external providers (Zenn)
-- Dynamic discovery of Hatena Blog feeds via Hatena Bookmark API
-- Periodic feed discovery via scheduled cron (QStash)
+- Fetching news from multiple external providers (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, Hatena Blog)
+- Periodic feed fetch via scheduled cron (QStash)
 - Vector similarity (relevance) + LLM-based usefulness scoring + algorithmic recency scoring
 - Japanese summary generation (20-40 characters)
 - Dashboard display with sort/filter capabilities
@@ -92,15 +91,6 @@ authors: [shunki]
 - **Acceptance Criteria**:
   - WHEN the page is requested
   - THEN the server fetches data directly from the database using Server Actions/Drizzle
-
-#### FR-007: Feed Health Dashboard
-
-- **Priority**: Should
-- **Acceptance Criteria**:
-  - WHEN the user visits `/dashboard/feeds`
-  - THEN the system displays a summary of feed statuses (active/inactive/error)
-  - AND a list of feeds with actions to reactivate failed feeds
-  - AND the `/api/feeds` endpoint provides the necessary data and control
 
 ## 4. Non-Functional Requirements
 
@@ -179,7 +169,7 @@ Layout (src/app/layout.tsx)
 ### Data Flow
 
 ```
-External APIs (NewsAPI, Qiita, GitHub, Hatena Bookmark, RSS feeds)
+External APIs (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, Hatena Blog)
   → src/lib/news/ (Fetchers)
     → src/lib/llm/gemini.ts (LLM: usefulness + summary) + src/lib/vector-filter.ts (vector similarity: relevance)
     → src/app/api/fetch-news/route.ts (calcRecencyScore + weighted composite)
@@ -210,7 +200,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 - **Database**: SQLite via Turso (libSQL)
 - **ORM**: Drizzle ORM + Drizzle Kit
 - **Styling**: Tailwind CSS v4
-- **LLM**: Gemini 3.1 Flash Lite (via OpenRouter)
+- **LLM**: Gemini 3.1 Flash Lite (via `@google/generative-ai` SDK)
 - **News Sources**: Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, Hatena Blog
 - **Deployment**: Vercel
 
@@ -226,16 +216,16 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 
 プロジェクトの全ソースファイルをカバレッジ計測対象としているが、コードの性質によってテストの優先度と目標値を明確に区分する。
 
-| Tier                               | 対象モジュール                                                                                                                               | 性質                                                 | Stmts目標                          | 備考                                                                                                                                         |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Tier 1: Core Business Logic**    | `scoring.ts`, `constants.ts`, `score-pipeline.ts`, `vector-filter.ts`, `vector-math.ts`                                                      | 純粋関数・ビジネスロジック。副作用なし、外部依存なし | **>95%**                           | 単体テストの効果が最大。分岐網羅を重視                                                                                                       |
-| **Tier 2: Pipeline Orchestration** | `fetch-news/route.ts`, `api/feeds/route.ts`, `api/discover-hatena/route.ts`                                                                  | リクエスト処理＋パイプライン制御                     | **>85%**                           | 正常系 + 主要エラー系をカバー                                                                                                                |
-| **Tier 3: Source Adapters**        | `news/{zenn,qiita,hatena,itmedia,codezine,xtech,yamadashy,zdnet}.ts`, `news/hatena-discovery.ts`                                             | IO + XML/JSONパース。外部API呼び出し含む             | **>80%**                           | パースロジックとソース選択を網羅。ネットワーク部分はモック                                                                                   |
-| **Tier 4: Data Access**            | `db/actions.ts`                                                                                                                              | DB CRUD操作。Drizzle ORMラッパー                     | **>65%**                           | 全CRUD操作の正常系をカバー。catch節のエラーハンドリングは軽量で可                                                                            |
-| **Tier 5: UI Components**          | `article-list.tsx`, `news-section.tsx`, `fetch-button.tsx`, `feed-dashboard.tsx`, `refresh-context.tsx`, `admin/db/[table]/components/*.tsx` | Client Component。Reactレンダリング                  | **>80%**                           | 主要レンダリングパス・状態遷移（loading/empty/error）をカバー                                                                                |
-| **Tier 6: External API Wrappers**  | `llm/gemini.ts`, `embeddings.ts`                                                                                                             | 外部APIの薄いラッパー                                | **gemini: >65%, embeddings: skip** | embeddings.ts は vector-filter.ts (100%) で統合テスト済みのため、単体カバレッジ計測対象外。API自体のテストは `RUN_LIVE_TESTS=1` でオプトイン |
-| **Tier 7: RSC Pages**              | `app/page.tsx`, `app/dashboard/feeds/page.tsx`, `app/admin/db/page.tsx`, `app/admin/db/[table]/page.tsx`, `app/admin/db/layout.tsx`          | React Server Component                               | **対象外**                         | ロジックはClient Componentに委譲されており、単体テストは実質不可能                                                                           |
-| **Schema Consistency**             | `db/schema.ts`, migrations/\*.sql                                                                                                            | DDL定義                                              | **Automated**                      | pre-push hookで自動検証                                                                                                                      |
+| Tier                               | 対象モジュール                                                                                                                | 性質                                                 | Stmts目標                          | 備考                                                                                                                                         |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Tier 1: Core Business Logic**    | `scoring.ts`, `constants.ts`, `score-pipeline.ts`, `vector-filter.ts`, `vector-math.ts`                                       | 純粋関数・ビジネスロジック。副作用なし、外部依存なし | **>95%**                           | 単体テストの効果が最大。分岐網羅を重視                                                                                                       |
+| **Tier 2: Pipeline Orchestration** | `fetch-news/route.ts`                                                                                                         | リクエスト処理＋パイプライン制御                     | **>85%**                           | 正常系 + 主要エラー系をカバー                                                                                                                |
+| **Tier 3: Source Adapters**        | `news/{zenn,qiita,hatena,itmedia,codezine,xtech,yamadashy,zdnet}.ts`                                                          | IO + XML/JSONパース。外部API呼び出し含む             | **>80%**                           | パースロジックとソース選択を網羅。ネットワーク部分はモック                                                                                   |
+| **Tier 4: Data Access**            | `db/actions.ts`                                                                                                               | DB CRUD操作。Drizzle ORMラッパー                     | **>65%**                           | 全CRUD操作の正常系をカバー。catch節のエラーハンドリングは軽量で可                                                                            |
+| **Tier 5: UI Components**          | `article-list.tsx`, `news-section.tsx`, `fetch-button.tsx`, `refresh-context.tsx`, `admin/db/[table]/components/*.tsx`        | Client Component。Reactレンダリング                  | **>80%**                           | 主要レンダリングパス・状態遷移（loading/empty/error）をカバー                                                                                |
+| **Tier 6: External API Wrappers**  | `llm/gemini.ts`, `embeddings.ts`                                                                                              | 外部APIの薄いラッパー                                | **gemini: >65%, embeddings: skip** | embeddings.ts は vector-filter.ts (100%) で統合テスト済みのため、単体カバレッジ計測対象外。API自体のテストは `RUN_LIVE_TESTS=1` でオプトイン |
+| **Tier 7: RSC Pages**              | `app/page.tsx`, `app/bookmarks/page.tsx`, `app/admin/db/page.tsx`, `app/admin/db/[table]/page.tsx`, `app/admin/db/layout.tsx` | React Server Component                               | **対象外**                         | ロジックはClient Componentに委譲されており、単体テストは実質不可能                                                                           |
+| **Schema Consistency**             | `db/schema.ts`, migrations/\*.sql                                                                                             | DDL定義                                              | **Automated**                      | pre-push hookで自動検証                                                                                                                      |
 
 ### 7.2 適用ルール
 
@@ -262,7 +252,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 
 ### 9.1 Overview
 
-- **Unofficial Favorites**: Allows users to bookmark articles by swiping horizontally (≥60px) on the article metadata row. A vertical drift allowance prevents accidental triggers during natural scrolling.
+- **Unofficial Favorites**: Allows users to bookmark articles by tapping rapidly (5 taps within 4 seconds) on the article body area. A 4-second timeout resets the tap counter to prevent accidental triggers during normal browsing.
 - **Data Persistence**: Stored in a dedicated server-side `favorites` table with cascade delete on article removal.
 - **Bookmarks Page**: Accessible via hidden route `/bookmarks` (no navigation link on the main dashboard), displaying all bookmarked articles in a shared view.
 
@@ -274,7 +264,7 @@ Hybrid scoring combines LLM-based relevance/usefulness scoring with a vector pre
 
 ### 9.2 Architecture
 
-- **Embeddings**: `src/lib/embeddings.ts` generates query and article embeddings using Google's gemini-embedding-001 model (uses `GOOGLE_API_KEY`)
+- **Embeddings**: `src/lib/embeddings.ts` generates query and article embeddings using Google's gemini-embedding-2 model (uses `GOOGLE_API_KEY`)
 - **Vector Filter**: `src/lib/vector-filter.ts` implements `tagArticlesByKeyword()` which tags each article with the keyword/descriptive phrase (from the `KEYWORDS` vocabulary, updated to descriptive phrases to improve semantic tagging accuracy and prevent mis-categorization) that has the highest vector similarity via cosine similarity. Articles are then grouped by keyword before scoring (UI keyword badge display has been deprecated).
 - **Scoring Pipeline**: `src/lib/score-pipeline.ts` exports `scoreAndSaveTagged()` which processes articles grouped by keyword and saves them to the database.
 

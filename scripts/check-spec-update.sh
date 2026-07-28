@@ -1,40 +1,78 @@
 #!/usr/bin/env bash
 # check-spec-update.sh
 # Pre-commit check: if spec-sensitive files are staged, warn if spec.md is not.
-# Exit 0 = pass (no warning needed, or spec.md is staged)
-# Exit 1 = not used (never blocks, only warns)
+# Non-blocking — always exits 0.
 #
-# Spec-sensitive patterns:
-#   - DB schema, scoring logic, scoring pipeline, config
-#   - API routes, news fetchers, LLM integration, vector filter
+# Two-layer detection:
+#   1) STATIC PATTERNS — manually curated list of spec-critical paths
+#   2) DYNAMIC EXTRACTION — parses spec.md for `src/...` and `tests/...` references
+#
+# If any staged file matches either layer, and spec.md is NOT staged, a warning
+# is printed.
 
 set -euo pipefail
 
 SPEC_FILE="openspec/specs/news-watch/spec.md"
 
-# Patterns that likely require a spec.md review
+# ── Layer 1: Static spec-sensitive patterns ──────────────────────────────
+# These paths are always spec-relevant regardless of spec.md content.
+# When adding a new source module, API route, or core component, add it here.
 SPEC_SENSITIVE_PATTERNS=(
-  "src/lib/db/schema.ts"
+  # ── Core business logic ──
   "src/lib/scoring.ts"
   "src/lib/score-pipeline.ts"
-  "src/lib/config.ts"
+  "src/lib/constants.ts"
   "src/lib/vector-filter.ts"
+  "src/lib/vector-math.ts"
   "src/lib/embeddings.ts"
-  "src/app/api/"
-  "src/lib/news/"
-  "src/lib/llm/"
+  "src/lib/config.ts"
+  "src/lib/sources.ts"
+  "src/lib/types.ts"
+  "src/lib/serializable.ts"
+
+  # ── Database ──
+  "src/lib/db/schema.ts"
+  "src/lib/db/actions.ts"
+  "src/lib/db/index.ts"
   "drizzle.config.ts"
+
+  # ── API routes ──
+  "src/app/api/"
+
+  # ── News source adapters ──
+  "src/lib/news/"
+
+  # ── LLM integration ──
+  "src/lib/llm/"
+
+  # ── UI components (spec-relevant) ──
+  "src/app/article-list.tsx"
+  "src/app/news-section.tsx"
+  "src/app/fetch-button.tsx"
+  "src/app/refresh-context.tsx"
+  "src/app/layout.tsx"
+  "src/app/page.tsx"
+  "src/app/loading.tsx"
+
+  # ── Hidden features ──
+  "src/app/bookmarks/"
+  "src/app/api/favorites/"
+
+  # ── Admin DB viewer ──
+  "src/app/admin/"
 )
 
-# Get staged files (only added/modified, not deleted)
+# ── Collect staged files ─────────────────────────────────────────────────
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)
 
 if [ -z "$STAGED_FILES" ]; then
   exit 0
 fi
 
-# Check if any staged file matches a spec-sensitive pattern
+# ── Detect spec-sensitive changes ────────────────────────────────────────
 SENSITIVE_STAGED=false
+
+# Layer 1: Static pattern matching
 for pattern in "${SPEC_SENSITIVE_PATTERNS[@]}"; do
   if echo "$STAGED_FILES" | grep -q "^${pattern}"; then
     SENSITIVE_STAGED=true
@@ -42,17 +80,33 @@ for pattern in "${SPEC_SENSITIVE_PATTERNS[@]}"; do
   fi
 done
 
+# Layer 2: Dynamic extraction from spec.md
+# Parse all `src/...` and `tests/...` backtick references from spec.md
+# and check if any staged file matches.
+if [ "$SENSITIVE_STAGED" = false ] && [ -f "$SPEC_FILE" ]; then
+  # Extract backtick-quoted paths starting with src/ or tests/
+  SPEC_REFS=$(grep -oP '`((src|tests)/[^`]+)' "$SPEC_FILE" 2>/dev/null | sed 's/`//g' || true)
+  if [ -n "$SPEC_REFS" ]; then
+    while IFS= read -r ref; do
+      if echo "$STAGED_FILES" | grep -q "^${ref}"; then
+        SENSITIVE_STAGED=true
+        break
+      fi
+    done <<< "$SPEC_REFS"
+  fi
+fi
+
 if [ "$SENSITIVE_STAGED" = false ]; then
   exit 0
 fi
 
-# Check if spec.md is also staged
+# ── Check if spec.md is also staged ──────────────────────────────────────
 if echo "$STAGED_FILES" | grep -q "^${SPEC_FILE}$"; then
   echo "[spec-check] ✓ spec.md is staged alongside spec-sensitive changes."
   exit 0
 fi
 
-# spec.md is NOT staged but spec-sensitive files are
+# ── Warning ──────────────────────────────────────────────────────────────
 echo ""
 echo "┌─────────────────────────────────────────────────────────────┐"
 echo "│  ⚠  spec.md 更新の確認が必要です                          │"
@@ -61,14 +115,22 @@ echo "│  以下のファイルが staged されていますが、             
 echo "│  openspec/specs/news-watch/spec.md が含まれていません。    │"
 echo "│                                                             │"
 
-for pattern in "${SPEC_SENSITIVE_PATTERNS[@]}"; do
-  MATCHES=$(echo "$STAGED_FILES" | grep "^${pattern}" || true)
-  if [ -n "$MATCHES" ]; then
-    while IFS= read -r f; do
-      echo "│    • $f"
-    done <<< "$MATCHES"
-  fi
-done
+# Print matched sensitive files
+ALL_PATTERNS=("${SPEC_SENSITIVE_PATTERNS[@]}")
+if [ -f "$SPEC_FILE" ]; then
+  SPEC_REFS=$(grep -oP '`((src|tests)/[^`]+)' "$SPEC_FILE" 2>/dev/null | sed 's/`//g' || true)
+  while IFS= read -r ref; do
+    ALL_PATTERNS+=("$ref")
+  done <<< "$SPEC_REFS"
+fi
+
+# Deduplicate and print
+MATCHED_FILES=$(echo "$STAGED_FILES" | grep -f <(printf "%s\n" "${ALL_PATTERNS[@]}" | sed 's/^/^/') || true)
+if [ -n "$MATCHED_FILES" ]; then
+  while IFS= read -r f; do
+    echo "│    • $f"
+  done <<< "$MATCHED_FILES"
+fi
 
 echo "│                                                             │"
 echo "│  スキーマ・スコアリング・API の変更には spec.md の更新が   │"

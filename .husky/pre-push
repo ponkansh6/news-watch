@@ -3,6 +3,12 @@
 MERGE_BASE=$(git merge-base --fork-point origin/master HEAD 2>/dev/null || git rev-parse HEAD)
 PUSH_FILES=$(git diff --name-only "$MERGE_BASE"...HEAD 2>/dev/null || true)
 
+# --- spec.md reference validity check ---
+# Verify all file references in spec.md point to real files.
+if ! bash scripts/check-spec-refs.sh; then
+  exit 1
+fi
+
 # --- Test file staleness check ---
 # src/ が変更された場合、tests/ も更新されたか警告（pre-push 固有）
 if echo "$PUSH_FILES" | grep -qE "^src/"; then
