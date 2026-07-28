@@ -258,6 +258,14 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 - Real-time WebSub/PubSubHubbub push notifications (polling-based discovery is sufficient for daily cadence)
 - Full-text search of Hatena Blog content (RSS summary only)
 
+## 9. Hidden Features
+
+### 9.1 Overview
+
+- **Unofficial Favorites**: Allows users to bookmark articles by clicking the AI evaluation reason (italic text in article metadata) 5 consecutive times within 2 seconds.
+- **Data Persistence**: Stored in a dedicated server-side `favorites` table with cascade delete on article removal.
+- **Bookmarks Page**: Accessible via hidden route `/bookmarks` (no navigation link on the main dashboard), displaying all bookmarked articles in a shared view.
+
 ## 9. Hybrid Scoring (Vector Pre-Filter) & Threshold Tuning
 
 ### 9.1 Overview

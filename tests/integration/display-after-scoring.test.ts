@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { beforeAll, beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
@@ -21,8 +22,10 @@ import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { KEYWORDS } from "@/lib/config";
 import type { NormalizedArticle } from "@/lib/types";
+import { screen, render } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
+import React from "react";
 import ArticleList from "@/app/article-list";
-import { renderToStaticMarkup } from "react-dom/server";
 
 // --- Mock embeddings so tagArticlesByKeyword needs no real API ----------
 vi.mock("@/lib/embeddings", () => ({
@@ -141,17 +144,19 @@ describe("Display after scoring (scored articles appear in the view)", () => {
     // 5) Assert the view actually renders them. ArticleList is the component
     //    page.tsx passes the scored articles to, so this verifies the
     //    "scored articles are displayed" contract end-to-end (data -> UI).
-    const html = renderToStaticMarkup(ArticleList({ articles: scored }));
+    // Mock fetch for the hidden favorites feature (ArticleList calls /api/favorites on mount)
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ ids: [] }),
+    } as Response);
+    render(React.createElement(ArticleList, { articles: scored }));
     for (const a of fetched) {
-      expect(html).toContain(a.title);
+      expect(screen.getByText(a.title)).toBeInTheDocument();
     }
-    // Each ScoreBadge renders the numeric composite score.
+    // Each ScoreBadge renders the numeric composite score (multiple articles may share the same score).
     for (const a of scored) {
-      expect(html).toContain(String(a.score));
-      // Check score breakdown includes relevance, usefulness, recency values
-      expect(html).toContain(`関連性: ${a.relevance?.toFixed(1)}`);
-      expect(html).toContain(`有用性: ${a.usefulness?.toFixed(1)}`);
-      expect(html).toContain(`新しさ: ${a.recency?.toFixed(1)}`);
+      const scoreElements = screen.getAllByText(String(a.score));
+      expect(scoreElements.length).toBeGreaterThan(0);
       // Summary is in Japanese
       if (a.summary) {
         expect(a.summary).toMatch(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u);

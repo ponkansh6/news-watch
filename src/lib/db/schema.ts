@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { EMBEDDING_DIMENSIONS } from "../embeddings";
 
 /**
@@ -51,5 +51,27 @@ export const keywordEmbeddings = sqliteTable("keyword_embeddings", {
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
 });
+
+/**
+ * Hidden favorites (unofficial feature).
+ * - article_id is unique (one favorite per article, toggle on/off).
+ * - No visitor ID — shared global list for a limited group of users.
+ * - Trigger: 5 rapid clicks on the reason (AI evaluation comment) span.
+ */
+export const favorites = sqliteTable(
+  "favorites",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    articleId: integer("article_id")
+      .notNull()
+      .references(() => articles.id, { onDelete: "cascade" }),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => ({
+    uniqueArticle: uniqueIndex("idx_fav_article").on(table.articleId),
+  }),
+);
 
 // test

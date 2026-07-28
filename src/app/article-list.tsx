@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
 import { KEYWORD_LABELS } from "@/lib/config";
 
 export interface Article {
@@ -91,63 +92,141 @@ function getKeywordColor(keyword: string): string {
 }
 
 export default function ArticleList({ articles }: { articles: Article[] }) {
+  const [favoritedIds, setFavoritedIds] = useState<Set<number>>(new Set());
+  const clickCountsRef = useRef<Record<number, { count: number; timer: NodeJS.Timeout | null }>>(
+    {},
+  );
+
+  useEffect(() => {
+    fetch("/api/favorites")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.ids)) {
+          setFavoritedIds(new Set(data.ids));
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch favorites:", err);
+      });
+  }, []);
+
+  const handleReasonClick = (articleId: number) => {
+    const record = clickCountsRef.current[articleId] || { count: 0, timer: null };
+
+    if (record.timer) {
+      clearTimeout(record.timer);
+    }
+
+    record.count += 1;
+
+    if (record.count >= 5) {
+      record.count = 0;
+      // Toggle favorite
+      fetch("/api/favorites/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ articleId }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && typeof data.favorited === "boolean") {
+            setFavoritedIds((prev) => {
+              const next = new Set(prev);
+              if (data.favorited) {
+                next.add(articleId);
+              } else {
+                next.delete(articleId);
+              }
+              return next;
+            });
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to toggle favorite:", err);
+        });
+    } else {
+      record.timer = setTimeout(() => {
+        record.count = 0;
+      }, 2000);
+    }
+
+    clickCountsRef.current[articleId] = record;
+  };
+
   return (
     <div className="space-y-3">
-      {articles.map((article) => (
-        <article
-          key={article.id}
-          className="group flex items-start gap-4 rounded-lg border border-neutral-200 bg-white p-4 transition-all duration-200 hover:shadow-sm hover:border-neutral-300"
-        >
-          <div className="min-w-0 flex-1">
-            <a
-              href={article.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block font-semibold leading-snug text-neutral-900 transition-colors hover:text-blue-600 text-base"
-            >
-              {article.title}
-            </a>
-
-            {article.summary && (
-              <p className="mt-1 text-sm leading-relaxed text-neutral-500 line-clamp-2">
-                {article.summary}
-              </p>
-            )}
-
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-              {article.sourceName && (
-                <span className="font-medium text-neutral-600">{article.sourceName}</span>
-              )}
-              <time dateTime={article.publishedAt} className="text-neutral-500">
-                {formatDate(article.publishedAt)}
-              </time>
-              {article.keyword && (
-                <span
-                  className={`rounded border px-2 py-0.5 ${getKeywordColor(
-                    KEYWORD_LABELS[article.keyword] || article.keyword.split(" ")[0],
-                  )}`}
+      {articles.map((article) => {
+        const isFavorited = favoritedIds.has(article.id);
+        return (
+          <article
+            key={article.id}
+            className="group flex items-start gap-4 rounded-lg border border-neutral-200 bg-white p-4 transition-all duration-200 hover:shadow-sm hover:border-neutral-300"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <a
+                  href={article.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block font-semibold leading-snug text-neutral-900 transition-colors hover:text-blue-600 text-base"
                 >
-                  {KEYWORD_LABELS[article.keyword] || article.keyword.split(" ")[0]}
-                </span>
-              )}
-              {article.reason && (
-                <span className="italic text-neutral-400" title={article.reason}>
-                  {article.reason}
-                </span>
-              )}
-            </div>
-          </div>
+                  {article.title}
+                </a>
+                {isFavorited && (
+                  <span
+                    className="text-[10px] opacity-30 hover:opacity-60 transition-opacity select-none"
+                    title="Favorited"
+                  >
+                    ★
+                  </span>
+                )}
+              </div>
 
-          <div className="ml-4">
-            <ScoreBadge
-              score={article.score}
-              relevance={article.relevance}
-              usefulness={article.usefulness}
-              recency={article.recency}
-            />
-          </div>
-        </article>
-      ))}
+              {article.summary && (
+                <p className="mt-1 text-sm leading-relaxed text-neutral-500 line-clamp-2">
+                  {article.summary}
+                </p>
+              )}
+
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                {article.sourceName && (
+                  <span className="font-medium text-neutral-600">{article.sourceName}</span>
+                )}
+                <time dateTime={article.publishedAt} className="text-neutral-500">
+                  {formatDate(article.publishedAt)}
+                </time>
+                {article.keyword && (
+                  <span
+                    className={`rounded border px-2 py-0.5 ${getKeywordColor(
+                      KEYWORD_LABELS[article.keyword] || article.keyword.split(" ")[0],
+                    )}`}
+                  >
+                    {KEYWORD_LABELS[article.keyword] || article.keyword.split(" ")[0]}
+                  </span>
+                )}
+                {article.reason && (
+                  <span
+                    className="italic text-neutral-400 cursor-pointer select-none"
+                    title={article.reason}
+                    onClick={() => handleReasonClick(article.id)}
+                  >
+                    {article.reason}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="ml-4">
+              <ScoreBadge
+                score={article.score}
+                relevance={article.relevance}
+                usefulness={article.usefulness}
+                recency={article.recency}
+              />
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
