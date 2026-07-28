@@ -91,12 +91,12 @@ function getKeywordColor(keyword: string): string {
   return colors[index];
 }
 
-const SWIPE_THRESHOLD = 60; // minimum horizontal px to trigger
-
 export default function ArticleList({ articles }: { articles: Article[] }) {
   const [favoritedIds, setFavoritedIds] = useState<Set<number>>(new Set());
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
-  const swipeStartRef = useRef<Record<number, { x: number; y: number } | null>>({});
+  const clickCountsRef = useRef<
+    Record<number, { count: number; timer: ReturnType<typeof setTimeout> | null }>
+  >({});
 
   useEffect(() => {
     if (message) {
@@ -130,6 +130,27 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
         });
       });
   }, []);
+
+  const handleTap = (articleId: number) => {
+    const record = clickCountsRef.current[articleId] || { count: 0, timer: null };
+
+    if (record.timer) {
+      clearTimeout(record.timer);
+    }
+
+    record.count += 1;
+
+    if (record.count >= 5) {
+      record.count = 0;
+      toggleFav(articleId);
+    } else {
+      record.timer = setTimeout(() => {
+        record.count = 0;
+      }, 4000);
+    }
+
+    clickCountsRef.current[articleId] = record;
+  };
 
   const toggleFav = (articleId: number) => {
     fetch("/api/favorites/toggle", {
@@ -198,7 +219,6 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
         </div>
       )}
       {articles.map((article) => {
-        const isFavorited = favoritedIds.has(article.id);
         return (
           <article
             key={article.id}
@@ -218,23 +238,8 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
 
               <div
                 className="select-none touch-manipulation"
-                onPointerDown={(e) => {
-                  swipeStartRef.current[article.id] = { x: e.clientX, y: e.clientY };
-                  (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-                }}
-                onPointerUp={(e) => {
-                  const start = swipeStartRef.current[article.id];
-                  if (!start) return;
-                  swipeStartRef.current[article.id] = null;
-                  const dx = e.clientX - start.x;
-                  const dy = e.clientY - start.y;
-                  // Horizontal swipe, minimal vertical drift
-                  if (Math.abs(dx) >= SWIPE_THRESHOLD && Math.abs(dy) < Math.abs(dx) * 0.6) {
-                    toggleFav(article.id);
-                  }
-                }}
-                onPointerCancel={() => {
-                  swipeStartRef.current[article.id] = null;
+                onPointerDown={() => {
+                  handleTap(article.id);
                 }}
               >
                 {article.summary && (
@@ -275,14 +280,6 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
                 usefulness={article.usefulness}
                 recency={article.recency}
               />
-              <button
-                type="button"
-                onClick={() => toggleFav(article.id)}
-                className="text-xl transition-colors hover:opacity-80 active:scale-110"
-                aria-label={isFavorited ? "お気に入り解除" : "お気に入り登録"}
-              >
-                {isFavorited ? "★" : "☆"}
-              </button>
             </div>
           </article>
         );

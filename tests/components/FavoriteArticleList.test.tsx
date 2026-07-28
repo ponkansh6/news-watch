@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import ArticleList, { type Article } from "@/app/article-list";
 import "@testing-library/jest-dom/vitest";
@@ -30,6 +30,10 @@ describe("FavoriteArticleList Component", () => {
     vi.restoreAllMocks();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("fetches favorite IDs on mount", async () => {
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValueOnce({
       ok: true,
@@ -41,83 +45,12 @@ describe("FavoriteArticleList Component", () => {
     expect(fetchSpy).toHaveBeenCalledWith("/api/favorites");
   });
 
-  it("does not toggle favorite on short swipe (< 60px)", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async (url) => {
-      if (url === "/api/favorites") {
-        return { ok: true, json: async () => ({ ids: [] }) } as Response;
-      }
-      return { ok: true, json: async () => ({ favorited: true }) } as Response;
-    });
-
-    render(<ArticleList articles={[mockArticle]} />);
-
-    const wrapperEl = screen.getByText("Test summary").parentElement!;
-
-    // Short swipe (30px — below threshold)
-    fireEvent.pointerDown(wrapperEl, { clientX: 0, clientY: 0 });
-    fireEvent.pointerUp(wrapperEl, { clientX: 30, clientY: 0 });
-
-    const toggleCalls = vi
-      .mocked(global.fetch)
-      .mock.calls.filter((call) => call[0] === "/api/favorites/toggle");
-    expect(toggleCalls).toHaveLength(0);
-  });
-
-  it("does not toggle favorite on vertical swipe (too much drift)", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async (url) => {
-      if (url === "/api/favorites") {
-        return { ok: true, json: async () => ({ ids: [] }) } as Response;
-      }
-      return { ok: true, json: async () => ({ favorited: true }) } as Response;
-    });
-
-    render(<ArticleList articles={[mockArticle]} />);
-
-    const wrapperEl = screen.getByText("Test summary").parentElement!;
-
-    // Swipe with large vertical component (Y moves almost as much as X)
-    fireEvent.pointerDown(wrapperEl, { clientX: 0, clientY: 0 });
-    fireEvent.pointerUp(wrapperEl, { clientX: 100, clientY: 80 });
-
-    const toggleCalls = vi
-      .mocked(global.fetch)
-      .mock.calls.filter((call) => call[0] === "/api/favorites/toggle");
-    expect(toggleCalls).toHaveLength(0);
-  });
-
-  it("does not toggle on pointerCancel (browser takes over gesture)", async () => {
-    vi.spyOn(global, "fetch").mockImplementation(async (url) => {
-      if (url === "/api/favorites") {
-        return { ok: true, json: async () => ({ ids: [] }) } as Response;
-      }
-      return { ok: true, json: async () => ({ favorited: true }) } as Response;
-    });
-
-    render(<ArticleList articles={[mockArticle]} />);
-
-    const wrapperEl = screen.getByText("Test summary").parentElement!;
-
-    // Start swipe then browser cancels (e.g. scroll takeover)
-    fireEvent.pointerDown(wrapperEl, { clientX: 0, clientY: 0, pointerId: 1 });
-    fireEvent.pointerCancel(wrapperEl, { pointerId: 1 });
-    // pointerUp after cancel should be ignored
-    fireEvent.pointerUp(wrapperEl, { clientX: 100, clientY: 5, pointerId: 1 });
-
-    const toggleCalls = vi
-      .mocked(global.fetch)
-      .mock.calls.filter((call) => call[0] === "/api/favorites/toggle");
-    expect(toggleCalls).toHaveLength(0);
-  });
-
-  it("triggers /api/favorites/toggle on star button click", async () => {
+  it("does not toggle favorite on fewer than 5 taps", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url) => {
       if (url === "/api/favorites") {
         return { ok: true, json: async () => ({ ids: [] }) };
       }
-      if (url === "/api/favorites/toggle") {
-        return { ok: true, json: async () => ({ favorited: true }) };
-      }
-      return { ok: false };
+      return { ok: true, json: async () => ({ favorited: true }) };
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -127,23 +60,18 @@ describe("FavoriteArticleList Component", () => {
       expect(fetchMock).toHaveBeenCalledWith("/api/favorites");
     });
 
-    // Find and click the star button
-    const starBtn = screen.getByRole("button", { name: "お気に入り登録" });
-    fireEvent.click(starBtn);
+    const wrapperEl = screen.getByText("Test summary").parentElement!;
 
-    await waitFor(() => {
-      const toggleCalls = fetchMock.mock.calls.filter(
-        (call) => call[0] === "/api/favorites/toggle",
-      );
-      expect(toggleCalls).toHaveLength(1);
-      expect(toggleCalls[0][1]).toMatchObject({
-        method: "POST",
-        body: JSON.stringify({ articleId: 42 }),
-      });
-    });
+    // Tap 4 times
+    for (let i = 0; i < 4; i++) {
+      fireEvent.pointerDown(wrapperEl);
+    }
+
+    const toggleCalls = fetchMock.mock.calls.filter((call) => call[0] === "/api/favorites/toggle");
+    expect(toggleCalls).toHaveLength(0);
   });
 
-  it("triggers /api/favorites/toggle on horizontal swipe >= 60px", async () => {
+  it("toggles favorite on 5 taps", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url) => {
       if (url === "/api/favorites") {
         return { ok: true, json: async () => ({ ids: [] }) };
@@ -163,9 +91,10 @@ describe("FavoriteArticleList Component", () => {
 
     const wrapperEl = screen.getByText("Test summary").parentElement!;
 
-    // Swipe right 100px
-    fireEvent.pointerDown(wrapperEl, { clientX: 0, clientY: 0 });
-    fireEvent.pointerUp(wrapperEl, { clientX: 100, clientY: 5 });
+    // Tap 5 times
+    for (let i = 0; i < 5; i++) {
+      fireEvent.pointerDown(wrapperEl);
+    }
 
     await waitFor(() => {
       const toggleCalls = fetchMock.mock.calls.filter(
@@ -177,16 +106,44 @@ describe("FavoriteArticleList Component", () => {
         body: JSON.stringify({ articleId: 42 }),
       });
     });
+  });
+
+  it("resets tap counter after timeout between taps", async () => {
+    vi.useFakeTimers();
+
+    const fetchMock = vi.fn().mockImplementation(async (url) => {
+      if (url === "/api/favorites") {
+        return { ok: true, json: async () => ({ ids: [] }) };
+      }
+      return { ok: true, json: async () => ({ favorited: true }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ArticleList articles={[mockArticle]} />);
+
+    const wrapperEl = screen.getByText("Test summary").parentElement!;
+
+    // Tap 4 times
+    for (let i = 0; i < 4; i++) {
+      fireEvent.pointerDown(wrapperEl);
+    }
+
+    // Advance time beyond 4000ms timeout
+    vi.advanceTimersByTime(4500);
+
+    // Tap 1 more time (should be treated as 1st tap of a new sequence)
+    fireEvent.pointerDown(wrapperEl);
+
+    const toggleCalls = fetchMock.mock.calls.filter((call) => call[0] === "/api/favorites/toggle");
+    expect(toggleCalls).toHaveLength(0);
   });
 
   it("shows success message when toggle favorite adds or removes article", async () => {
-    const fetchMock = vi.fn().mockImplementation(async (url, options) => {
+    const fetchMock = vi.fn().mockImplementation(async (url) => {
       if (url === "/api/favorites") {
         return { ok: true, json: async () => ({ ids: [] }) };
       }
       if (url === "/api/favorites/toggle") {
-        const body = JSON.parse(options?.body || "{}");
-        // Let's toggle based on call or state, e.g. first call favorited: true, second call favorited: false
         return { ok: true, json: async () => ({ favorited: true }) };
       }
       return { ok: false };
@@ -199,8 +156,10 @@ describe("FavoriteArticleList Component", () => {
       expect(fetchMock).toHaveBeenCalledWith("/api/favorites");
     });
 
-    const starBtn = screen.getByRole("button", { name: "お気に入り登録" });
-    fireEvent.click(starBtn);
+    const wrapperEl = screen.getByText("Test summary").parentElement!;
+    for (let i = 0; i < 5; i++) {
+      fireEvent.pointerDown(wrapperEl);
+    }
 
     await waitFor(() => {
       expect(screen.getByText("お気に入りに登録しました")).toBeInTheDocument();
@@ -217,8 +176,9 @@ describe("FavoriteArticleList Component", () => {
       return { ok: false };
     });
 
-    const starBtnUnfav = screen.getByRole("button", { name: "お気に入り解除" });
-    fireEvent.click(starBtnUnfav);
+    for (let i = 0; i < 5; i++) {
+      fireEvent.pointerDown(wrapperEl);
+    }
 
     await waitFor(() => {
       expect(screen.getByText("お気に入りを解除しました")).toBeInTheDocument();
@@ -243,8 +203,10 @@ describe("FavoriteArticleList Component", () => {
       expect(fetchMock).toHaveBeenCalledWith("/api/favorites");
     });
 
-    const starBtn = screen.getByRole("button", { name: "お気に入り登録" });
-    fireEvent.click(starBtn);
+    const wrapperEl = screen.getByText("Test summary").parentElement!;
+    for (let i = 0; i < 5; i++) {
+      fireEvent.pointerDown(wrapperEl);
+    }
 
     await waitFor(() => {
       expect(screen.getByText(/お気に入りの更新に失敗しました/)).toBeInTheDocument();
