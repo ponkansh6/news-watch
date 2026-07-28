@@ -95,17 +95,17 @@ const SWIPE_THRESHOLD = 60; // minimum horizontal px to trigger
 
 export default function ArticleList({ articles }: { articles: Article[] }) {
   const [favoritedIds, setFavoritedIds] = useState<Set<number>>(new Set());
-  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const swipeStartRef = useRef<Record<number, { x: number; y: number } | null>>({});
 
   useEffect(() => {
-    if (error) {
+    if (message) {
       const timer = setTimeout(() => {
-        setError(null);
+        setMessage(null);
       }, 5000);
       return () => clearTimeout(timer);
     }
-  }, [error]);
+  }, [message]);
 
   useEffect(() => {
     fetch("/api/favorites")
@@ -124,7 +124,10 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
       })
       .catch((err) => {
         console.error("Failed to fetch favorites:", err);
-        setError(err instanceof Error ? err.message : "お気に入りの取得に失敗しました");
+        setMessage({
+          text: err instanceof Error ? err.message : "お気に入りの取得に失敗しました",
+          type: "error",
+        });
       });
   }, []);
 
@@ -151,25 +154,42 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
             }
             return next;
           });
+          setMessage({
+            text: data.favorited ? "お気に入りに登録しました" : "お気に入りを解除しました",
+            type: "success",
+          });
         } else {
           throw new Error("サーバーからの応答が不正です");
         }
       })
       .catch((err) => {
         console.error("Failed to toggle favorite:", err);
-        setError(err instanceof Error ? err.message : "お気に入りの更新に失敗しました");
+        setMessage({
+          text: err instanceof Error ? err.message : "お気に入りの更新に失敗しました",
+          type: "error",
+        });
       });
   };
 
   return (
     <div className="space-y-3">
-      {error && (
-        <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          <span>{error}</span>
+      {message && (
+        <div
+          className={`flex items-center justify-between rounded-lg border p-3 text-sm ${
+            message.type === "success"
+              ? "border-green-200 bg-green-50 text-green-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+        >
+          <span>{message.text}</span>
           <button
             type="button"
-            onClick={() => setError(null)}
-            className="ml-2 font-bold text-red-700 hover:text-red-900"
+            onClick={() => setMessage(null)}
+            className={`ml-2 font-bold ${
+              message.type === "success"
+                ? "text-green-700 hover:text-green-900"
+                : "text-red-700 hover:text-red-900"
+            }`}
             aria-label="閉じる"
           >
             ×

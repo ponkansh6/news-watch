@@ -179,6 +179,52 @@ describe("FavoriteArticleList Component", () => {
     });
   });
 
+  it("shows success message when toggle favorite adds or removes article", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url, options) => {
+      if (url === "/api/favorites") {
+        return { ok: true, json: async () => ({ ids: [] }) };
+      }
+      if (url === "/api/favorites/toggle") {
+        const body = JSON.parse(options?.body || "{}");
+        // Let's toggle based on call or state, e.g. first call favorited: true, second call favorited: false
+        return { ok: true, json: async () => ({ favorited: true }) };
+      }
+      return { ok: false };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ArticleList articles={[mockArticle]} />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/favorites");
+    });
+
+    const starBtn = screen.getByRole("button", { name: "お気に入り登録" });
+    fireEvent.click(starBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("お気に入りに登録しました")).toBeInTheDocument();
+    });
+
+    // Mock un-favoriting next
+    fetchMock.mockImplementation(async (url) => {
+      if (url === "/api/favorites") {
+        return { ok: true, json: async () => ({ ids: [42] }) };
+      }
+      if (url === "/api/favorites/toggle") {
+        return { ok: true, json: async () => ({ favorited: false }) };
+      }
+      return { ok: false };
+    });
+
+    const starBtnUnfav = screen.getByRole("button", { name: "お気に入り解除" });
+    fireEvent.click(starBtnUnfav);
+
+    await waitFor(() => {
+      expect(screen.getByText("お気に入りを解除しました")).toBeInTheDocument();
+    });
+  });
+
   it("shows error message when toggle favorite fails (API error)", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url) => {
       if (url === "/api/favorites") {
