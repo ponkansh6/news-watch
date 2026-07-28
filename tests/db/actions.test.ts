@@ -24,9 +24,10 @@ import {
   getAllArticles,
   getTablePage,
   getTableCounts,
+  toggleFavorite,
 } from "../../src/lib/db/actions";
 
-const CREATE_SQL = `
+const CREATE_ARTICLES_SQL = `
   CREATE TABLE IF NOT EXISTS articles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -51,8 +52,17 @@ const CREATE_SQL = `
   )
 `;
 
+const CREATE_FAVORITES_SQL = `
+  CREATE TABLE IF NOT EXISTS favorites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+  )
+`;
+
 beforeAll(async () => {
-  await (dbMod as any).__client.execute(CREATE_SQL);
+  await (dbMod as any).__client.execute(CREATE_ARTICLES_SQL);
+  await (dbMod as any).__client.execute(CREATE_FAVORITES_SQL);
 });
 
 beforeEach(async () => {
@@ -580,6 +590,42 @@ describe("Database actions tests", () => {
       expect(result.rows).toBeDefined();
       expect(typeof result.total).toBe("number");
     });
+
+    it("works for favorites table", async () => {
+      const result = await getTablePage("favorites", {
+        table: "favorites",
+        offset: 0,
+        limit: 5,
+      });
+      expect(result.rows).toBeDefined();
+      expect(typeof result.total).toBe("number");
+    });
+
+    it("inserts and reads from favorites via toggleFavorite", async () => {
+      await upsertArticle(
+        makeArticleData("https://example.com/fav-test", { title: "Fav Test", score: 1 }),
+      );
+      // Get the inserted article's id via getAllArticles
+      const allArticles = await getAllArticles(10);
+      const article = allArticles.find((a) => a.url === "https://example.com/fav-test");
+      expect(article).toBeDefined();
+      const articleId = article!.id;
+
+      const favorited = await toggleFavorite(articleId);
+      expect(favorited).toBe(true);
+
+      const page = await getTablePage("favorites", {
+        table: "favorites",
+        offset: 0,
+        limit: 5,
+      });
+      expect(page.rows).toHaveLength(1);
+      expect(page.rows[0].articleId).toBe(articleId);
+
+      // Unfavorite
+      const unfavorited = await toggleFavorite(articleId);
+      expect(unfavorited).toBe(false);
+    });
   });
 
   // ── getTableCounts ─────────────────────────────────────────────────
@@ -593,8 +639,10 @@ describe("Database actions tests", () => {
       const counts = await getTableCounts();
       expect(counts).toHaveProperty("articles");
       expect(counts).toHaveProperty("keyword_embeddings");
+      expect(counts).toHaveProperty("favorites");
       expect(typeof counts.articles).toBe("number");
       expect(typeof counts.keyword_embeddings).toBe("number");
+      expect(typeof counts.favorites).toBe("number");
       expect(counts.articles).toBeGreaterThan(0);
     });
   });
