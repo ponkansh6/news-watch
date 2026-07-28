@@ -109,6 +109,40 @@ describe("FavoriteArticleList Component", () => {
     expect(toggleCalls).toHaveLength(0);
   });
 
+  it("triggers /api/favorites/toggle on star button click", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url) => {
+      if (url === "/api/favorites") {
+        return { ok: true, json: async () => ({ ids: [] }) };
+      }
+      if (url === "/api/favorites/toggle") {
+        return { ok: true, json: async () => ({ favorited: true }) };
+      }
+      return { ok: false };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ArticleList articles={[mockArticle]} />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/favorites");
+    });
+
+    // Find and click the star button
+    const starBtn = screen.getByRole("button", { name: "お気に入り登録" });
+    fireEvent.click(starBtn);
+
+    await waitFor(() => {
+      const toggleCalls = fetchMock.mock.calls.filter(
+        (call) => call[0] === "/api/favorites/toggle",
+      );
+      expect(toggleCalls).toHaveLength(1);
+      expect(toggleCalls[0][1]).toMatchObject({
+        method: "POST",
+        body: JSON.stringify({ articleId: 42 }),
+      });
+    });
+  });
+
   it("triggers /api/favorites/toggle on horizontal swipe >= 60px", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url) => {
       if (url === "/api/favorites") {

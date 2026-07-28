@@ -154,14 +154,6 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
                 >
                   {article.title}
                 </a>
-                {isFavorited && (
-                  <span
-                    className="text-[10px] opacity-30 hover:opacity-60 transition-opacity select-none"
-                    title="Favorited"
-                  >
-                    ★
-                  </span>
-                )}
               </div>
 
               <div
@@ -216,13 +208,21 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
               </div>
             </div>
 
-            <div className="ml-4">
+            <div className="ml-4 flex flex-col items-center gap-2">
               <ScoreBadge
                 score={article.score}
                 relevance={article.relevance}
                 usefulness={article.usefulness}
                 recency={article.recency}
               />
+              <button
+                type="button"
+                onClick={() => toggleFav(article.id)}
+                className="text-xl transition-colors hover:opacity-80 active:scale-110"
+                aria-label={isFavorited ? "お気に入り解除" : "お気に入り登録"}
+              >
+                {isFavorited ? "★" : "☆"}
+              </button>
             </div>
           </article>
         );
