@@ -183,7 +183,10 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
               </div>
 
               {article.summary && (
-                <p className="mt-1 text-sm leading-relaxed text-neutral-500 line-clamp-2">
+                <p
+                  className="mt-1 text-sm leading-relaxed text-neutral-500 line-clamp-2 cursor-pointer select-none"
+                  onClick={() => handleReasonClick(article.id)}
+                >
                   {article.summary}
                 </p>
               )}
@@ -205,11 +208,7 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
                   </span>
                 )}
                 {article.reason && (
-                  <span
-                    className="italic text-neutral-400 cursor-pointer select-none"
-                    title={article.reason}
-                    onClick={() => handleReasonClick(article.id)}
-                  >
+                  <span className="italic text-neutral-400 select-none" title={article.reason}>
                     {article.reason}
                   </span>
                 )}

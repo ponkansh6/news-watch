@@ -51,11 +51,11 @@ describe("FavoriteArticleList Component", () => {
 
     render(<ArticleList articles={[mockArticle]} />);
 
-    const reasonEl = screen.getByText("This is a great reason for testing");
+    const summaryEl = screen.getByText("Test summary");
 
     // Click 4 times
     for (let i = 0; i < 4; i++) {
-      fireEvent.click(reasonEl);
+      fireEvent.click(summaryEl);
     }
 
     // Verify /api/favorites/toggle was NOT called
@@ -84,11 +84,11 @@ describe("FavoriteArticleList Component", () => {
       expect(fetchMock).toHaveBeenCalledWith("/api/favorites");
     });
 
-    const reasonEl = screen.getByText("This is a great reason for testing");
+    const summaryEl = screen.getByText("Test summary");
 
     // Click 5 times rapidly
     for (let i = 0; i < 5; i++) {
-      fireEvent.click(reasonEl);
+      fireEvent.click(summaryEl);
     }
 
     await waitFor(() => {
