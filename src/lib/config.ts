@@ -1,6 +1,6 @@
 /** 監視キーワード一覧（固定値 -> 後々UI化） */
 export const KEYWORDS = [
-  "Anthropic Claude AI safety enterprise AI",
+  "Anthropic Claude opus sonnet fable",
   "GPT5 チャットGPT Codex",
   "Softbank ソフトバンク モバイル通信 AI投資 テクノロジー",
   "KDDI au 通信キャリア UQモバイル",
@@ -14,7 +14,7 @@ export type Keyword = (typeof KEYWORDS)[number];
 
 /** KEYWORDS 配列の各キーワードに対するUI表示名 */
 export const KEYWORD_LABELS: Record<string, string> = {
-  "Anthropic Claude AI safety enterprise AI": "Anthropic",
+  "Anthropic Claude opus sonnet fable": "Claude",
   "GPT5 チャットGPT Codex": "GPT",
   "Softbank ソフトバンク モバイル通信 AI投資 テクノロジー": "Softbank",
   "KDDI au 通信キャリア UQモバイル": "KDDI",
