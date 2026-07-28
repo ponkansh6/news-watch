@@ -25,59 +25,69 @@ async function main() {
     authToken: process.env.TURSO_AUTH_TOKEN,
   });
 
-  // Parse schema.ts to extract expected column names for 'articles' table
   const schemaPath = path.join('$PROJECT_ROOT', 'src/lib/db/schema.ts');
   const schemaContent = fs.readFileSync(schemaPath, 'utf-8');
 
-  // Extract column definitions from the articles sqliteTable
-  const match = schemaContent.match(/export const articles = sqliteTable\s*\(\s*\"articles\"\s*,\s*\{([^}]+)\}/s);
-  if (!match) {
-    console.error('Could not parse articles table schema');
-    process.exit(1);
-  }
-  const colBlock = match[1];
-
-  // Extract column names:    columnName: type("actual_db_name")
-  const expected = new Set();
-  const colRegex = /^\s*(\w+)\s*:\s*\w+\s*\(\s*\"(\w+)\"/gm;
-  let m;
-  while ((m = colRegex.exec(colBlock)) !== null) {
-    expected.add(m[1]);  // TypeScript field name (camelCase)
+  // ----- Step 1: Check all tables exist in production -----
+  // Extract all table names defined via sqliteTable in schema.ts
+  const tableRegex = /export const \w+ = sqliteTable\s*\(\s*\"(\w+)\"/g;
+  const expectedTables = [];
+  let t;
+  while ((t = tableRegex.exec(schemaContent)) !== null) {
+    expectedTables.push(t[1]);
   }
 
-  // Get actual columns from production database
-  const result = await client.execute('PRAGMA table_info(articles)');
-  const actual = new Set(result.rows.map(r => r.name));
+  const tablesResult = await client.execute(\"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\");
+  const actualTables = new Set(tablesResult.rows.map(r => r.name));
 
-  // Find missing columns (schema.ts has it, DB doesn't)
-  // PRAGMA returns snake_case column names; schema.ts uses camelCase field names
-  // with snake_case DB column names in the second arg.  We compare the DB names.
-  const missing = [];
-  const colRegex2 = /\"(\w+)\"/g;
-  expected.clear();
-  while ((m = colRegex2.exec(colBlock)) !== null) {
-    expected.add(m[1]);
-  }
+  const missingTables = expectedTables.filter(tt => !actualTables.has(tt));
 
-  for (const col of expected) {
-    if (!actual.has(col)) {
-      missing.push(col);
-    }
-  }
-
-  if (missing.length > 0) {
+  if (missingTables.length > 0) {
     console.log('');
     console.log('❌ Production schema drift detected!');
-    console.log('   The following columns are in schema.ts but missing in Turso:');
-    missing.forEach(c => console.log('   - ' + c));
+    console.log('   The following tables are defined in schema.ts but missing in Turso:');
+    missingTables.forEach(tt => console.log('   - ' + tt));
     console.log('');
     console.log('   Run: pnpm exec drizzle-kit push');
     console.log('');
     process.exit(1);
-  } else {
-    console.log('✅ Production schema is up to date');
   }
 
+  // ----- Step 2: Check column drift for articles table -----
+  const match = schemaContent.match(/export const articles = sqliteTable\s*\(\s*\"articles\"\s*,\s*\{([^}]+)\}/s);
+  if (match) {
+    const colBlock = match[1];
+
+    const colRegex = /\"(\w+)\"/g;
+    const expectedCols = new Set();
+    let c;
+    while ((c = colRegex.exec(colBlock)) !== null) {
+      expectedCols.add(c[1]);
+    }
+
+    const colResult = await client.execute('PRAGMA table_info(articles)');
+    const actualCols = new Set(colResult.rows.map(r => r.name));
+
+    const missingCols = [];
+    for (const col of expectedCols) {
+      if (!actualCols.has(col)) {
+        missingCols.push(col);
+      }
+    }
+
+    if (missingCols.length > 0) {
+      console.log('');
+      console.log('❌ Production schema drift detected!');
+      console.log('   The following columns are in schema.ts but missing in Turso:');
+      missingCols.forEach(cc => console.log('   - ' + cc));
+      console.log('');
+      console.log('   Run: pnpm exec drizzle-kit push');
+      console.log('');
+      process.exit(1);
+    }
+  }
+
+  console.log('✅ Production schema is up to date');
   client.close();
 }
 
