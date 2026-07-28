@@ -178,4 +178,36 @@ describe("FavoriteArticleList Component", () => {
       });
     });
   });
+
+  it("shows error message when toggle favorite fails (API error)", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url) => {
+      if (url === "/api/favorites") {
+        return { ok: true, json: async () => ({ ids: [] }) };
+      }
+      if (url === "/api/favorites/toggle") {
+        return { ok: false, status: 500 };
+      }
+      return { ok: false };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ArticleList articles={[mockArticle]} />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/favorites");
+    });
+
+    const starBtn = screen.getByRole("button", { name: "お気に入り登録" });
+    fireEvent.click(starBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/お気に入りの更新に失敗しました/)).toBeInTheDocument();
+    });
+
+    // Close error by clicking close button
+    const closeBtn = screen.getByRole("button", { name: "閉じる" });
+    fireEvent.click(closeBtn);
+
+    expect(screen.queryByText(/お気に入りの更新に失敗しました/)).not.toBeInTheDocument();
+  });
 });

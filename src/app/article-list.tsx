@@ -95,18 +95,36 @@ const SWIPE_THRESHOLD = 60; // minimum horizontal px to trigger
 
 export default function ArticleList({ articles }: { articles: Article[] }) {
   const [favoritedIds, setFavoritedIds] = useState<Set<number>>(new Set());
+  const [error, setError] = useState<string | null>(null);
   const swipeStartRef = useRef<Record<number, { x: number; y: number } | null>>({});
 
   useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setError(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  useEffect(() => {
     fetch("/api/favorites")
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          throw new Error(`お気に入りの取得に失敗しました (${res.status})`);
+        }
+        return res.json();
+      })
       .then((data) => {
         if (data && Array.isArray(data.ids)) {
           setFavoritedIds(new Set(data.ids));
+        } else {
+          throw new Error("お気に入りのデータ形式が不正です");
         }
       })
       .catch((err) => {
         console.error("Failed to fetch favorites:", err);
+        setError(err instanceof Error ? err.message : "お気に入りの取得に失敗しました");
       });
   }, []);
 
@@ -116,7 +134,12 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ articleId }),
     })
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          throw new Error(`お気に入りの更新に失敗しました (${res.status})`);
+        }
+        return res.json();
+      })
       .then((data) => {
         if (data && typeof data.favorited === "boolean") {
           setFavoritedIds((prev) => {
@@ -128,15 +151,31 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
             }
             return next;
           });
+        } else {
+          throw new Error("サーバーからの応答が不正です");
         }
       })
       .catch((err) => {
         console.error("Failed to toggle favorite:", err);
+        setError(err instanceof Error ? err.message : "お気に入りの更新に失敗しました");
       });
   };
 
   return (
     <div className="space-y-3">
+      {error && (
+        <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="ml-2 font-bold text-red-700 hover:text-red-900"
+            aria-label="閉じる"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {articles.map((article) => {
         const isFavorited = favoritedIds.has(article.id);
         return (
