@@ -91,11 +91,11 @@ function getKeywordColor(keyword: string): string {
   return colors[index];
 }
 
+const SWIPE_THRESHOLD = 60; // minimum horizontal px to trigger
+
 export default function ArticleList({ articles }: { articles: Article[] }) {
   const [favoritedIds, setFavoritedIds] = useState<Set<number>>(new Set());
-  const clickCountsRef = useRef<Record<number, { count: number; timer: NodeJS.Timeout | null }>>(
-    {},
-  );
+  const swipeStartRef = useRef<Record<number, { x: number; y: number } | null>>({});
 
   useEffect(() => {
     fetch("/api/favorites")
@@ -110,46 +110,29 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
       });
   }, []);
 
-  const handleTap = (articleId: number) => {
-    const record = clickCountsRef.current[articleId] || { count: 0, timer: null };
-
-    if (record.timer) {
-      clearTimeout(record.timer);
-    }
-
-    record.count += 1;
-
-    if (record.count >= 4) {
-      record.count = 0;
-      fetch("/api/favorites/toggle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ articleId }),
+  const toggleFav = (articleId: number) => {
+    fetch("/api/favorites/toggle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ articleId }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && typeof data.favorited === "boolean") {
+          setFavoritedIds((prev) => {
+            const next = new Set(prev);
+            if (data.favorited) {
+              next.add(articleId);
+            } else {
+              next.delete(articleId);
+            }
+            return next;
+          });
+        }
       })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && typeof data.favorited === "boolean") {
-            setFavoritedIds((prev) => {
-              const next = new Set(prev);
-              if (data.favorited) {
-                next.add(articleId);
-              } else {
-                next.delete(articleId);
-              }
-              return next;
-            });
-          }
-        })
-        .catch((err) => {
-          console.error("Failed to toggle favorite:", err);
-        });
-    } else {
-      record.timer = setTimeout(() => {
-        record.count = 0;
-      }, 4000);
-    }
-
-    clickCountsRef.current[articleId] = record;
+      .catch((err) => {
+        console.error("Failed to toggle favorite:", err);
+      });
   };
 
   return (
@@ -182,10 +165,23 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
               </div>
 
               <div
-                className="touch-manipulation select-none"
+                className="select-none"
                 onPointerDown={(e) => {
-                  e.preventDefault();
-                  handleTap(article.id);
+                  swipeStartRef.current[article.id] = { x: e.clientX, y: e.clientY };
+                }}
+                onPointerUp={(e) => {
+                  const start = swipeStartRef.current[article.id];
+                  if (!start) return;
+                  swipeStartRef.current[article.id] = null;
+                  const dx = e.clientX - start.x;
+                  const dy = e.clientY - start.y;
+                  // Horizontal swipe, minimal vertical drift
+                  if (Math.abs(dx) >= SWIPE_THRESHOLD && Math.abs(dy) < Math.abs(dx) * 0.6) {
+                    toggleFav(article.id);
+                  }
+                }}
+                onPointerLeave={() => {
+                  swipeStartRef.current[article.id] = null;
                 }}
               >
                 {article.summary && (

@@ -180,26 +180,34 @@ function main() {
       continue;
     }
 
-    let pass = agg.pct >= tier.target;
-    // skipFailure: files in this list are reported but don't cause FAIL
-    if (!pass && tier.skipFailure) {
+    // skipFailure: compute non-skipped aggregate first
+    let nonSkippedAgg = null;
+    if (tier.skipFailure) {
       const nonSkippedFiles = matchedFiles.filter((f) => !tier.skipFailure.some((p) => p.test(f)));
-      const nonSkippedAgg = aggregateCoverage(report, nonSkippedFiles, tier.metric);
-      if (nonSkippedAgg && nonSkippedAgg.pct >= tier.target) {
-        pass = true; // non-skipped files meet the target
-      }
+      nonSkippedAgg = aggregateCoverage(report, nonSkippedFiles, tier.metric);
     }
+
+    // Determine primary percentage: use non-skipped if skipFailure applies
+    const primaryAgg = tier.skipFailure && nonSkippedAgg ? nonSkippedAgg : agg;
+    const primaryPct = primaryAgg.pct;
+
+    let pass = primaryPct >= tier.target;
     if (!pass) allPass = false;
+
+    // Build detail string
+    let detail = `(${primaryAgg.covered}/${primaryAgg.total} ${tier.metric})`;
+    if (tier.skipFailure && nonSkippedAgg && primaryAgg !== agg) {
+      // Show both: primary (excluded) first, overall as reference
+      detail = `excl. skipped: ${formatPct(nonSkippedAgg.pct)} (${nonSkippedAgg.covered}/${nonSkippedAgg.total} ${tier.metric}) → overall: ${formatPct(agg.pct)} (${agg.covered}/${agg.total} ${tier.metric})`;
+    }
 
     results.push({
       tier: tier.name,
-      stmts: formatPct(agg.pct),
+      stmts: formatPct(primaryPct),
       target: `${tier.target}%`,
       status: pass ? "✅ PASS" : "❌ FAIL",
       pass,
-      detail: tier.skipFailure
-        ? `(${agg.covered}/${agg.total} ${tier.metric}, excludes: embeddings.ts)`
-        : `(${agg.covered}/${agg.total} ${tier.metric})`,
+      detail,
     });
   }
 

@@ -41,7 +41,7 @@ describe("FavoriteArticleList Component", () => {
     expect(fetchSpy).toHaveBeenCalledWith("/api/favorites");
   });
 
-  it("does not toggle favorite on fewer than 4 pointerDown within 4 seconds", async () => {
+  it("does not toggle favorite on short swipe (< 60px)", async () => {
     vi.spyOn(global, "fetch").mockImplementation(async (url) => {
       if (url === "/api/favorites") {
         return { ok: true, json: async () => ({ ids: [] }) } as Response;
@@ -51,21 +51,41 @@ describe("FavoriteArticleList Component", () => {
 
     render(<ArticleList articles={[mockArticle]} />);
 
-    const summaryEl = screen.getByText("Test summary");
+    const wrapperEl = screen.getByText("Test summary").parentElement!;
 
-    // Tap 3 times (below threshold)
-    for (let i = 0; i < 3; i++) {
-      fireEvent.pointerDown(summaryEl);
-    }
+    // Short swipe (30px — below threshold)
+    fireEvent.pointerDown(wrapperEl, { clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(wrapperEl, { clientX: 30, clientY: 0 });
 
-    // Verify /api/favorites/toggle was NOT called
     const toggleCalls = vi
       .mocked(global.fetch)
       .mock.calls.filter((call) => call[0] === "/api/favorites/toggle");
     expect(toggleCalls).toHaveLength(0);
   });
 
-  it("triggers /api/favorites/toggle on 4 consecutive pointerDown within 4 seconds", async () => {
+  it("does not toggle favorite on vertical swipe (too much drift)", async () => {
+    vi.spyOn(global, "fetch").mockImplementation(async (url) => {
+      if (url === "/api/favorites") {
+        return { ok: true, json: async () => ({ ids: [] }) } as Response;
+      }
+      return { ok: true, json: async () => ({ favorited: true }) } as Response;
+    });
+
+    render(<ArticleList articles={[mockArticle]} />);
+
+    const wrapperEl = screen.getByText("Test summary").parentElement!;
+
+    // Swipe with large vertical component (Y moves almost as much as X)
+    fireEvent.pointerDown(wrapperEl, { clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(wrapperEl, { clientX: 100, clientY: 80 });
+
+    const toggleCalls = vi
+      .mocked(global.fetch)
+      .mock.calls.filter((call) => call[0] === "/api/favorites/toggle");
+    expect(toggleCalls).toHaveLength(0);
+  });
+
+  it("triggers /api/favorites/toggle on horizontal swipe >= 60px", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url) => {
       if (url === "/api/favorites") {
         return { ok: true, json: async () => ({ ids: [] }) };
@@ -79,17 +99,15 @@ describe("FavoriteArticleList Component", () => {
 
     render(<ArticleList articles={[mockArticle]} />);
 
-    // Wait for initial fetch
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/favorites");
     });
 
-    const summaryEl = screen.getByText("Test summary");
+    const wrapperEl = screen.getByText("Test summary").parentElement!;
 
-    // Tap 4 times rapidly
-    for (let i = 0; i < 4; i++) {
-      fireEvent.pointerDown(summaryEl);
-    }
+    // Swipe right 100px
+    fireEvent.pointerDown(wrapperEl, { clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(wrapperEl, { clientX: 100, clientY: 5 });
 
     await waitFor(() => {
       const toggleCalls = fetchMock.mock.calls.filter(

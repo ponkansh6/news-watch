@@ -262,7 +262,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 
 ### 9.1 Overview
 
-- **Unofficial Favorites**: Allows users to bookmark articles by clicking the AI evaluation reason (italic text in article metadata) 5 consecutive times within 2 seconds.
+- **Unofficial Favorites**: Allows users to bookmark articles by swiping horizontally (≥60px) on the article metadata row. A vertical drift allowance prevents accidental triggers during natural scrolling.
 - **Data Persistence**: Stored in a dedicated server-side `favorites` table with cascade delete on article removal.
 - **Bookmarks Page**: Accessible via hidden route `/bookmarks` (no navigation link on the main dashboard), displaying all bookmarked articles in a shared view.
 
