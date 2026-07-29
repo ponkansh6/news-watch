@@ -11,6 +11,7 @@ export const SOURCES: SourceDef[] = [
   { id: "codezine", name: "CodeZine" },
   { id: "zdnet", name: "ZDNet Japan" },
   { id: "xtech", name: "日経クロステック" },
+  { id: "cloudwatch", name: "クラウド Watch" },
   { id: "hatena", name: "Hatena Blog" },
 ];
 

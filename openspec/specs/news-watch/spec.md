@@ -19,7 +19,7 @@ authors: [shunki]
 
 ### 2.1 In Scope
 
-- Fetching news from multiple external providers (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, Hatena Blog)
+- Fetching news from multiple external providers (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Blog)
 - Periodic feed fetch via scheduled cron (QStash)
 - Vector similarity (relevance) + LLM-based usefulness scoring + algorithmic recency scoring
 - Japanese summary generation (20-40 characters)
@@ -169,7 +169,7 @@ Layout (src/app/layout.tsx)
 ### Data Flow
 
 ```
-External APIs (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, Hatena Blog)
+External APIs (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Blog)
   → src/lib/news/ (Fetchers)
     → src/lib/llm/gemini.ts (LLM: usefulness + summary) + src/lib/vector-filter.ts (vector similarity: relevance)
     → src/app/api/fetch-news/route.ts (calcRecencyScore + weighted composite)
@@ -201,7 +201,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 - **ORM**: Drizzle ORM + Drizzle Kit
 - **Styling**: Tailwind CSS v4
 - **LLM**: Gemini 3.1 Flash Lite (via `@google/generative-ai` SDK)
-- **News Sources**: Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, Hatena Blog
+- **News Sources**: Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Blog
 - **Deployment**: Vercel
 
 ## 7. Test Strategy
@@ -220,7 +220,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Tier 1: Core Business Logic**    | `scoring.ts`, `constants.ts`, `score-pipeline.ts`, `vector-filter.ts`, `vector-math.ts`                                       | 純粋関数・ビジネスロジック。副作用なし、外部依存なし | **>95%**                           | 単体テストの効果が最大。分岐網羅を重視                                                                                                       |
 | **Tier 2: Pipeline Orchestration** | `fetch-news/route.ts`                                                                                                         | リクエスト処理＋パイプライン制御                     | **>85%**                           | 正常系 + 主要エラー系をカバー                                                                                                                |
-| **Tier 3: Source Adapters**        | `news/{zenn,qiita,hatena,itmedia,codezine,xtech,yamadashy,zdnet}.ts`                                                          | IO + XML/JSONパース。外部API呼び出し含む             | **>80%**                           | パースロジックとソース選択を網羅。ネットワーク部分はモック                                                                                   |
+| **Tier 3: Source Adapters**        | `news/{zenn,qiita,hatena,itmedia,codezine,xtech,cloudwatch,yamadashy,zdnet}.ts`                                               | IO + XML/JSONパース。外部API呼び出し含む             | **>80%**                           | パースロジックとソース選択を網羅。ネットワーク部分はモック                                                                                   |
 | **Tier 4: Data Access**            | `db/actions.ts`                                                                                                               | DB CRUD操作。Drizzle ORMラッパー                     | **>65%**                           | 全CRUD操作の正常系をカバー。catch節のエラーハンドリングは軽量で可                                                                            |
 | **Tier 5: UI Components**          | `article-list.tsx`, `news-section.tsx`, `fetch-button.tsx`, `refresh-context.tsx`, `admin/db/[table]/components/*.tsx`        | Client Component。Reactレンダリング                  | **>80%**                           | 主要レンダリングパス・状態遷移（loading/empty/error）をカバー                                                                                |
 | **Tier 6: External API Wrappers**  | `llm/gemini.ts`, `embeddings.ts`                                                                                              | 外部APIの薄いラッパー                                | **gemini: >65%, embeddings: skip** | embeddings.ts は vector-filter.ts (100%) で統合テスト済みのため、単体カバレッジ計測対象外。API自体のテストは `RUN_LIVE_TESTS=1` でオプトイン |

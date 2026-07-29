@@ -7,6 +7,7 @@ import { searchITmedia, type ItmediaItem } from "@/lib/news/itmedia";
 import { searchCodeZine, type CodeZineItem } from "@/lib/news/codezine";
 import { searchZdnet, type ZdnetItem } from "@/lib/news/zdnet";
 import { searchXtech, type XtechItem } from "@/lib/news/xtech";
+import { searchCloudWatch, type CloudWatchItem } from "@/lib/news/cloudwatch";
 import { searchHatena, type HatenaItem } from "@/lib/news/hatena";
 import {
   deleteOrphanedArticles,
@@ -30,6 +31,7 @@ export const SUPPORTED_SOURCE_IDS = [
   "codezine",
   "zdnet",
   "xtech",
+  "cloudwatch",
   "hatena",
 ];
 
@@ -44,6 +46,7 @@ export function normalize(
     | CodeZineItem
     | ZdnetItem
     | XtechItem
+    | CloudWatchItem
     | HatenaItem,
   sourceId: string,
 ): NormalizedArticle {
@@ -117,6 +120,15 @@ export function normalize(
       publishedAt = x.date ?? new Date().toISOString();
       sourceName = "日経クロステック";
       author = x.creator ?? null;
+      break;
+    }
+    case "cloudwatch": {
+      const cw = article as CloudWatchItem;
+      title = cw.title;
+      url = cw.link;
+      publishedAt = cw.date ?? new Date().toISOString();
+      sourceName = "クラウド Watch";
+      author = cw.creator ?? null;
       break;
     }
     case "hatena": {
@@ -229,6 +241,10 @@ export async function POST(request: Request) {
     fetchPromises.push(searchXtech(20));
     sourceOrder.push("xtech");
   }
+  if (selectedSource === "cloudwatch") {
+    fetchPromises.push(searchCloudWatch(20));
+    sourceOrder.push("cloudwatch");
+  }
   if (selectedSource === "hatena") {
     const hatena = await searchHatena(20);
     fetchPromises.push(Promise.resolve(hatena));
@@ -263,6 +279,9 @@ export async function POST(request: Request) {
       : []),
     ...(resultsBySource.zdnet ? resultsBySource.zdnet.map((a) => normalize(a, "zdnet")) : []),
     ...(resultsBySource.xtech ? resultsBySource.xtech.map((a) => normalize(a, "xtech")) : []),
+    ...(resultsBySource.cloudwatch
+      ? resultsBySource.cloudwatch.map((a) => normalize(a, "cloudwatch"))
+      : []),
     ...(resultsBySource.hatena ? resultsBySource.hatena.map((a) => normalize(a, "hatena")) : []),
   ]).slice(0, MAX_ARTICLES);
 
