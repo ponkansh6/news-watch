@@ -1,5 +1,5 @@
-import { XMLParser } from "fast-xml-parser";
-import { DEFAULT_REQUEST_TIMEOUT_MS } from "../constants";
+import { fetchRssText } from "./base/rss-fetcher";
+import { parseRss2 } from "./base/rss2-parser";
 
 const FEED_URL = "https://rss.itmedia.co.jp/rss/0.91/ait.xml";
 
@@ -12,36 +12,9 @@ export interface ItmediaItem {
   category?: string | string[];
 }
 
-const parser = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: "@_",
-});
-
 export async function searchITmedia(limit = 50): Promise<ItmediaItem[]> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(FEED_URL, { signal: controller.signal });
-    if (!res.ok) {
-      console.warn(`[itmedia] HTTP ${res.status}`);
-      return [];
-    }
-
-    const xml = await res.text();
-    const parsed = parser.parse(xml);
-
-    // RSS 2.0 structure: rss.channel.item (can be single item or array)
-    const channel = parsed?.rss?.channel;
-    if (!channel?.item) return [];
-
-    const items: ItmediaItem[] = Array.isArray(channel.item) ? channel.item : [channel.item];
-
-    return items.slice(0, limit);
-  } catch (err) {
-    console.warn(`[itmedia] fetch/parse error:`, err);
-    return [];
-  } finally {
-    clearTimeout(timer);
-  }
+  const xml = await fetchRssText(FEED_URL, "itmedia");
+  if (!xml) return [];
+  const items = parseRss2<ItmediaItem>(xml);
+  return items.slice(0, limit);
 }

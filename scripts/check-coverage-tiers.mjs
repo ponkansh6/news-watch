@@ -84,7 +84,7 @@ const TIERS = [
     name: "Tier 6: External API Wrappers",
     target: 65,
     metric: "statements",
-    patterns: [/\/llm\/gemini\.ts$/, /\/embeddings\.ts$/],
+    patterns: [/\/llm\/.+\.ts$/, /\/embeddings\.ts$/],
     // embeddings.ts は vector-filter.ts (100%) で統合テスト済みのため、
     // 単体カバレッジ計測の対象としつつも不合格判定はしない
     skipFailure: [/\/embeddings\.ts$/],

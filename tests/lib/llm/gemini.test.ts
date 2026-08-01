@@ -253,5 +253,40 @@ describe("gemini llm module", () => {
       // 3 batch attempts + 2 individual = 5 total calls
       expect(mockGenerateContent).toHaveBeenCalledTimes(5);
     });
+
+    it("retries on transient 5xx error then succeeds", async () => {
+      const okResponse = {
+        response: {
+          text: () =>
+            JSON.stringify({
+              summary: "test",
+              usefulness: 5,
+              reason: "test",
+            }),
+        },
+      };
+      const transientError = new Error("503 Service unavailable");
+
+      mockGenerateContent.mockRejectedValueOnce(transientError).mockResolvedValueOnce(okResponse);
+
+      const result = await scoreArticle({ title: "test", description: "test" });
+      expect(result).toEqual({ summary: "test", usefulness: 5, reason: "test" });
+      expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+    });
+
+    it("parses batch response with { results: [...] } structure", async () => {
+      mockGenerateContent.mockResolvedValue({
+        response: {
+          text: () =>
+            JSON.stringify({
+              results: [{ summary: "r1", usefulness: 8, reason: "why1" }],
+            }),
+        },
+      });
+
+      const result = await scoreArticles([{ title: "t1", description: "d1" }]);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({ summary: "r1", usefulness: 8, reason: "why1" });
+    });
   });
 });

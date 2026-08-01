@@ -1,5 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import { HATENA_TIMEOUT_MS } from "../constants";
+import { fetchRssText } from "./base/rss-fetcher";
+import { decodeEntities } from "./base/entity-decoder";
 
 const HATENA_HOTENTRY_RSS_URL = "https://b.hatena.ne.jp/hotentry/it.rss";
 const HATENA_ENTRYLIST_RSS_URL = "https://b.hatena.ne.jp/entrylist/it.rss";
@@ -15,26 +17,6 @@ export interface HatenaItem {
 }
 
 const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
-
-export function decodeEntities(input: unknown): string {
-  if (input == null) return "";
-  const str =
-    typeof input === "object"
-      ? String((input as Record<string, unknown>)["#text"] ?? "")
-      : String(input);
-  if (!str) return "";
-  return str
-    .replace(/&#x([0-9a-fA-F]+);/g, (_: string, hex: string) =>
-      String.fromCodePoint(parseInt(hex, 16)),
-    )
-    .replace(/&#(\d+);/g, (_: string, dec: string) => String.fromCodePoint(parseInt(dec, 10)))
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, " ");
-}
 
 function parseHatenaRss(xml: string): HatenaItem[] {
   const parsed = parser.parse(xml);
@@ -58,30 +40,15 @@ function parseHatenaRss(xml: string): HatenaItem[] {
 
 export async function searchHatena(limit = 50): Promise<HatenaItem[]> {
   const rssUrls = [HATENA_HOTENTRY_RSS_URL, HATENA_ENTRYLIST_RSS_URL];
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), HATENA_TIMEOUT_MS);
-  try {
-    const results = await Promise.all(
-      rssUrls.map(async (url) => {
-        try {
-          const res = await fetch(url, {
-            signal: controller.signal,
-            headers: { "User-Agent": "news-watch/1.0 (+https://github.com/shunki/news-watch)" },
-          });
-          if (!res.ok) {
-            console.warn(`[hatena] HTTP ${res.status} for ${url}`);
-            return [] as HatenaItem[];
-          }
-          const xml = await res.text();
-          return parseHatenaRss(xml);
-        } catch (err) {
-          console.warn(`[hatena] fetch/parse error for ${url}:`, err);
-          return [] as HatenaItem[];
-        }
-      }),
-    );
-    return results.flat().slice(0, limit);
-  } finally {
-    clearTimeout(timer);
-  }
+  const results = await Promise.all(
+    rssUrls.map(async (url) => {
+      const xml = await fetchRssText(url, "hatena", {
+        timeoutMs: HATENA_TIMEOUT_MS,
+        headers: { "User-Agent": "news-watch/1.0 (+https://github.com/shunki/news-watch)" },
+      });
+      if (!xml) return [] as HatenaItem[];
+      return parseHatenaRss(xml);
+    }),
+  );
+  return results.flat().slice(0, limit);
 }

@@ -1,5 +1,5 @@
-import { XMLParser } from "fast-xml-parser";
-import { DEFAULT_REQUEST_TIMEOUT_MS } from "../constants";
+import { fetchRssText } from "./base/rss-fetcher";
+import { parseRss2 } from "./base/rss2-parser";
 
 const FEED_URL = "https://codezine.jp/rss/new/20/index.xml";
 
@@ -11,36 +11,9 @@ export interface CodeZineItem {
   guid?: string;
 }
 
-const parser = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: "@_",
-});
-
 export async function searchCodeZine(limit = 50): Promise<CodeZineItem[]> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(FEED_URL, { signal: controller.signal });
-    if (!res.ok) {
-      console.warn(`[codezine] HTTP ${res.status}`);
-      return [];
-    }
-
-    const xml = await res.text();
-    const parsed = parser.parse(xml);
-
-    // RSS 2.0 structure: rss.channel.item (can be single item or array)
-    const channel = parsed?.rss?.channel;
-    if (!channel?.item) return [];
-
-    const items: CodeZineItem[] = Array.isArray(channel.item) ? channel.item : [channel.item];
-
-    return items.slice(0, limit);
-  } catch (err) {
-    console.warn(`[codezine] fetch/parse error:`, err);
-    return [];
-  } finally {
-    clearTimeout(timer);
-  }
+  const xml = await fetchRssText(FEED_URL, "codezine");
+  if (!xml) return [];
+  const items = parseRss2<CodeZineItem>(xml);
+  return items.slice(0, limit);
 }

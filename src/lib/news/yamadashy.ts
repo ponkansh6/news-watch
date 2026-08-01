@@ -1,5 +1,5 @@
-import { XMLParser } from "fast-xml-parser";
-import { DEFAULT_REQUEST_TIMEOUT_MS } from "../constants";
+import { fetchRssText } from "./base/rss-fetcher";
+import { parseRss2 } from "./base/rss2-parser";
 
 const FEED_URL = "https://yamadashy.github.io/tech-blog-rss-feed/feeds/rss.xml";
 
@@ -13,36 +13,9 @@ export interface YamadashyItem {
   category?: string | string[];
 }
 
-const parser = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: "@_",
-});
-
 export async function searchYamadashy(limit = 50): Promise<YamadashyItem[]> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(FEED_URL, { signal: controller.signal });
-    if (!res.ok) {
-      console.warn(`[yamadashy] HTTP ${res.status}`);
-      return [];
-    }
-
-    const xml = await res.text();
-    const parsed = parser.parse(xml);
-
-    // RSS 2.0 structure: rss.channel.item (can be single item or array)
-    const channel = parsed?.rss?.channel;
-    if (!channel?.item) return [];
-
-    const items: YamadashyItem[] = Array.isArray(channel.item) ? channel.item : [channel.item];
-
-    return items.slice(0, limit);
-  } catch (err) {
-    console.warn(`[yamadashy] fetch/parse error:`, err);
-    return [];
-  } finally {
-    clearTimeout(timer);
-  }
+  const xml = await fetchRssText(FEED_URL, "yamadashy");
+  if (!xml) return [];
+  const items = parseRss2<YamadashyItem>(xml);
+  return items.slice(0, limit);
 }
