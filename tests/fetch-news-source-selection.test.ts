@@ -87,6 +87,10 @@ vi.mock("@/lib/embeddings", () => ({
   cosineSimilarity: vi.fn().mockReturnValue(1.0),
 }));
 
+vi.mock("@/lib/vector-math", () => ({
+  cosineSimilarity: vi.fn().mockReturnValue(1.0),
+}));
+
 describe("fetch-news route source selection", () => {
   test("should work when qiita is selected", async () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { cosineSimilarity } from "@/lib/embeddings";
+import { cosineSimilarity } from "@/lib/vector-math";
 
 describe("embeddings (module level & cosineSimilarity)", () => {
   test("cosineSimilarity works correctly", () => {

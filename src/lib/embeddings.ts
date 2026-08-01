@@ -1,12 +1,10 @@
 import { GoogleGenerativeAI, TaskType } from "@google/generative-ai";
-import { cosineSimilarity } from "./vector-math";
 import {
   MAX_CONCURRENT_EMBEDDINGS,
   EMBED_MAX_RETRIES,
   EMBED_BACKOFF_MS,
   EMBED_BATCH_SIZE,
 } from "./constants";
-export { cosineSimilarity };
 
 export const EMBEDDING_MODEL_VERSION = "gemini-embedding-2";
 export const EMBEDDING_DIMENSIONS = 768;

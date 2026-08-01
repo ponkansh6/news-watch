@@ -68,6 +68,10 @@ vi.mock("@/lib/embeddings", () => ({
   cosineSimilarity: vi.fn().mockReturnValue(0.9),
 }));
 
+vi.mock("@/lib/vector-math", () => ({
+  cosineSimilarity: vi.fn().mockReturnValue(0.9),
+}));
+
 describe("Hatena RSS統合テスト", () => {
   beforeEach(() => {
     vi.resetModules();

@@ -42,6 +42,7 @@ const TIERS = [
     metric: "statements",
     patterns: [
       /\/api\/fetch-news\/route\.ts$/,
+      /\/api\/fetch-news\/pipeline\/maintenance\.ts$/,
       /\/api\/feeds\/route\.ts$/,
       /\/api\/discover-hatena\/route\.ts$/,
     ],

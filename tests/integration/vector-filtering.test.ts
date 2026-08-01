@@ -1,5 +1,5 @@
 import { expect, test, describe } from "vitest";
-import { cosineSimilarity } from "../../src/lib/embeddings";
+import { cosineSimilarity } from "../../src/lib/vector-math";
 
 describe("vector filtering", () => {
   test("should filter articles based on cosine similarity threshold", () => {

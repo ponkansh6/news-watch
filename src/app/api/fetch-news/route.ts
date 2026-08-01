@@ -9,12 +9,7 @@ import { searchZdnet, type ZdnetItem } from "@/lib/news/zdnet";
 import { searchXtech, type XtechItem } from "@/lib/news/xtech";
 import { searchCloudWatch, type CloudWatchItem } from "@/lib/news/cloudwatch";
 import { searchHatena, type HatenaItem } from "@/lib/news/hatena";
-import {
-  deleteOrphanedArticles,
-  deleteLowScoredArticles,
-  upsertArticle,
-  refreshRecencyForSources,
-} from "@/lib/db/actions";
+import { cleanupOrphaned, refreshRecency, cleanupLowScored } from "./pipeline/maintenance";
 import { type NormalizedArticle } from "@/lib/types";
 import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
 import { tagArticlesByKeyword } from "@/lib/vector-filter";
@@ -190,7 +185,7 @@ function deduplicate(articles: NormalizedArticle[]): NormalizedArticle[] {
 
 export async function POST(request: Request) {
   // Remove articles for keywords no longer in config
-  await deleteOrphanedArticles([...KEYWORDS]);
+  await cleanupOrphaned();
 
   // Parse request body to get selected source
   let selectedSource: string = "zenn";
@@ -293,15 +288,7 @@ export async function POST(request: Request) {
     errors: string[];
   };
 
-  if (selectedSource) {
-    try {
-      const fetchedUrls = all.map((a) => a.url);
-      await refreshRecencyForSources([selectedSource], fetchedUrls);
-    } catch (e) {
-      console.error(`[fetch-news] Recency refresh failed:`, e);
-      result.errors.push(`Recency refresh failed: ${e}`);
-    }
-  }
+  await refreshRecency(selectedSource, all, result);
 
   const since = new Date().toISOString();
 
@@ -318,7 +305,7 @@ export async function POST(request: Request) {
   results.push(result);
 
   // Remove low-scored articles after each batch
-  await deleteLowScoredArticles(5, since);
+  await cleanupLowScored(since);
 
   return NextResponse.json({ ok: true, message: "Scoring queued", results, perSource, since });
 }

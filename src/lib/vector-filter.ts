@@ -1,5 +1,6 @@
 import type { NormalizedArticle, ArticleWithTag } from "@/lib/types";
-import { batchEmbed, cosineSimilarity, EMBEDDING_MODEL_VERSION } from "@/lib/embeddings";
+import { batchEmbed, EMBEDDING_MODEL_VERSION } from "@/lib/embeddings";
+import { cosineSimilarity } from "@/lib/vector-math";
 import { TaskType } from "@google/generative-ai";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";

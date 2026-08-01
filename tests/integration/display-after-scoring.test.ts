@@ -35,6 +35,10 @@ vi.mock("@/lib/embeddings", () => ({
   cosineSimilarity: vi.fn(() => 0.9),
 }));
 
+vi.mock("@/lib/vector-math", () => ({
+  cosineSimilarity: vi.fn(() => 0.9),
+}));
+
 // --- Mock LLM scoring so scoreAndSaveTagged needs no real API ----------
 const { mockGenerateContent } = vi.hoisted(() => ({
   mockGenerateContent: vi.fn(),

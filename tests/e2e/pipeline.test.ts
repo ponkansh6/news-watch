@@ -85,6 +85,10 @@ vi.mock("@/lib/embeddings", () => ({
   cosineSimilarity: vi.fn().mockReturnValue(1.0),
 }));
 
+vi.mock("@/lib/vector-math", () => ({
+  cosineSimilarity: vi.fn().mockReturnValue(1.0),
+}));
+
 // ... (rest of mocks)
 
 describe("e2e pipeline (local dev mode)", () => {

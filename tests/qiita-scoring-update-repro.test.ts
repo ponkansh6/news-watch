@@ -113,6 +113,10 @@ vi.mock("@/lib/embeddings", () => ({
   cosineSimilarity: vi.fn().mockReturnValue(0.9),
 }));
 
+vi.mock("@/lib/vector-math", () => ({
+  cosineSimilarity: vi.fn().mockReturnValue(0.9),
+}));
+
 // ============================================================
 // Test Suite
 // ============================================================
