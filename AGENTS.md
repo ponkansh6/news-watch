@@ -1,41 +1,28 @@
-## 安全に関するルール (カスタム)
+## 安全に関するルール
 
-- 推論が反復的になったり、ループを検出したりした場合は、直ちに現在の推論を停止し、同じユーザーのリクエストを最初から送り直し
-- 出力が過度に長くなる、またはスタックしているように見える場合は、元のユーザーリクエストを再処理してタスクを再起動
-- 不確実またはスタックしている場合は、部分的な、または反復的な出力を続けるのではなく、タスクを再起動
-- 「思考中...」、「処理中...」などのプレースホルダーテキスト、または繰り返し記述されるフィラーの生成の場合はタスクを再起動
-- **`git --no-verify` / `git commit -n` の使用禁止**: この環境では pre-commit/pre-push hooks を常に強制実行するため、`--no-verify` フラグおよび commit における `-n` 短縮形の使用は禁止する。技術的にも `~/.local/bin/git` ラッパーによりブロックされている。
-- **`HUSKY=0` の使用禁止**: husky hook runner を無効化する環境変数。`~/.local/bin/git` によりブロックされている。
-- **`git -c core.hooksPath=...` の使用禁止**: hooks のパスを差し替えて bypass する手法。`~/.local/bin/git` によりブロックされている。
-- **`GIT_CONFIG_PARAMETERS` / `GIT_CONFIG_KEY_N` 経由の hooksPath 注入禁止**: git 内部設定の環境変数経由の bypass。`~/.local/bin/git` によりブロックされている。
+- 推論が反復・ループ・スタックしている場合、またはプレースホルダー（「思考中...」等）や繰り返しのフィラー出力が続く場合は、直ちに停止し同じユーザーリクエストを最初から再処理すること。部分的な出力を継続しないこと。
 
-## Git Hooks の warning 対処ルール
+## Git Hooks の対処ルール
 
-このプロジェクトでは Husky + lint-staged により pre-commit / pre-push フックが強制実行される。フックが出力する warning を無視せず、以下の基準で対処すること。
+Husky + lint-staged により pre-commit / pre-push フックが強制実行される。**error で終了するチェックは push / commit をブロックする**ため必ず修正すること。warning はブロックしないが、テスト欠落・仕様乖離のシグナルとして必ず対処すること。
 
-### pre-push warning: `src/ files changed but tests/ was NOT updated`
+**フックの bypass は禁止**: `git --no-verify` / `git commit -n` / `HUSKY=0` / `git -c core.hooksPath=...` / `GIT_CONFIG_PARAMETERS`・`GIT_CONFIG_KEY_N` 経由の hooksPath 注入はすべて禁止。技術的にも `~/.local/bin/git` ラッパーによりブロックされている。詳細な対処手順は `docs/git-hooks.md` を参照。
 
-- **発生条件**: `src/` 配下のファイルを変更してコミットし、push したときに、対応する `tests/` 配下のテストファイルが変更・追加されていない場合に出力される。
-- **対処**: 変更内容に応じて以下のいずれかを行う:
-  - **新規モジュールを追加した場合**: `tests/` に対応するユニットテストを作成する（例: `src/lib/news/xtech.ts` → `tests/news/xtech.test.ts`）
-  - **既存モジュールに変更を加えた場合**: 既存テストケースを確認し、必要に応じてテストを追加・更新する
-  - **テスト不要と判断した場合**: 該当するテストファイルにテストケースを追加するか、既存テストが変更をカバーしていることを確認する（例: 設定変更のみ、型定義のみの変更など）
-- **禁止**: warning を無視して `--no-verify` や `HUSKY=0` で bypass すること（下記「安全に関するルール」参照）
-- **注意**: warning が表示されても push 自体は成功するが、テスト欠落のシグナルとして必ず対処すること。push 完了後に改めてテストを追加し、別コミットとして push してもよい。
+### pre-push のブロックチェック
 
-### pre-commit warning: `spec.md` 未更新
+1. **`scripts/check-spec-refs.sh`** — spec.md 内の `src/` / `tests/` ファイル参照の実在検証。腐敗した参照があると失敗 → spec.md の参照と実パスを同期する。
+2. **`pnpm exec vitest run tests/db/schema-consistency.test.ts`** — ローカル in-memory DB でのスキーマ整合性 → `src/lib/db/schema.ts` とマイグレーション / テストを同期する。
+3. **カバレッジ段階検証**（`src/` 変更時のみ・約30秒）— spec.md §7.1 のティア別目標（Tier 1: 95% 〜 Tier 6: 65%）達成を検証 → 未達モジュールにテスト追加。ローカル検証: `pnpm exec vitest run --coverage && node scripts/check-coverage-tiers.mjs`
+4. **本番スキーマ drift 検出**（`.env.local` に Turso 認証がある場合のみ）— `scripts/check-prod-schema.sh` が本番 Turso DB と `schema.ts` を比較 → `pnpm exec drizzle-kit push` で本番スキーマを最新化する。
 
-- **発生条件**: `src/` または `tests/` 配下を変更したコミットを作成しようとしたとき、`openspec/specs/news-watch/spec.md` が更新されていない場合に出力される。
-- **対処**: 変更内容を spec.md に反映する。具体的には以下を確認する:
-  - 新規モジュールを追加した場合 → `Technology Stack` のソース一覧に追記
-  - 既存モジュールに変更を加えた場合 → 該当する仕様・データモデル・アーキテクチャ記述を最新化
-  - 環境変数を追加/削除した場合 → 環境変数のセクションを更新
-- **禁止**: この warning を無視して bypass すること。spec.md はプロジェクトの設計意図を文書化する唯一の仕様書であり、変更との乖離は保守性を損なうため、必ず同期すること。
+### pre-commit の実行内容
 
-### pre-commit warning 全般
+1. `pnpm run lint:fast` — oxlint による静的解析
+2. `pnpm exec tsgo --noEmit` — TypeScript 型チェック
+3. `pnpm exec lint-staged` — `*.{ts,tsx}` → `oxfmt --write` + `vitest related --passWithNoTests`（関連テスト失敗で error）/ `*.{js,jsx,json,md,mjs,cjs}` → `oxfmt --write`
+4. `bash scripts/check-spec-update.sh` — spec.md 未更新の warning（ブロックしない）
 
-- lint-staged が eslint や prettier の自動修正を行った場合、警告や修正ログが出力されることがある。これらは原則自動対処されるため、手動介入は不要。
-- ただしフックが **error** で終了した場合はコミットがブロックされる。エラーメッセージを読み、原因を特定して修正してから再コミットすること。`--no-verify` での bypass は禁止。
+- **docs/ との同期**: フック実装（`.husky/`・`scripts/check-*.sh`）やツール構成を変更した場合は、`docs/git-hooks.md`・`docs/tooling.md` も必ず更新する。
 
 ## リソース制約
 
@@ -46,22 +33,8 @@
 ## ツール使用に関するガイドライン
 
 - `npx` や `npm` を利用せず、`pnpm exec` や `pnpm` を使用してください。
-- **sudo を要する操作**: 非対話環境のため `sudo` は直接使えない。代わりに `lxqt-sudo` で GUI パスワードポップアップを raise すること。使用例: `lxqt-sudo <command>`. チェーンする場合は一時スクリプトにまとめて渡す。
-
-### `rtk` CLI プロキシの使用ルール
-
-この環境では `rtk` というCLIプロキシが `/home/shunki/.local/bin/rtk` にインストールされている。`rtk` はコマンド出力をLLM向けにフィルタリング・要約するラッパーであり、以下の挙動に注意すること。
-
-- **`rtk <command>` は出力をトークン最適化する**: ビルドログやテスト出力が自動的に短縮・グループ化される。エラーの詳細や警告の全文が必要な場合は生出力を使うこと。
-- **生出力が必要な場合**: `rtk run <command>` を使用する（フィルタリングなし、素の出力）。
-  - 例: `rtk run pnpm exec next build`（Next.jsビルドの完全なログを取得）
-  - 例: `rtk run pnpm exec vitest run`（テストの完全な出力を取得）
-- **未知のツール・コマンドで出力が期待と異なる場合**: まずそのツールの仕様を調査すること。`rtk` 自体のヘルプは `rtk --help` で確認可能。繰り返し同じコマンドを再実行せず、`@explorer` や `@librarian` に委譲して仕様を確認してから使用する。
-- **`rtk` の主要サブコマンド**:
-  - `rtk run <cmd>`: 生実行（フィルタリングなし）
-  - `rtk proxy <cmd>`: フィルタリングなし＋使用状況追跡
-  - `rtk pipe`: 標準入力から読み取りフィルタリング
-  - `rtk next` / `rtk vitest` / `rtk git` など: 各コマンドのラッパー（出力最適化あり）
+- **sudo を要する操作**: 非対話環境のため `sudo` は直接使えない。代わりに `lxqt-sudo` で GUI パスワードポップアップを raise する。使用例: `lxqt-sudo <command>`. チェーンする場合は一時スクリプトにまとめて渡す。
+- **`rtk` CLI プロキシ**（`~/.local/bin/rtk`）: コマンド出力をトークン最適化するラッパー。エラー詳細が必要な場合は `rtk run <command>` で生出力を取得する。詳細は `docs/tooling.md` を参照。
 
 ## 委譲に関するルール
 
@@ -84,10 +57,9 @@
 
 ## プロジェクト知識
 
-- OpenSpec 仕様書: `openspec/specs/news-watch/spec.md`
-- スコアリング: LLM (relevance + usefulness) + 機械判定 (recency) の3軸加重合成スコア
-- データベース: SQLite (Drizzle ORM)
-- ニュースソース: Zenn (非公式API)
-- デプロイ先: Vercel
+技術スタック・アーキテクチャ・スコアリング・データモデル・環境変数などの詳細は、
+仕様書 `openspec/specs/news-watch/spec.md` を唯一の参照先とする。
+AGENTS.md には重複記載しない（乖離防止）。変更時は spec.md を必ず更新すること
+（pre-commit フック `scripts/check-spec-update.sh` が未更新を警告する）。
 
 <internal_reminder>!IMPORTANT! Scheduler workflow: plan/dependencies → dispatch background specialists → track task IDs → wait for hook-driven completion → reconcile terminal results → verify. Do not poll running jobs, consume running-job output, or advance dependent work. !END!</internal_reminder>
