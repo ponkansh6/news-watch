@@ -4,9 +4,9 @@ export const KEYWORDS = [
   "GPT5 チャットGPT Codex",
   "Softbank ソフトバンク モバイル通信 AI投資 テクノロジー",
   "KDDI au 通信キャリア UQモバイル",
-  "NTT 日本電信電話 NTTデータ NTTドコモ",
+  "NTT NTTデータ NTT東日本 NTT西日本 IOWN 光電融合",
   "Gemini 3 Flash Pro Antigravity TPU",
-  "docomo ドコモ NTTドコモ モバイル通信 キャリア",
+  "docomo ドコモ ドコモビジネス business",
   "Copilot GitHub Microsoft WorkIQ",
 ] as const;
 
@@ -18,8 +18,8 @@ export const KEYWORD_LABELS: Record<string, string> = {
   "GPT5 チャットGPT Codex": "GPT",
   "Softbank ソフトバンク モバイル通信 AI投資 テクノロジー": "Softbank",
   "KDDI au 通信キャリア UQモバイル": "KDDI",
-  "NTT 日本電信電話 NTTデータ NTTドコモ": "NTT",
+  "NTT NTTデータ NTT東日本 NTT西日本 IOWN 光電融合": "NTT",
   "Gemini 3 Flash Pro Antigravity TPU": "Gemini",
-  "docomo ドコモ NTTドコモ モバイル通信 キャリア": "docomo",
+  "docomo ドコモ ドコモビジネス business": "docomo",
   "Copilot GitHub Microsoft WorkIQ": "Copilot",
 };
