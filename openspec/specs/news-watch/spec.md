@@ -21,10 +21,12 @@ authors: [shunki]
 
 - Fetching news from multiple external providers (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Blog)
 - User-triggered fetch via `/api/fetch-news` button on dashboard (manual cron via Vercel scheduled deployments supported)
+  - Requires Bearer token authentication (CRON_SECRET) to prevent unauthorized cost consumption
 - Vector similarity (relevance) + LLM-based usefulness scoring + algorithmic recency scoring
 - Japanese summary generation (20-40 characters)
 - Dashboard display with sort/filter capabilities
 - SQLite persistence via Drizzle ORM
+- Admin database viewer with Basic Auth protection (username + password)
 
 ### 2.2 Out of Scope
 
@@ -92,6 +94,15 @@ authors: [shunki]
   - WHEN the page is requested
   - THEN the server fetches data directly from the database using Server Actions/Drizzle
 
+#### FR-007: API Authentication
+
+- **Priority**: Must
+- **Acceptance Criteria**:
+  - WHEN a request is made to `/api/fetch-news`
+  - THEN the server validates a Bearer token (CRON_SECRET) in the Authorization header
+  - AND only requests with a valid token are processed (401 Unauthorized otherwise)
+  - AND the admin database viewer (`/admin/db/*`) requires Basic Authentication (username + password)
+
 ## 4. Non-Functional Requirements
 
 | Category      | Requirement                 | Target                                  |
@@ -100,6 +111,8 @@ authors: [shunki]
 | Performance   | News fetch + score pipeline | <30s per source                         |
 | Accessibility | Keyboard navigation         | Supported                               |
 | Reliability   | LLM API failure handling    | Graceful degradation with cached scores |
+| Security      | Admin dashboard access      | Basic Auth (username + password)        |
+| Security      | News fetch API access       | Bearer token (CRON_SECRET)              |
 
 ## 5. Data Model
 
