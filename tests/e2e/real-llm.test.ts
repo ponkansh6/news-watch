@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
 
 // Mock DB before imports
-vi.mock("@/lib/db", async () => {
-  const { createInMemoryDb } = await import("../helpers/db-setup");
-  return createInMemoryDb();
+vi.mock("@/lib/db", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, any>;
+  return { ...actual, __client: (actual as any).db.$client };
 });
 
 // Mock embeddings

@@ -16,23 +16,17 @@
  */
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
-import * as schema from "../../src/lib/db/schema";
 
 // インメモリ client をモック
-vi.mock("@/lib/db", async () => {
-  const { createClient } = await import("@libsql/client");
-  const { drizzle } = await import("drizzle-orm/libsql");
-  const schemaMod = await import("../../src/lib/db/schema");
-  const client = createClient({ url: ":memory:" });
-  const db = drizzle({ client, schema: schemaMod });
-  return { db, __client: client };
+vi.mock("@/lib/db", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, any>;
+  return { ...actual, __client: (actual as any).db.$client };
 });
 
 import * as dbMod from "@/lib/db";
 const dbClient = (dbMod as any).__client as Awaited<ReturnType<typeof createClient>>;
 
-import { upsertArticle, refreshRecencyForSources } from "../../src/lib/db/actions";
+import { upsertArticle, refreshRecencyForSources } from "../../src/lib/db";
 
 const CREATE_SQL = `
   CREATE TABLE IF NOT EXISTS articles (

@@ -64,8 +64,17 @@ export async function getAllArticles(limit = DEFAULT_ALL_ARTICLES_LIMIT) {
 
 export type TableName = "articles" | "keyword_embeddings" | "favorites";
 
+export type ArticleRow = typeof articles.$inferSelect;
+export type KeywordEmbeddingRow = typeof keywordEmbeddings.$inferSelect;
+export type FavoriteRow = typeof favorites.$inferSelect;
+
+export type TableRowMap = {
+  articles: ArticleRow;
+  keyword_embeddings: KeywordEmbeddingRow;
+  favorites: FavoriteRow;
+};
+
 export interface TablePageOptions {
-  table: TableName;
   offset: number;
   limit: number;
   sort?: string;
@@ -81,7 +90,7 @@ const tableMap = {
 export async function getTablePage<T extends TableName>(
   table: T,
   options: TablePageOptions,
-): Promise<{ rows: any[]; total: number }> {
+): Promise<{ rows: TableRowMap[T][]; total: number }> {
   try {
     const tableObj = tableMap[table];
     if (!tableObj) {
@@ -92,22 +101,21 @@ export async function getTablePage<T extends TableName>(
     const sortCol = options.sort && allowedSort.includes(options.sort) ? options.sort : "id";
     const sortDir = options.dir === "asc" ? asc : desc;
 
-    // Get total count
-    const [countResult] = await db.select({ count: sql<number>`count(*)` }).from(tableObj);
-    const total = Number(countResult?.count ?? 0);
+    // Get total count (reuse countRows to avoid duplication)
+    const total = await countRows(tableObj);
 
     // Get rows with pagination and sorting securely using record lookup or explicit type checking
-    const colsRecord = tableObj as Record<string, any>;
+    const colsRecord = tableObj as unknown as Record<string, unknown>;
     const colRef = colsRecord[sortCol] ?? colsRecord.id;
 
     const rows = await db
       .select()
       .from(tableObj)
-      .orderBy(sortDir(colRef))
+      .orderBy(sortDir(colRef as any))
       .limit(Math.min(options.limit, 200))
       .offset(options.offset);
 
-    return { rows, total };
+    return { rows: rows as TableRowMap[T][], total };
   } catch (err) {
     console.warn(`[db] getTablePage error for table=${table}:`, err);
     return { rows: [], total: 0 };

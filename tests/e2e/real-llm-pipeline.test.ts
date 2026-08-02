@@ -11,7 +11,8 @@ const RUN_LIVE = process.env.RUN_LIVE_TESTS === "1";
 const describeIfLive = RUN_LIVE ? describe : describe.skip;
 
 // Mock DB before imports
-vi.mock("@/lib/db", async () => {
+vi.mock("@/lib/db", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, any>;
   const { createInMemoryDb } = await import("../helpers/db-setup");
   return createInMemoryDb();
 });
@@ -29,7 +30,7 @@ import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { KEYWORDS } from "@/lib/config";
 import { getEmbeddingRequestCount, resetEmbeddingRequestCount } from "@/lib/embeddings";
-import { getScoredArticles } from "@/lib/db/actions";
+import { getScoredArticles } from "@/lib/db";
 import { CREATE_ARTICLES_TABLE_SQL } from "../helpers/db-setup";
 
 const createdUrls = new Set<string>();

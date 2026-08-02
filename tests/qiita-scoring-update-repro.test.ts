@@ -10,7 +10,7 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/fetch-news/route";
-import * as db from "@/lib/db/actions";
+import * as db from "@/lib/db";
 
 // ============================================================
 // Mock 設定（vi.mockはホイストされるため、データをファクトリ内で定義）
@@ -89,7 +89,7 @@ vi.mock("@/lib/llm", () => ({
 }));
 
 // DB操作のモック - vi.mock内で直接定義してホイスト問題を回避
-vi.mock("@/lib/db/actions", () => ({
+vi.mock("@/lib/db", () => ({
   upsertArticles: vi.fn().mockImplementation((dataList: any[]) =>
     Promise.resolve({
       succeeded: dataList.map((d) => d.url),

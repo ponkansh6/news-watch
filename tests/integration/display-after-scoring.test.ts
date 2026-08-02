@@ -7,17 +7,18 @@ import { drizzle } from "drizzle-orm/libsql";
 // Mirrors tests/db/actions.test.ts: the app's `db` module points at a
 // fresh :memory: client so the test never touches Turso, and we create the
 // `articles` table explicitly.
-vi.mock("@/lib/db", async () => {
+vi.mock("@/lib/db", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, any>;
   const { createClient } = await import("@libsql/client");
   const { drizzle } = await import("drizzle-orm/libsql");
   const schemaMod = await import("@/lib/db/schema");
   const client = createClient({ url: ":memory:" });
   const db = drizzle({ client, schema: schemaMod });
-  return { db, __client: client };
+  return { ...actual, db, __client: client };
 });
 
 import * as dbMod from "@/lib/db";
-import { getScoredArticles } from "@/lib/db/actions";
+import { getScoredArticles } from "@/lib/db";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { KEYWORDS } from "@/lib/config";

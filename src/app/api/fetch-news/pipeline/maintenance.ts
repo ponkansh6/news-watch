@@ -2,7 +2,7 @@ import {
   deleteOrphanedArticles,
   deleteLowScoredArticles,
   refreshRecencyForSources,
-} from "@/lib/db/actions";
+} from "@/lib/db";
 import { KEYWORDS } from "@/lib/config";
 import { type NormalizedArticle } from "@/lib/types";
 

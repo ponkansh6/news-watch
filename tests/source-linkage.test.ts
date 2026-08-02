@@ -7,7 +7,7 @@ vi.mock("@/lib/config", () => ({
     return ["TypeScript"];
   },
 }));
-vi.mock("@/lib/db/actions", () => ({
+vi.mock("@/lib/db", () => ({
   upsertArticles: vi.fn().mockImplementation((dataList: any[]) =>
     Promise.resolve({
       succeeded: dataList.map((d) => d.url),

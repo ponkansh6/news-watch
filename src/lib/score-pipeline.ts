@@ -1,6 +1,6 @@
 import pLimit from "p-limit";
 import { scoreArticles } from "@/lib/llm";
-import { upsertArticles } from "@/lib/db/actions";
+import { upsertArticles } from "@/lib/db";
 import {
   calcRecencyScore,
   calcCompositeScore,

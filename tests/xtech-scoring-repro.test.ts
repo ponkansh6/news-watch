@@ -9,13 +9,14 @@ import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 
 // ── Mock DB (in-memory) ─────────────────────────────────────────────
-vi.mock("@/lib/db", async () => {
+vi.mock("@/lib/db", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, any>;
   const { createClient } = await import("@libsql/client");
   const { drizzle } = await import("drizzle-orm/libsql");
   const schemaMod = await import("@/lib/db/schema");
   const client = createClient({ url: ":memory:" });
   const db = drizzle({ client, schema: schemaMod });
-  return { db, __client: client };
+  return { ...actual, db, __client: client };
 });
 
 // ── Mock embeddings ─────────────────────────────────────────────────
@@ -52,7 +53,7 @@ vi.mock("@/lib/llm", () => ({
 
 // ── Imports (after mocks) ───────────────────────────────────────────
 import * as dbMod from "@/lib/db";
-import { getScoredArticles, deleteLowScoredArticles } from "@/lib/db/actions";
+import { getScoredArticles, deleteLowScoredArticles } from "@/lib/db";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { KEYWORDS } from "@/lib/config";

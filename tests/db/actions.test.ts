@@ -1,21 +1,14 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
-import * as schema from "../../src/lib/db/schema";
 
 // インメモリ client をモックファクトリ内で生成し、テストから操作できるよう公開する
-vi.mock("@/lib/db", async () => {
-  const { createClient } = await import("@libsql/client");
-  const { drizzle } = await import("drizzle-orm/libsql");
-  const schemaMod = await import("../../src/lib/db/schema");
-  const client = createClient({ url: ":memory:" });
-  const db = drizzle({ client, schema: schemaMod });
-  return { db, __client: client };
+vi.mock("@/lib/db", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, any>;
+  return { ...actual, __client: (actual as any).db.$client };
 });
 
 // モックされたモジュールから client を取り出す
 import * as dbMod from "@/lib/db";
-import type { ArticleInsert } from "../../src/lib/db/actions";
+import type { ArticleInsert } from "../../src/lib/db";
 import {
   upsertArticle,
   getScoredArticles,
@@ -25,7 +18,7 @@ import {
   getTablePage,
   getTableCounts,
   toggleFavorite,
-} from "../../src/lib/db/actions";
+} from "../../src/lib/db";
 
 const CREATE_ARTICLES_SQL = `
   CREATE TABLE IF NOT EXISTS articles (
@@ -140,7 +133,6 @@ describe("Database actions tests", () => {
 
     // Verify embedding persistence via getTablePage (admin table view)
     const tablePageResult = await getTablePage("articles", {
-      table: "articles",
       offset: 0,
       limit: 10,
     });
@@ -519,7 +511,6 @@ describe("Database actions tests", () => {
       }
 
       const page1 = await getTablePage("articles", {
-        table: "articles",
         offset: 0,
         limit: 2,
         dir: "asc",
@@ -530,7 +521,6 @@ describe("Database actions tests", () => {
       expect(page1.total).toBeGreaterThanOrEqual(5);
 
       const page2 = await getTablePage("articles", {
-        table: "articles",
         offset: 2,
         limit: 2,
         dir: "asc",
@@ -540,7 +530,7 @@ describe("Database actions tests", () => {
     });
 
     it("returns empty rows for out-of-range offset", async () => {
-      const result = await getTablePage("articles", { table: "articles", offset: 9999, limit: 10 });
+      const result = await getTablePage("articles", { offset: 9999, limit: 10 });
       expect(result.rows).toHaveLength(0);
       expect(result.total).toBeGreaterThanOrEqual(0);
     });
@@ -556,7 +546,6 @@ describe("Database actions tests", () => {
       }
 
       const desc = await getTablePage("articles", {
-        table: "articles",
         offset: 0,
         limit: 10,
         sort: "score",
@@ -567,7 +556,6 @@ describe("Database actions tests", () => {
       );
 
       const asc = await getTablePage("articles", {
-        table: "articles",
         offset: 0,
         limit: 10,
         sort: "score",
@@ -580,7 +568,6 @@ describe("Database actions tests", () => {
 
     it("rejects invalid sort column and falls back to id desc", async () => {
       const result = await getTablePage("articles", {
-        table: "articles",
         offset: 0,
         limit: 10,
         sort: "nonexistent",
@@ -591,7 +578,6 @@ describe("Database actions tests", () => {
 
     it("works for keyword_embeddings table", async () => {
       const result = await getTablePage("keyword_embeddings", {
-        table: "keyword_embeddings",
         offset: 0,
         limit: 5,
       });
@@ -601,7 +587,6 @@ describe("Database actions tests", () => {
 
     it("works for favorites table", async () => {
       const result = await getTablePage("favorites", {
-        table: "favorites",
         offset: 0,
         limit: 5,
       });
@@ -623,7 +608,6 @@ describe("Database actions tests", () => {
       expect(favorited).toBe(true);
 
       const page = await getTablePage("favorites", {
-        table: "favorites",
         offset: 0,
         limit: 5,
       });

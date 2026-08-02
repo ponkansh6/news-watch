@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { toggleFavorite } from "@/lib/db/actions";
+import { toggleFavorite } from "@/lib/db";
 import { ToggleFavoriteBodySchema } from "./schema";
 
 export async function POST(request: Request) {

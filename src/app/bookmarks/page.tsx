@@ -1,5 +1,5 @@
 import ArticleList from "@/app/article-list";
-import { getFavoriteArticlesCached } from "@/lib/db/actions";
+import { getFavoriteArticlesCached } from "@/lib/db";
 import Link from "next/link";
 
 export default async function BookmarksPage() {

@@ -1,13 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // インメモリ client をモックファクトリ内で生成し、テストから操作できるよう公開する
-vi.mock("@/lib/db", async () => {
-  const { createClient } = await import("@libsql/client");
-  const { drizzle } = await import("drizzle-orm/libsql");
-  const schemaMod = await import("../../src/lib/db/schema");
-  const client = createClient({ url: ":memory:" });
-  const db = drizzle({ client, schema: schemaMod });
-  return { db, __client: client };
+vi.mock("@/lib/db", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, any>;
+  return { ...actual, __client: (actual as any).db.$client };
 });
 
 import * as dbMod from "@/lib/db";
@@ -17,7 +13,7 @@ import {
   toggleFavorite,
   getFavoriteIds,
   getFavoriteArticles,
-} from "../../src/lib/db/actions";
+} from "../../src/lib/db";
 
 const CREATE_ARTICLES_SQL = `
   CREATE TABLE IF NOT EXISTS articles (

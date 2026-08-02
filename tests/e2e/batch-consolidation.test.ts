@@ -7,7 +7,7 @@
  */
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import * as gemini from "@/lib/llm";
-import * as db from "@/lib/db/actions";
+import * as db from "@/lib/db";
 
 const { mockScoreArticles } = vi.hoisted(() => ({ mockScoreArticles: vi.fn() }));
 const { mockUpsertArticle } = vi.hoisted(() => ({ mockUpsertArticle: vi.fn() }));
@@ -20,7 +20,7 @@ vi.mock("@/lib/llm", () => ({
   scoreArticles: mockScoreArticles,
 }));
 
-vi.mock("@/lib/db/actions", () => ({
+vi.mock("@/lib/db", () => ({
   upsertArticles: mockUpsertArticle,
 }));
 

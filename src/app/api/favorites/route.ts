@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getFavoriteIds } from "@/lib/db/actions";
+import { getFavoriteIds } from "@/lib/db";
 
 export async function GET() {
   try {

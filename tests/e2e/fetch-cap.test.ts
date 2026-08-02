@@ -2,7 +2,7 @@ import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/fetch-news/route";
 import * as gemini from "@/lib/llm";
-import * as db from "@/lib/db/actions";
+import * as db from "@/lib/db";
 
 vi.mock("@/lib/news/zenn", () => ({
   searchZenn: vi.fn(),
@@ -25,7 +25,7 @@ vi.mock("@/lib/llm", () => ({
   }),
 }));
 
-vi.mock("@/lib/db/actions", () => ({
+vi.mock("@/lib/db", () => ({
   upsertArticles: vi.fn().mockImplementation((dataList: any[]) =>
     Promise.resolve({
       succeeded: dataList.map((d) => d.url),

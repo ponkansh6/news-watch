@@ -2,13 +2,14 @@ import { beforeAll, beforeEach, describe, it, expect, vi } from "vitest";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 
-vi.mock("@/lib/db", async () => {
+vi.mock("@/lib/db", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, any>;
   const { createClient } = await import("@libsql/client");
   const { drizzle } = await import("drizzle-orm/libsql");
   const schemaMod = await import("@/lib/db/schema");
   const client = createClient({ url: ":memory:" });
   const db = drizzle({ client, schema: schemaMod });
-  return { db, __client: client };
+  return { ...actual, db, __client: client };
 });
 
 const mockBatchEmbed = vi.fn();

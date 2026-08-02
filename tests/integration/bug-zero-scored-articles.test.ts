@@ -8,17 +8,11 @@
  * Root cause analysis through multiple failure scenarios.
  */
 import { beforeAll, beforeEach, describe, it, expect, vi } from "vitest";
-import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
 
 // ── Mock DB (in-memory, isolated) ──────────────────────────────────
-vi.mock("@/lib/db", async () => {
-  const { createClient } = await import("@libsql/client");
-  const { drizzle } = await import("drizzle-orm/libsql");
-  const schemaMod = await import("@/lib/db/schema");
-  const client = createClient({ url: ":memory:" });
-  const db = drizzle({ client, schema: schemaMod });
-  return { db, __client: client };
+vi.mock("@/lib/db", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, any>;
+  return { ...actual, __client: (actual as any).db.$client };
 });
 
 // ── Mock embeddings (deterministic) ────────────────────────────────
@@ -37,7 +31,7 @@ vi.mock("@/lib/llm", () => ({
 
 // ── Imports (after mocks) ──────────────────────────────────────────
 import * as dbMod from "@/lib/db";
-import { getScoredArticles, deleteLowScoredArticles } from "@/lib/db/actions";
+import { getScoredArticles, deleteLowScoredArticles } from "@/lib/db";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { KEYWORDS } from "@/lib/config";

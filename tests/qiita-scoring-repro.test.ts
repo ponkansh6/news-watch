@@ -65,7 +65,7 @@ vi.mock("@/lib/llm", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/db/actions", () => ({
+vi.mock("@/lib/db", () => ({
   upsertArticles: mockUpsertArticle,
   deleteOrphanedArticles: mockDeleteOrphanedArticles,
   deleteLowScoredArticles: mockDeleteLowScoredArticles,

@@ -8,11 +8,11 @@ import {
   deleteOrphanedArticles,
   deleteLowScoredArticles,
   refreshRecencyForSources,
-} from "@/lib/db/actions";
+} from "@/lib/db";
 import { KEYWORDS } from "@/lib/config";
 import { type NormalizedArticle } from "@/lib/types";
 
-vi.mock("@/lib/db/actions", () => ({
+vi.mock("@/lib/db", () => ({
   deleteOrphanedArticles: vi.fn(),
   deleteLowScoredArticles: vi.fn(),
   refreshRecencyForSources: vi.fn(),

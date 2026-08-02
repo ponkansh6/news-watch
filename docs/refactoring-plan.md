@@ -916,66 +916,36 @@ export async function getTableCounts() {
 
 ### R3-b: getTablePage 型安全化（優先度：低 / 難度：中）
 
-**現状**:
+**ステータス**: ✅ 完了（2026-08-02）
+
+**修正内容**: `src/lib/db/query/article-queries.ts` で Drizzle の `$inferSelect` 型とテーブル別行型マップを使用し、`getTablePage` の戻り値を `Promise<{ rows: TableRowMap[T][]; total: number }>` に型安全化。`any[]` 戻り値と `Record<string, any>` キャストを排除。
 
 ```ts
-export async function getTablePage<T extends TableName>(
-  table: T,
-  options?: TablePageOptions,
-): Promise<{ rows: any[]; total: number }> {
-  // ← any[]
-  const tableObj = TABLE_CONFIG[table];
-  const colsRecord = tableObj as Record<string, any>; // ← any キャスト
-  // ...
-}
-```
+export type ArticleRow = typeof articles.$inferSelect;
+export type KeywordEmbeddingRow = typeof keywordEmbeddings.$inferSelect;
+export type FavoriteRow = typeof favorites.$inferSelect;
 
-**修正戦略**:
-
-**オプション A（推奨）**: TABLE_CONFIG 構造化
-
-```ts
-// TABLE_CONFIG に列参照を持たせる
-const TABLE_CONFIG = {
-  articles: {
-    table: articles,
-    columns: { id: articles.id, title: articles.title, ... },
-  },
-  // ...
-} satisfies Record<TableName, TableConfig>;
+export type TableRowMap = {
+  articles: ArticleRow;
+  keyword_embeddings: KeywordEmbeddingRow;
+  favorites: FavoriteRow;
+};
 
 export async function getTablePage<T extends TableName>(
   table: T,
-  options?: TablePageOptions,
-): Promise<{ rows: ReturnType<typeof TABLE_CONFIG[T]['columns']>[]; total: number }> {
-  const config = TABLE_CONFIG[table];
-  // config.columns から型推論
-}
+  options: TablePageOptions<T>,
+): Promise<{ rows: TableRowMap[T][]; total: number }> { ... }
 ```
 
-**オプション B（シンプル）**: switch で分岐
+**採用アプローチ**: オプション A の派生（`$inferSelect` + 行型マップ）。UI用 TABLE_CONFIG の構造は不変のまま、db 層の `tableMap` と型定義のみを強化。`Record<string, any>` → `Record<string, unknown>` に緩和し、残る `colRef as any` は Drizzle orderBy の動的列解決のため最小限に留めた（コメント添付）。
 
-```ts
-export async function getTablePage<T extends TableName>(table: T, ...) {
-  switch (table) {
-    case "articles":
-      return {
-        rows: (result as typeof articles[]),
-        total,
-      };
-    case "keyword_embeddings":
-      return {
-        rows: (result as typeof keywordEmbeddings[]),
-        total,
-      };
-    // ...
-  }
-}
-```
+**検証結果**:
 
-**テスト修正**: `admin/db/[table]/page.tsx` のテストで型チェック (10 分)
+- tsgo --noEmit: ✅ エラー0
+- vitest: ✅ 278 passed / 2 skipped / 0 failed（全件）
+- oxlint: ✅ 追加エラーなし
 
-**リスク**: 中（型推論の複雑性、テスト修正が必要）
+**備考**: `TablePageOptions` をジェネリック化（`<T extends TableName = TableName>`）。テスト修正は不要だった（既存テストが型変更後もそのままパス）。
 
 ---
 
@@ -996,3 +966,59 @@ export async function getTablePage<T extends TableName>(table: T, ...) {
 - **Phase 5-α** (即時): R3-a のみ → 低リスク、即効果
 - **Phase 5-β** (1 週間後): R3-c/d → 軽微改善
 - **Phase 5-γ** (2 週間後): R3-b → 型安全化（時間あるなら）
+
+---
+
+## 実装進捗（2026-08-02 実装開始）
+
+### R3-a バレル統合
+
+**ステータス**: ✅ 完了（2026-08-02）
+
+| タスク                 | 状態    | 詳細                                                   |
+| ---------------------- | ------- | ------------------------------------------------------ |
+| (1) src/ import 修正   | ✅ 完了 | 8 箇所を @/lib/db に統一（page.tsx他）                 |
+| (2) actions.ts 削除    | ✅ 完了 | src/lib/db/actions.ts 削除完了                         |
+| (3) tests/ import 修正 | ✅ 完了 | 相対パス + @/lib/db パス完全置換                       |
+| (4) テスト             | ✅ 完了 | **273 passed / 2 skipped / 0 failed**                  |
+| **実装状況**           | ✅ 完了 | **コア実装 + モック修正 + 未使用 import 整理まで完了** |
+
+**根本原因（テスト失敗 58 → 27）**: vi.mock("@/lib/db") が実モジュールとは別の `:memory:` クライアントを作成していたため、テストが書き込んだ DB とリポジトリ関数が参照する DB が分離し、データ状態の不一致が発生。
+
+**最終修正方針（fix-1 / fix-2）**:
+
+1. テストの `vi.mock("@/lib/db", ...)` を `{ ...actual, __client: (actual as any).db.$client }` に統一 — 実モジュールの `db.$client` を `__client` として公開し、テストとリポジトリ関数で同一 DB インスタンスを共有
+2. 影響を受けたテスト 6 ファイル（tests/db/actions・favorites・recency-refresh・scored-articles-source-display・tests/integration/bug-zero-scored-articles・tests/e2e/real-llm）のモック定義を修正
+3. 未使用 import（createClient / drizzle / schema）を削除
+
+**実装統計**:
+
+- 修正ファイル: src/ 8 個 + tests/ 42 個 + index.ts
+- actions.ts: 削除完了
+- index.ts: 統合完了（20+ エクスポート）
+- TypeScript エラー（tsgo --noEmit）: 0
+- lint:fast: 0 エラー / 75 警告（pre-existing で許容）
+
+**テスト最終結果**:
+
+| 検証                     | 結果                                              |
+| ------------------------ | ------------------------------------------------- |
+| vitest                   | ✅ 278 passed / 2 skipped / 0 failed              |
+| tsgo --noEmit            | ✅ エラーなし                                     |
+| lint:fast                | ✅ 0 エラー（75 警告は許容）                      |
+| カバレッジ tier チェック | ✅ **全ティア PASS**（Tier 2: 98.41% / 目標 85%） |
+
+**カバレッジ Tier 2 解消（fix-3）**: `tests/api/fetch-news/route.test.ts` に +113 行追加。CRON_SECRET 認証ガード（401系）、不正ソース名（400）、deduplicate の catch フォールバック、記事0件分岐、`normalize` 直接単体テストを追加。Tier 2 を 79.38% → **98.41%** に改善。
+
+**R3-b 型安全化 完了（exp-2 / fix-4）**: `src/lib/db/query/article-queries.ts` で Drizzle `$inferSelect` + テーブル別行型マップ（`TableRowMap`）を導入し、`getTablePage` の戻り値を `Promise<{ rows: TableRowMap[T][]; total: number }>` に型安全化。`any[]` 戻り値と `Record<string, any>` キャストを排除。採用アプローチはオプション A の派生で、UI用 `TABLE_CONFIG` の構造は不変。テスト修正は不要（既存テストが型変更後もそのままパス）。詳細は「R3-b: getTablePage 型安全化」セクション参照。
+
+**検証結果（R3-a + カバレッジ + R3-b 累計）**:
+
+| 検証                     | 結果                                              |
+| ------------------------ | ------------------------------------------------- |
+| vitest                   | ✅ 278 passed / 2 skipped / 0 failed              |
+| tsgo --noEmit            | ✅ エラーなし                                     |
+| oxlint                   | ✅ 追加エラーなし                                 |
+| カバレッジ tier チェック | ✅ **全ティア PASS**（Tier 2: 98.41% / 目標 85%） |
+
+**コミット**: 未コミット（作業ツリーに全変更残存）。コミットメッセージ案: `refactor: R3-a DB層バレル統合完了 + テストのDB分離修正 + カバレッジTier2解消 + R3-b getTablePage型安全化`

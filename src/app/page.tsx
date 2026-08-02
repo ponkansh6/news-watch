@@ -1,4 +1,4 @@
-import { getScoredArticlesCached } from "@/lib/db/actions";
+import { getScoredArticlesCached } from "@/lib/db";
 import FetchButton from "./fetch-button";
 import NewsSection from "./news-section";
 

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getTablePage, TableName } from "@/lib/db/actions";
+import { getTablePage, TableName } from "@/lib/db";
 import { TABLE_CONFIG } from "../lib/table-config";
 import DataTable from "./components/DataTable";
 
@@ -25,7 +25,6 @@ export default async function TablePage({
   const offset = (parsedPage - 1) * parsedLimit;
 
   const { rows, total } = await getTablePage(table as TableName, {
-    table: table as TableName,
     offset,
     limit: parsedLimit,
     sort,

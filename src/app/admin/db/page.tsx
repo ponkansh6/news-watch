@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getTableCounts } from "@/lib/db/actions";
+import { getTableCounts } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
