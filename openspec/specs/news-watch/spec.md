@@ -1,9 +1,9 @@
 ---
 title: News Watch
 status: Active
-version: 1.0.0
+version: 1.0.1
 created_at: 2026-06-01
-updated_at: 2026-07-29
+updated_at: 2026-08-02
 authors: [shunki]
 ---
 
@@ -20,7 +20,7 @@ authors: [shunki]
 ### 2.1 In Scope
 
 - Fetching news from multiple external providers (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Blog)
-- Periodic feed fetch via scheduled cron (QStash)
+- User-triggered fetch via `/api/fetch-news` button on dashboard (manual cron via Vercel scheduled deployments supported)
 - Vector similarity (relevance) + LLM-based usefulness scoring + algorithmic recency scoring
 - Japanese summary generation (20-40 characters)
 - Dashboard display with sort/filter capabilities
@@ -170,17 +170,27 @@ Layout (src/app/layout.tsx)
 ```
 External APIs (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Blog)
   → src/lib/news/ (Fetchers)
-    → src/lib/llm/index.ts (LLM: usefulness + summary) + src/lib/vector-filter.ts (vector similarity: relevance)
-    → src/app/api/fetch-news/route.ts (calcRecencyScore + weighted composite)
-      → src/lib/db/actions.ts (Persistence)
-          → SQLite Database (articles)
-            → src/app/page.tsx (RSC: Data Fetching)
-              → src/app/news-section.tsx (Client: isRefreshing → skeleton / ArticleList rendering)
-                → src/app/article-list.tsx (Client: Rendering + tooltip breakdown)
-            → src/app/admin/db/page.tsx (RSC: table list)
-              → src/app/admin/db/[table]/page.tsx (RSC: paginated table view)
-                → DataTable + Pagination + RowDetail (Client: read-only browsing)
+    → src/lib/vector-filter.ts (tagArticlesByKeyword: keyword assignment via embedding similarity)
+      → src/lib/score-pipeline.ts (scoreAndSaveTagged: parallel LLM batching via p-limit)
+        → src/lib/llm/index.ts (LLM batch scoring: usefulness + summary)
+      → src/app/api/fetch-news/route.ts (calcRecencyScore + weighted composite)
+        → src/lib/db/actions.ts (Persistence)
+            → SQLite Database (articles)
+              → src/app/page.tsx (RSC: getScoredArticles → taggedCache)
+                → src/app/news-section.tsx (Client: isRefreshing → skeleton / ArticleList rendering)
+                  → src/app/article-list.tsx (Client: Rendering + tooltip breakdown, 5-tap favorites)
+              → src/app/bookmarks/page.tsx (RSC: getFavoriteArticles)
+                → src/app/article-list.tsx (Client: Rendering)
+              → src/app/admin/db/page.tsx (RSC: table list)
+                → src/app/admin/db/[table]/page.tsx (RSC: paginated table view)
+                  → DataTable + Pagination + RowDetail (Client: read-only browsing)
 ```
+
+**Phase 4 Optimizations**:
+
+- **P6-a/b**: LLM batch calls parallelized via `p-limit` (concurrency=3); `getBatchSize()` computed once per keyword group (O(n²)→O(n))
+- **P7-1/2/3**: Sorting delegated to DB; unused `/api/favorites` GET fetch removed; keyword label resolution moved to server (`resolveKeywordLabel()` in query layer)
+- **C2/C3/C4**: `normalizeSimilarities` non-destructive; `softmax` numerically stable (log-domain); `deleteOrphanedArticles` handles NULL keywords
 
 ### Scoring Formula
 
@@ -264,7 +274,7 @@ Hybrid scoring combines LLM-based relevance/usefulness scoring with a vector pre
 ### 9.2 Architecture
 
 - **Embeddings**: `src/lib/embeddings.ts` generates query and article embeddings using Google's gemini-embedding-2 model (uses `GOOGLE_API_KEY`)
-- **Vector Filter**: `src/lib/vector-filter.ts` implements `tagArticlesByKeyword()` which tags each article with the keyword/descriptive phrase (from the `KEYWORDS` vocabulary, updated to descriptive phrases to improve semantic tagging accuracy and prevent mis-categorization, featuring distinct company/service monitoring keywords such as Claude, GPT, Softbank, KDDI, NTT [NTT data, NTT East, NTT West, IOWN, optical-wireless fusion], Gemini, docomo [Docomo business, business], and Copilot, with NTT and docomo keywords cleanly separated without overlap) that has the highest vector similarity via cosine similarity. Articles are then grouped by keyword before scoring (UI keyword badge display has been deprecated).
+- **Vector Filter**: `src/lib/vector-filter.ts` implements `tagArticlesByKeyword()` which tags each article with the keyword/descriptive phrase (from the `KEYWORDS` vocabulary, updated to descriptive phrases to improve semantic tagging accuracy and prevent mis-categorization, featuring distinct company/service monitoring keywords such as Claude, GPT, Softbank, KDDI, NTT [NTT data, NTT East, NTT West, IOWN, optical-wireless fusion], Gemini, docomo [Docomo business, business], and Copilot, with NTT and docomo keywords cleanly separated without overlap) that has the highest vector similarity via cosine similarity. Articles are then grouped by keyword before scoring. **Phase 4**: Keyword label resolution (`KEYWORD_LABELS` lookup) moved to server layer (`resolveKeywordLabel()` in `src/lib/config.ts`), removing monitoring keywords from client bundle. Article type now includes `keywordLabel: string | null` field populated in query layer.
 - **Scoring Pipeline**: `src/lib/score-pipeline.ts` exports `scoreAndSaveTagged()` which processes articles grouped by keyword and saves them to the database.
 
 ### 9.3 Environment Variables
@@ -277,7 +287,7 @@ Hybrid scoring combines LLM-based relevance/usefulness scoring with a vector pre
 - **Phase 4**: Real data tuning + environment variable reflection (implemented)
 - **Future**: Per-keyword threshold persistence in database
 
-### 9.5 Processing Limits
+### 9.5 Processing Limits & Parallelization
 
 - **Fetch Cap**: The fetch endpoint caps total articles at 20 (latest articles only)
 - **LLM Batching**: Articles are scored in batches per LLM request, grouped by assigned keyword.
@@ -285,6 +295,8 @@ Hybrid scoring combines LLM-based relevance/usefulness scoring with a vector pre
   - **Japanese-optimized batching**: When >50% of articles in a batch contain Japanese characters (Hiragana/Katakana/Kanji), batch size is dynamically reduced to 8 to prevent token limit overflow.
   - `maxOutputTokens`: 500 (single), 16000 (batch).
   - **Timeout**: 30s (single), 55s (batch) — passed as `RequestOptions.timeout` to the Gemini SDK.
+  - **Parallelization** (Phase 4): Batch calls are parallelized via `p-limit` library with concurrency limit of 3. All batches are constructed first, then executed in parallel via `Promise.all()`. Gemini API rate-limit backoff is handled per-request by `callGemini()`.
+  - **Optimization**: `getBatchSize()` is computed once per keyword group (not per batch iteration), reducing complexity from O(n²) to O(n).
   - **Fallback**: On batch parsing failure (invalid JSON, wrong structure, Zod validation error, or all-null results), the pipeline falls back to individual `scoreArticle()` calls per article.
 
 ### 9.6 Recency Delta Refresh
