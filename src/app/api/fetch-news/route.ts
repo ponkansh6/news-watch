@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
+import { timingSafeEqual } from "crypto";
 import { KEYWORDS } from "@/lib/config";
 import { SOURCE_IDS, getSourceAdapter, normalizeUnknownSource } from "@/lib/news/registry";
 import { FetchNewsBodySchema } from "./schema";
@@ -43,6 +44,19 @@ function deduplicate(articles: NormalizedArticle[]): NormalizedArticle[] {
 /* ---------- POST handler ---------- */
 
 export async function POST(request: Request) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const auth = request.headers.get("authorization");
+    if (!auth?.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Missing or invalid authorization" }, { status: 401 });
+    }
+    const token = auth.slice(7);
+    const secretBuf = Buffer.from(cronSecret);
+    const tokenBuf = Buffer.from(token);
+    if (secretBuf.length !== tokenBuf.length || !timingSafeEqual(secretBuf, tokenBuf)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
   await cleanupOrphaned();
 
   const rawBody = await request.json().catch(() => ({}));

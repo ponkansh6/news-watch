@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { timingSafeEqual } from "crypto";
 
 export const config = {
   matcher: ["/admin/db/:path*"],
@@ -35,7 +36,15 @@ export function middleware(request: NextRequest) {
   const decoded = Buffer.from(credentials, "base64").toString("utf-8");
   const [username, password] = decoded.split(":");
 
-  if (username === user && password === pass) {
+  const userBuf = Buffer.from(user);
+  const passBuf = Buffer.from(pass);
+  const usernameBuf = Buffer.from(username || "");
+  const passwordBuf = Buffer.from(password || "");
+
+  const userMatch = userBuf.length === usernameBuf.length && timingSafeEqual(userBuf, usernameBuf);
+  const passMatch = passBuf.length === passwordBuf.length && timingSafeEqual(passBuf, passwordBuf);
+
+  if (userMatch && passMatch) {
     return NextResponse.next();
   }
 
