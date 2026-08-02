@@ -734,15 +734,15 @@ spec §2.1 に「Periodic feed fetch via scheduled cron (QStash)」とあるが�
 | **P5-b** | ✅ 完了 | Phase 2  | `next.config.ts` に `serverExternalPackages` / `optimizePackageImports` 設定                 |
 | **P4**   | ✅ 完了 | Phase 2  | `unstable_cache` + `revalidateTag("articles")` でキャッシュ層導入                            |
 
-### フェーズ 3: 構造リファクタリング ✅ **完了**
+### フェーズ 3: 構造リファクタリング ⚠️ **部分完了**
 
-| 項目   | 状態    | コミット | 備考                                                       |
-| ------ | ------- | -------- | ---------------------------------------------------------- |
-| **R1** | ✅ 完了 | Phase 3  | ソースレジストリ化（`SOURCE_ADAPTER` + `SOURCE_REGISTRY`） |
-| **R2** | ✅ 完了 | Phase 3  | フィード定義の宣言化（`RDF_FEEDS` / `RSS_FEEDS` 等）       |
-| **R5** | ✅ 完了 | Phase 3  | zod による外部入力検証（`FetchNewsBody` schema）           |
-| **S2** | ✅ 完了 | Phase 3  | `/api/fetch-news` に `CRON_SECRET` Bearer トークン検証     |
-| **R3** | ✅ 完了 | Phase 3  | DB 層のバレル整理、`any` 型排除                            |
+| 項目   | 状態    | コミット | 備考                                                               |
+| ------ | ------- | -------- | ------------------------------------------------------------------ |
+| **R1** | ✅ 完了 | Phase 3  | ソースレジストリ化（`SOURCE_ADAPTER` + `SOURCE_REGISTRY`）         |
+| **R2** | ✅ 完了 | Phase 3  | フィード定義の宣言化（`RDF_FEEDS` / `RSS_FEEDS` 等）               |
+| **R5** | ✅ 完了 | Phase 3  | zod による外部入力検証（`FetchNewsBody` schema）                   |
+| **S2** | ✅ 完了 | 6d8614d  | `/api/fetch-news` Bearer 認証（`timingSafeEqual`）実装済み         |
+| **R3** | ⚠️ 部分 | —        | (e) 型修正完了 / (a)-(d) 未実装（DB層バレル・`any`排除・重複削除） |
 
 ### フェーズ 4: 表示層とスコアリング ✅ **完了**
 
@@ -780,8 +780,33 @@ spec §2.1 に「Periodic feed fetch via scheduled cron (QStash)」とあるが�
 
 ---
 
-### 次のステップ
+### 実装状況の修正（2026-08-02 時点）
 
-- ✅ spec.md 更新完了（Phase 4 実装内容を反映）
-- 🚀 本番デプロイ準備完了
-- 📋 オプション: C1（softmax 相対化）の仕様再検討
+以下の項目は「✅ 完了」と記載されていましたが、**実装されていません**：
+
+| 項目     | 現状                                                     | 対応                                        |
+| -------- | -------------------------------------------------------- | ------------------------------------------- |
+| **R3-a** | DB層バレル統合未実装（`actions.ts` は re-export のまま） | 優先度：**低** — 8 箇所の import パスを統一 |
+| **R3-b** | `getTablePage()` の `any` 型排除未実装                   | 優先度：低                                  |
+| **R3-c** | `countRows()` 重複削除未実装                             | 優先度：低                                  |
+| **R3-d** | `getTablePage()` 引数重複削除未実装                      | 優先度：低                                  |
+
+**根本原因**: refactoring-plan.md が Phase 3 完了時点で「R3: ✅ 完了」と記載したが、実装との乖離があった。
+
+### 今後のロードマップ
+
+**短期（本番デプロイ前）**:
+
+- ✅ spec.md 最新化完了（Phase 4 実装内容を反映）
+- ✅ S1/S2 セキュリティ実装完了（認証・タイミングセーフ）
+- 🚀 本番デプロイ可能状態
+
+**中期（Phase 5 — 構造最適化）**:
+
+- R3-a: DB層バレル統合（`actions.ts` → `lib/db/index.ts`）
+- R3-b/c/d: `getTablePage()` の型安全化・DRY 化
+- テスト修正（モック統一）
+
+**オプション**:
+
+- C1: softmax → 絶対値スコア（仕様変更、再スコアリング方針決定必須）
