@@ -65,6 +65,74 @@ export async function upsertArticle(data: ArticleInsert) {
   }
 }
 
+/** Batch insert or update articles by URL. Returns { succeeded: urls[], failed: urls[] }. */
+export async function upsertArticles(
+  dataList: ArticleInsert[],
+): Promise<{ succeeded: string[]; failed: string[] }> {
+  if (dataList.length === 0) return { succeeded: [], failed: [] };
+
+  try {
+    // Try batch insert first
+    try {
+      const statements = dataList.map((data) =>
+        db
+          .insert(articles)
+          .values(data)
+          .onConflictDoUpdate({
+            target: articles.url,
+            set: {
+              title: data.title,
+              description: data.description,
+              urlToImage: data.urlToImage,
+              publishedAt: data.publishedAt,
+              sourceName: data.sourceName,
+              sourceId: data.sourceId,
+              author: data.author,
+              keyword: data.keyword,
+              relevance: data.relevance,
+              usefulness: data.usefulness,
+              recency: data.recency,
+              recencyRefreshedAt: data.recencyRefreshedAt,
+              summary: data.summary,
+              reason: data.reason,
+              scoredAt: data.scoredAt,
+              score: data.score,
+              embedding: data.embedding,
+            },
+          }),
+      );
+      await db.batch(statements as any);
+      return {
+        succeeded: dataList.map((d) => d.url),
+        failed: [],
+      };
+    } catch (batchErr) {
+      // Fallback: individual inserts
+      console.warn(`[db] batch upsert failed, falling back to individual upserts:`, batchErr);
+      const succeeded: string[] = [];
+      const failed: string[] = [];
+
+      for (const data of dataList) {
+        try {
+          await upsertArticle(data);
+          succeeded.push(data.url);
+        } catch (e) {
+          console.error(`[db] failed to upsert article "${data.url}":`, e);
+          failed.push(data.url);
+        }
+      }
+
+      return { succeeded, failed };
+    }
+  } catch (err) {
+    console.error(`[db] upsertArticles error:`, err);
+    return {
+      succeeded: [],
+      failed: dataList.map((d) => d.url),
+    };
+  }
+}
+
 /** Delete articles whose keyword is not in the active set. */
 export async function deleteOrphanedArticles(activeKeywords: string[]) {
   try {
@@ -102,8 +170,13 @@ export async function refreshRecencyForSources(
       .from(articles)
       .where(and(inArray(articles.sourceId, sourceIds), notInArray(articles.url, excludeUrls)));
 
-    let updatedCount = 0;
-    // Batch or individual updates maintaining identical result behavior
+    // Calculate updates upfront
+    const updates: Array<{
+      url: string;
+      recency: number;
+      score: number;
+      recencyRefreshedAt: string;
+    }> = [];
     for (const article of targetArticles) {
       if (article.score === null) continue;
 
@@ -114,17 +187,51 @@ export async function refreshRecencyForSources(
         Math.round(Math.max(0, Math.min(SOFTMAX_SCALE, article.score + delta)) * SOFTMAX_SCALE) /
         SOFTMAX_SCALE;
 
-      await db
-        .update(articles)
-        .set({
-          recency: newRecency,
-          score: newScore,
-          recencyRefreshedAt: new Date().toISOString(),
-        })
-        .where(eq(articles.url, article.url));
-      updatedCount++;
+      updates.push({
+        url: article.url,
+        recency: newRecency,
+        score: newScore,
+        recencyRefreshedAt: new Date().toISOString(),
+      });
     }
-    return updatedCount;
+
+    if (updates.length === 0) return 0;
+
+    // Try batch update first
+    try {
+      const statements = updates.map((u) =>
+        db
+          .update(articles)
+          .set({
+            recency: u.recency,
+            score: u.score,
+            recencyRefreshedAt: u.recencyRefreshedAt,
+          })
+          .where(eq(articles.url, u.url)),
+      );
+      await db.batch(statements as any);
+      return updates.length;
+    } catch (batchErr) {
+      // Fallback: individual updates
+      console.warn(`[db] batch refresh failed, falling back to individual updates:`, batchErr);
+      let successCount = 0;
+      for (const u of updates) {
+        try {
+          await db
+            .update(articles)
+            .set({
+              recency: u.recency,
+              score: u.score,
+              recencyRefreshedAt: u.recencyRefreshedAt,
+            })
+            .where(eq(articles.url, u.url));
+          successCount++;
+        } catch (e) {
+          console.error(`[db] failed to update article "${u.url}":`, e);
+        }
+      }
+      return successCount;
+    }
   } catch (err) {
     console.error(`[db] refreshRecencyForSources error:`, err);
     return 0;

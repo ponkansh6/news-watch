@@ -3,6 +3,7 @@
  */
 import {
   upsertArticle,
+  upsertArticles,
   deleteOrphanedArticles,
   deleteLowScoredArticles,
   refreshRecencyForSources,
@@ -11,6 +12,7 @@ import {
 
 import {
   getScoredArticles,
+  getScoredArticlesCached,
   getAllArticles,
   getTablePage,
   getTableCounts,
@@ -22,20 +24,24 @@ import {
   toggleFavorite,
   getFavoriteIds,
   getFavoriteArticles,
+  getFavoriteArticlesCached,
 } from "./repository/favorite-repository";
 
 export type { ArticleInsert, TableName, TablePageOptions };
 
 export {
   upsertArticle,
+  upsertArticles,
   deleteOrphanedArticles,
   deleteLowScoredArticles,
   refreshRecencyForSources,
   getScoredArticles,
+  getScoredArticlesCached,
   getAllArticles,
   getTablePage,
   getTableCounts,
   toggleFavorite,
   getFavoriteIds,
   getFavoriteArticles,
+  getFavoriteArticlesCached,
 };

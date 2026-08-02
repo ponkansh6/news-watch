@@ -1,5 +1,5 @@
 import { scoreArticles } from "@/lib/llm";
-import { upsertArticle } from "@/lib/db/actions";
+import { upsertArticles } from "@/lib/db/actions";
 import {
   calcRecencyScore,
   calcCompositeScore,
@@ -71,7 +71,11 @@ async function scoreAndSaveBatch(batch: ArticleWithTag[], keyword: string | null
   const llmResults = await scoreArticles(
     batch.map((t) => ({ title: t.article.title, description: t.article.description })),
   );
-  let savedCount = 0;
+
+  // Build upsert list
+  const upsertList = [];
+  const llmSuccessUrls = new Set<string>();
+
   for (let i = 0; i < batch.length; i++) {
     const { article, embedding, similarity } = batch[i];
     const llmResult = llmResults[i] ?? null;
@@ -81,35 +85,49 @@ async function scoreAndSaveBatch(batch: ArticleWithTag[], keyword: string | null
     // similarity is already normalized to 0-10 by normalizeSimilaritiesWithTagged
     const relevance =
       Math.round(Math.max(0, Math.min(SOFTMAX_SCALE, similarity)) * SOFTMAX_SCALE) / SOFTMAX_SCALE;
-    try {
-      await upsertArticle({
-        title: article.title,
-        description: article.description,
-        url: article.url,
-        urlToImage: article.urlToImage,
-        publishedAt: article.publishedAt,
-        sourceName: article.sourceName,
-        sourceId: article.sourceId,
-        author: article.author,
-        keyword,
-        summary: llmResult?.summary ?? null,
-        relevance,
-        usefulness,
-        recency,
-        score: composite,
-        reason: llmResult?.reason ?? null,
-        // Always mark the article as processed (attempted) so the UI polling
-        // can detect completion even when the LLM fails for some articles.
-        // `score` stays null for failed ones; completion is based on
-        // `scoredAt` (processed), not on a successful score.
-        scoredAt: new Date().toISOString(),
-        recencyRefreshedAt: new Date().toISOString(),
-        embedding: JSON.stringify(embedding),
-      });
-      if (llmResult) savedCount++;
-    } catch (err) {
-      console.error(`[pipeline] Failed to save article "${article.title}":`, err);
-    }
+
+    upsertList.push({
+      title: article.title,
+      description: article.description,
+      url: article.url,
+      urlToImage: article.urlToImage,
+      publishedAt: article.publishedAt,
+      sourceName: article.sourceName,
+      sourceId: article.sourceId,
+      author: article.author,
+      keyword,
+      summary: llmResult?.summary ?? null,
+      relevance,
+      usefulness,
+      recency,
+      score: composite,
+      reason: llmResult?.reason ?? null,
+      // Always mark the article as processed (attempted) so the UI polling
+      // can detect completion even when the LLM fails for some articles.
+      // `score` stays null for failed ones; completion is based on
+      // `scoredAt` (processed), not on a successful score.
+      scoredAt: new Date().toISOString(),
+      recencyRefreshedAt: new Date().toISOString(),
+      embedding: JSON.stringify(embedding),
+    });
+
+    if (llmResult) llmSuccessUrls.add(article.url);
   }
+
+  // Batch upsert
+  const result = await upsertArticles(upsertList);
+
+  // Count articles that were both LLM-successful and upsert-successful
+  let savedCount = 0;
+  for (const url of result.succeeded) {
+    if (llmSuccessUrls.has(url)) savedCount++;
+  }
+
+  // Log failures
+  for (const url of result.failed) {
+    const article = batch.find((a) => a.article.url === url);
+    if (article) console.error(`[pipeline] Failed to save article "${article.article.title}"`);
+  }
+
   return savedCount;
 }

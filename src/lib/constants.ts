@@ -25,6 +25,8 @@ export const JAPANESE_RATIO_THRESHOLD = 0.5;
 export const JAPANESE_LARGE_BATCH = 8;
 
 // ── Embeddings ──
+export const EMBEDDING_MODEL_VERSION = "gemini-embedding-2";
+export const EMBEDDING_DIMENSIONS = 768;
 export const MAX_CONCURRENT_EMBEDDINGS = 5;
 export const EMBED_MAX_RETRIES = 3;
 export const EMBED_BACKOFF_MS = 400;

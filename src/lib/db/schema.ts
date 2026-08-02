@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
-import { EMBEDDING_DIMENSIONS } from "../embeddings";
+import { EMBEDDING_DIMENSIONS } from "../constants";
 
 /**
  * Scored news articles.

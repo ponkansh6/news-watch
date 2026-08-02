@@ -1,11 +1,9 @@
 import ArticleList from "@/app/article-list";
-import { getFavoriteArticles } from "@/lib/db/actions";
+import { getFavoriteArticlesCached } from "@/lib/db/actions";
 import Link from "next/link";
 
-export const dynamic = "force-dynamic";
-
 export default async function BookmarksPage() {
-  const articles = await getFavoriteArticles();
+  const articles = await getFavoriteArticlesCached();
 
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">

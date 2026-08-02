@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  poweredByHeader: false,
+  serverExternalPackages: ["@libsql/client"],
+  experimental: {
+    optimizePackageImports: ["@google/generative-ai"],
+  },
 };
 
 export default nextConfig;

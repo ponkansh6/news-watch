@@ -1,7 +1,13 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { beforeAll } from "vitest";
+import { beforeAll, vi } from "vitest";
 import { db } from "../src/lib/db";
+
+// Mock next/cache revalidateTag for tests (prevents "static generation store missing" errors)
+vi.mock("next/cache", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/cache")>();
+  return { ...actual, revalidateTag: vi.fn() };
+});
 
 // Load .env.local so Vitest has the same env as the Next.js dev server,
 // EXCEPT the Turso credentials (by default). The `db` module falls back to an

@@ -25,7 +25,12 @@ vi.mock("@/lib/config", () => ({
   },
 }));
 vi.mock("@/lib/db/actions", () => ({
-  upsertArticle: vi.fn().mockResolvedValue(undefined),
+  upsertArticles: vi.fn().mockImplementation((dataList: any[]) =>
+    Promise.resolve({
+      succeeded: dataList.map((d) => d.url),
+      failed: [],
+    }),
+  ),
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
 }));

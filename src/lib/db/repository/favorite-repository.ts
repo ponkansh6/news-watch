@@ -2,6 +2,7 @@ import { db } from "../index";
 import { articles, favorites } from "../schema";
 import { eq, desc } from "drizzle-orm";
 import { ARTICLE_LIST_COLUMNS, type ArticleListRow } from "../query/article-queries";
+import { unstable_cache } from "next/cache";
 
 /** Toggle favorite status for an article. Returns the new state (true = favorited). */
 export async function toggleFavorite(articleId: number): Promise<boolean> {
@@ -54,3 +55,9 @@ export async function getFavoriteArticles(): Promise<ArticleListRow[]> {
     return [];
   }
 }
+
+export const getFavoriteArticlesCached = unstable_cache(
+  async () => getFavoriteArticles(),
+  ["favorite-articles"],
+  { tags: ["favorites"], revalidate: 300 },
+);

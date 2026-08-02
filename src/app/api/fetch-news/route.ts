@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { KEYWORDS } from "@/lib/config";
 import { searchZenn, type ZennArticle } from "@/lib/news/zenn";
 import { searchQiita, type QiitaFeedItem } from "@/lib/news/qiita";
@@ -306,6 +307,9 @@ export async function POST(request: Request) {
 
   // Remove low-scored articles after each batch
   await cleanupLowScored(since);
+
+  // Invalidate dashboard cache
+  revalidateTag("articles", "max");
 
   return NextResponse.json({ ok: true, message: "Scoring queued", results, perSource, since });
 }

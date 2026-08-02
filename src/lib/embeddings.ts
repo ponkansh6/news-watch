@@ -4,12 +4,20 @@ import {
   EMBED_MAX_RETRIES,
   EMBED_BACKOFF_MS,
   EMBED_BATCH_SIZE,
+  EMBEDDING_MODEL_VERSION,
+  EMBEDDING_DIMENSIONS,
 } from "./constants";
 
-export const EMBEDDING_MODEL_VERSION = "gemini-embedding-2";
-export const EMBEDDING_DIMENSIONS = 768;
+export { EMBEDDING_MODEL_VERSION, EMBEDDING_DIMENSIONS };
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
+let genAI: GoogleGenerativeAI | null = null;
+
+function getGenAI(): GoogleGenerativeAI {
+  if (!genAI) {
+    genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
+  }
+  return genAI;
+}
 
 // --- Request counter (for monitoring & tests) ---
 let embeddingRequestCount = 0;
@@ -64,7 +72,7 @@ async function callEmbedding(taskType: TaskType, text: string): Promise<number[]
   try {
     return await embedWithRetry(async () => {
       embeddingRequestCount++;
-      const model = genAI.getGenerativeModel({ model: "gemini-embedding-2" });
+      const model = getGenAI().getGenerativeModel({ model: "gemini-embedding-2" });
       const result = await model.embedContent({
         content: { role: "user", parts: [{ text }] },
         taskType,
@@ -118,7 +126,7 @@ interface BatchEmbedItem {
 export async function batchEmbed(items: BatchEmbedItem[]): Promise<number[][]> {
   if (items.length === 0) return [];
 
-  const model = genAI.getGenerativeModel({ model: "gemini-embedding-2" });
+  const model = getGenAI().getGenerativeModel({ model: "gemini-embedding-2" });
 
   // Split into chunks of EMBED_BATCH_SIZE
   const results: number[][] = [];

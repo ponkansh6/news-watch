@@ -64,7 +64,12 @@ vi.mock("@/lib/llm", () => ({
 }));
 
 vi.mock("@/lib/db/actions", () => ({
-  upsertArticle: vi.fn().mockResolvedValue(undefined),
+  upsertArticles: vi.fn().mockImplementation((dataList: any[]) =>
+    Promise.resolve({
+      succeeded: dataList.map((d) => d.url),
+      failed: [],
+    }),
+  ),
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
   refreshRecencyForSources: vi.fn().mockResolvedValue(0),
@@ -121,8 +126,8 @@ describe("e2e pipeline (local dev mode)", () => {
     // Verify scoreArticles was called
     expect(gemini.scoreArticles).toHaveBeenCalled();
 
-    // Verify upsertArticle was called
-    expect(db.upsertArticle).toHaveBeenCalled();
+    // Verify upsertArticles was called
+    expect(db.upsertArticles).toHaveBeenCalled();
 
     // Verify cleanup functions were called
     expect(db.deleteLowScoredArticles).toHaveBeenCalled();

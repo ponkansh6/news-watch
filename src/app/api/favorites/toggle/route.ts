@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { toggleFavorite } from "@/lib/db/actions";
 
 export async function POST(request: Request) {
@@ -11,6 +12,10 @@ export async function POST(request: Request) {
     }
 
     const favorited = await toggleFavorite(articleId);
+
+    // Invalidate bookmarks cache
+    revalidateTag("favorites", "max");
+
     return NextResponse.json({ favorited });
   } catch (err) {
     console.error("[api] favorites/toggle error:", err);

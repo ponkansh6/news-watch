@@ -10,7 +10,7 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/fetch-news/route";
-import { upsertArticle } from "@/lib/db/actions";
+import * as db from "@/lib/db/actions";
 
 // ============================================================
 // Mock 設定（vi.mockはホイストされるため、データをファクトリ内で定義）
@@ -90,7 +90,12 @@ vi.mock("@/lib/llm", () => ({
 
 // DB操作のモック - vi.mock内で直接定義してホイスト問題を回避
 vi.mock("@/lib/db/actions", () => ({
-  upsertArticle: vi.fn().mockResolvedValue(undefined),
+  upsertArticles: vi.fn().mockImplementation((dataList: any[]) =>
+    Promise.resolve({
+      succeeded: dataList.map((d) => d.url),
+      failed: [],
+    }),
+  ),
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
 }));
@@ -148,16 +153,17 @@ describe("Qiita Atomフィード記事のスコアリング更新 - 修正後の
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
 
-    // upsertArticleが呼ばれた引数を検証
-    expect(upsertArticle).toHaveBeenCalled();
+    // upsertArticlesが呼ばれた引数を検証
+    expect(db.upsertArticles).toHaveBeenCalled();
 
-    const upsertCalls = vi.mocked(upsertArticle).mock.calls;
+    const upsertCalls = vi.mocked(db.upsertArticles).mock.calls;
+    const allArticles = upsertCalls.flatMap((call) => call[0]);
     console.log("Upsert calls:", JSON.stringify(upsertCalls, null, 2));
 
     // 修正後: Qiita記事が2件あり、URLが正しく文字列として抽出されている
     // 正常: url = "https://qiita.com/user1/items/abc123" (string)
-    const qiitaUrls = upsertCalls
-      .map((call) => call[0].url)
+    const qiitaUrls = allArticles
+      .map((article) => article.url)
       .filter((url) => typeof url === "string" && url.includes("qiita.com"));
 
     console.log("Qiita URLs found:", qiitaUrls);
@@ -167,14 +173,14 @@ describe("Qiita Atomフィード記事のスコアリング更新 - 修正後の
     expect(qiitaUrls.every((url) => url.startsWith("https://qiita.com/"))).toBe(true);
 
     // sourceNameが "Qiita" になっていること
-    const qiitaSourceNames = upsertCalls
-      .map((call) => call[0].sourceName)
+    const qiitaSourceNames = allArticles
+      .map((article) => article.sourceName)
       .filter((name) => name === "Qiita");
     expect(qiitaSourceNames.length).toBe(2);
 
     // sourceIdが "qiita" になっていること
-    const qiitaSourceIds = upsertCalls
-      .map((call) => call[0].sourceId)
+    const qiitaSourceIds = allArticles
+      .map((article) => article.sourceId)
       .filter((id) => id === "qiita");
     expect(qiitaSourceIds.length).toBe(2);
   });
@@ -194,16 +200,17 @@ describe("Qiita Atomフィード記事のスコアリング更新 - 修正後の
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
 
-    const upsertCalls = vi.mocked(upsertArticle).mock.calls;
-    const yamadashyUrls = upsertCalls
-      .map((call) => call[0].url)
+    const upsertCalls = vi.mocked(db.upsertArticles).mock.calls;
+    const allArticles = upsertCalls.flatMap((call) => call[0]);
+    const yamadashyUrls = allArticles
+      .map((article) => article.url)
       .filter((url) => url.includes("techblog.com"));
 
     expect(yamadashyUrls.length).toBeGreaterThan(0);
     expect(yamadashyUrls.every((url) => url.startsWith("https://techblog.com/"))).toBe(true);
 
-    const yamadashySourceNames = upsertCalls
-      .map((call) => call[0].sourceName)
+    const yamadashySourceNames = allArticles
+      .map((article) => article.sourceName)
       .filter((name) => name === "Tech Blog");
     expect(yamadashySourceNames.length).toBeGreaterThan(0);
   });

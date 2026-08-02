@@ -1,7 +1,7 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/fetch-news/route";
-import { upsertArticle } from "@/lib/db/actions";
+import * as db from "@/lib/db/actions";
 
 // Mock 設定
 vi.mock("@/lib/news/zdnet", () => ({
@@ -46,7 +46,12 @@ vi.mock("@/lib/llm", () => ({
 
 // DB操作のモック
 vi.mock("@/lib/db/actions", () => ({
-  upsertArticle: vi.fn().mockResolvedValue(undefined),
+  upsertArticles: vi.fn().mockImplementation((dataList: any[]) =>
+    Promise.resolve({
+      succeeded: dataList.map((d) => d.url),
+      failed: [],
+    }),
+  ),
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
 }));
@@ -90,12 +95,11 @@ describe("ZDNet RSS統合テスト", () => {
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
 
-    const upsertCalls = vi.mocked(upsertArticle).mock.calls;
+    const upsertCalls = vi.mocked(db.upsertArticles).mock.calls;
+    const allArticles = upsertCalls.flatMap((call) => call[0]);
 
     // ZDNet記事が2件あるはず
-    const zdnetArticles = upsertCalls
-      .map((call) => call[0])
-      .filter((article) => article.sourceId === "zdnet");
+    const zdnetArticles = allArticles.filter((article) => article.sourceId === "zdnet");
 
     expect(zdnetArticles.length).toBe(2);
     expect(zdnetArticles[0].sourceName).toBe("ZDNet Japan");

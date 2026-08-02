@@ -21,7 +21,7 @@ vi.mock("@/lib/llm", () => ({
 }));
 
 vi.mock("@/lib/db/actions", () => ({
-  upsertArticle: mockUpsertArticle,
+  upsertArticles: mockUpsertArticle,
 }));
 
 vi.mock("@/lib/embeddings", () => ({
@@ -55,7 +55,13 @@ describe("e2e: batch consolidation (20-in-1)", () => {
       (articles: { title: string; description: string | null }[]) =>
         Promise.resolve(articles.map(() => ({ summary: "s", usefulness: 7, reason: "r" }))),
     );
-    mockUpsertArticle.mockResolvedValue(undefined);
+    mockUpsertArticle.mockImplementation((dataList: any[]) => {
+      // Mock returns all articles as succeeded
+      return Promise.resolve({
+        succeeded: dataList.map((d) => d.url),
+        failed: [],
+      });
+    });
     mockEmbedArticle.mockResolvedValue([0.1, 0.2]);
     mockEmbedQuery.mockResolvedValue([0.1, 0.2]);
     mockBatchEmbed.mockImplementation((items) => Promise.resolve(items.map(() => [0.1, 0.2])));
@@ -72,7 +78,8 @@ describe("e2e: batch consolidation (20-in-1)", () => {
     expect(saved).toBe(20);
     expect(mockScoreArticles).toHaveBeenCalledTimes(1);
     expect(mockScoreArticles.mock.calls[0][0]).toHaveLength(20);
-    expect(mockUpsertArticle).toHaveBeenCalledTimes(20);
+    expect(mockUpsertArticle).toHaveBeenCalledTimes(1);
+    expect(mockUpsertArticle.mock.calls[0][0]).toHaveLength(20);
   });
 
   test("25 articles of one keyword split into 20 + 5 (2 LLM calls)", async () => {
@@ -85,6 +92,8 @@ describe("e2e: batch consolidation (20-in-1)", () => {
     expect(mockScoreArticles).toHaveBeenCalledTimes(2);
     expect(mockScoreArticles.mock.calls[0][0]).toHaveLength(20);
     expect(mockScoreArticles.mock.calls[1][0]).toHaveLength(5);
-    expect(mockUpsertArticle).toHaveBeenCalledTimes(25);
+    expect(mockUpsertArticle).toHaveBeenCalledTimes(2);
+    expect(mockUpsertArticle.mock.calls[0][0]).toHaveLength(20);
+    expect(mockUpsertArticle.mock.calls[1][0]).toHaveLength(5);
   });
 });

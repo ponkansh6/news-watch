@@ -66,7 +66,7 @@ vi.mock("@/lib/llm", async (importOriginal) => {
 });
 
 vi.mock("@/lib/db/actions", () => ({
-  upsertArticle: mockUpsertArticle,
+  upsertArticles: mockUpsertArticle,
   deleteOrphanedArticles: mockDeleteOrphanedArticles,
   deleteLowScoredArticles: mockDeleteLowScoredArticles,
 }));
@@ -89,7 +89,12 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       (articles: { title: string; description: string | null }[]) =>
         Promise.resolve(articles.map(() => null)),
     );
-    mockUpsertArticle.mockResolvedValue(undefined);
+    mockUpsertArticle.mockImplementation((dataList: any[]) =>
+      Promise.resolve({
+        succeeded: dataList.map((d) => d.url),
+        failed: [],
+      }),
+    );
     mockDeleteOrphanedArticles.mockResolvedValue(undefined);
     mockDeleteLowScoredArticles.mockResolvedValue(undefined);
   });
