@@ -1021,4 +1021,29 @@ export async function getTablePage<T extends TableName>(
 | oxlint                   | ✅ 追加エラーなし                                 |
 | カバレッジ tier チェック | ✅ **全ティア PASS**（Tier 2: 98.41% / 目標 85%） |
 
-**コミット**: 未コミット（作業ツリーに全変更残存）。コミットメッセージ案: `refactor: R3-a DB層バレル統合完了 + テストのDB分離修正 + カバレッジTier2解消 + R3-b getTablePage型安全化`
+**コミット**: ✅ `8b1dd13`（`origin/master` にプッシュ済み）`refactor: R3-c/d getTablePage の countRows 統一と引数重複削除 + R3-a/b コミット`
+
+---
+
+### R3-c & R3-d 完了（2026-08-02）
+
+**ステータス**: ✅ 完了（R3-a/b/c/d 全項目完了）
+
+| 項目     | 状態    | 詳細                                                                                                                                       |
+| -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **R3-c** | ✅ 完了 | `getTablePage` 内のインライン COUNT を `countRows()` 呼び出しに統一（DRY 化）                                                              |
+| **R3-d** | ✅ 完了 | `TablePageOptions` から `table` を除去、呼び出し側（`admin/db/[table]/page.tsx` + テスト10箇所）を `{ offset, limit, sort?, dir? }` に修正 |
+
+**検証結果（R3-a/b/c/d 累計）**:
+
+| 検証                     | 結果                                                   |
+| ------------------------ | ------------------------------------------------------ |
+| vitest                   | ✅ 278 passed / 2 skipped / 0 failed                   |
+| tsgo --noEmit            | ✅ エラーなし                                          |
+| lint:fast                | ✅ 0 エラー                                            |
+| カバレッジ tier チェック | ✅ **全ティア PASS**                                   |
+| pre-push フック          | ✅ 通過（spec-refs / schema-consistency / カバレッジ） |
+
+**spec.md 同期**: `src/lib/db/actions.ts` → `src/lib/db` に参照を更新（`check-spec-refs.sh` 通過）。
+
+**Phase 5 完了**: R3-a/b/c/d 全項目が実装・検証・コミット・プッシュ済み。残るスコープ外は C1（softmax→絶対値スコア、仕様変更）と P6-c（`after()` 後処理バックグラウンド化）。
