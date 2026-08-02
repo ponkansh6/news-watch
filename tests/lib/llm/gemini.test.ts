@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { LLM_MODEL, scoreArticle, scoreArticles } from "../../../src/lib/llm/gemini";
+import { LLM_MODEL, scoreArticle, scoreArticles } from "../../../src/lib/llm";
 
 // Mock @google/generative-ai
 const { mockGenerateContent } = vi.hoisted(() => ({

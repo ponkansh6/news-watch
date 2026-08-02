@@ -6,7 +6,7 @@
  * Exercises the real scoreAndSaveTagged pipeline.
  */
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import * as gemini from "@/lib/llm/gemini";
+import * as gemini from "@/lib/llm";
 import * as db from "@/lib/db/actions";
 
 const { mockScoreArticles } = vi.hoisted(() => ({ mockScoreArticles: vi.fn() }));
@@ -16,7 +16,7 @@ const { mockEmbedQuery } = vi.hoisted(() => ({ mockEmbedQuery: vi.fn() }));
 const { mockBatchEmbed } = vi.hoisted(() => ({ mockBatchEmbed: vi.fn() }));
 const { mockCosineSimilarity } = vi.hoisted(() => ({ mockCosineSimilarity: vi.fn() }));
 
-vi.mock("@/lib/llm/gemini", () => ({
+vi.mock("@/lib/llm", () => ({
   scoreArticles: mockScoreArticles,
 }));
 

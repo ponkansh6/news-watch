@@ -137,7 +137,15 @@ describe("Database actions tests", () => {
     expect(scoredArticles).toHaveLength(1);
     expect(scoredArticles[0].title).toBe("Updated Title");
     expect(scoredArticles[0].score).toBe(9.0);
-    expect(scoredArticles[0].embedding).toBe("test-embedding-2");
+
+    // Verify embedding persistence via getTablePage (admin table view)
+    const tablePageResult = await getTablePage("articles", {
+      table: "articles",
+      offset: 0,
+      limit: 10,
+    });
+    expect(tablePageResult.rows).toHaveLength(1);
+    expect(tablePageResult.rows[0].embedding).toBe("test-embedding-2");
   });
 
   it("should retrieve only scored articles", async () => {

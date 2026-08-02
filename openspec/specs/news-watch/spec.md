@@ -131,8 +131,7 @@ authors: [shunki]
 **Indexes:**
 
 - `idx_keyword`: On `keyword` for fast filtering
-- `idx_relevance_pub`: On `relevance` and `publishedAt` for sorted retrieval
-- `idx_recency_pub`: On `recency` and `publishedAt` for freshness-based queries
+- `idx_source_score_pub`: Composite on `source_id`, `score` DESC, `publishedAt` DESC for main dashboard queries
 - `idx_created_at`: On `createdAt` for chronological sorting
 
 ### keyword_embeddings (SQLite via Drizzle ORM)
@@ -158,7 +157,7 @@ Layout (src/app/layout.tsx)
         └── NewsSection (src/app/news-section.tsx - Client)
             ├── ArticleList (src/app/article-list.tsx - Client)
             └── SkeletonList (src/app/article-list.tsx - Client, skeleton placeholder)
-            └── Admin DB Viewer (src/app/admin/db/layout.tsx - RSC)
+            └── Admin DB Viewer (src/app/admin/db/layout.tsx - RSC, Basic Auth protected)
                 ├── Page (src/app/admin/db/page.tsx - RSC, table list landing)
                 └── [table] (src/app/admin/db/[table]/page.tsx - RSC, paginated table view)
                     ├── DataTable (src/app/admin/db/[table]/components/DataTable.tsx - Client)
@@ -171,7 +170,7 @@ Layout (src/app/layout.tsx)
 ```
 External APIs (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Blog)
   → src/lib/news/ (Fetchers)
-    → src/lib/llm/gemini.ts (LLM: usefulness + summary) + src/lib/vector-filter.ts (vector similarity: relevance)
+    → src/lib/llm/index.ts (LLM: usefulness + summary) + src/lib/vector-filter.ts (vector similarity: relevance)
     → src/app/api/fetch-news/route.ts (calcRecencyScore + weighted composite)
       → src/lib/db/actions.ts (Persistence)
           → SQLite Database (articles)

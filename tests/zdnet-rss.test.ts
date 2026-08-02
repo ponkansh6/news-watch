@@ -31,7 +31,7 @@ vi.mock("@/lib/news/itmedia", () => ({ searchITmedia: vi.fn().mockResolvedValue(
 vi.mock("@/lib/news/codezine", () => ({ searchCodeZine: vi.fn().mockResolvedValue([]) }));
 
 // LLMスコアリングは正常に動作するモック
-vi.mock("@/lib/llm/gemini", () => ({
+vi.mock("@/lib/llm", () => ({
   scoreArticles: vi.fn().mockResolvedValue([
     { relevance: 8, usefulness: 7, summary: "Test summary", reason: "Test reason" },
     { relevance: 8, usefulness: 7, summary: "Test summary", reason: "Test reason" },

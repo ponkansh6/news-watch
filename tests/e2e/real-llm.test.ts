@@ -13,7 +13,7 @@ vi.mock("@/lib/embeddings", async () => {
 });
 
 // Mock LLM - returns deterministic scored results
-vi.mock("@/lib/llm/gemini", () => ({
+vi.mock("@/lib/llm", () => ({
   scoreArticles: vi
     .fn()
     .mockImplementation((articles: { title: string; description: string | null }[]) =>
@@ -36,7 +36,7 @@ vi.mock("@/lib/llm/gemini", () => ({
 import * as dbMod from "@/lib/db";
 import { articles } from "@/lib/db/schema";
 import { gte } from "drizzle-orm";
-import { scoreArticles } from "@/lib/llm/gemini";
+import { scoreArticles } from "@/lib/llm";
 import { POST as fetchNewsRoute } from "@/app/api/fetch-news/route";
 import { NextRequest } from "next/server";
 import { CREATE_ARTICLES_TABLE_SQL } from "../helpers/db-setup";

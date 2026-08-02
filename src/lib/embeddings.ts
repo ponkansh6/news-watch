@@ -110,8 +110,6 @@ interface BatchEmbedItem {
   taskType: TaskType;
 }
 
-const BATCH_SIZE = EMBED_BATCH_SIZE; // Google API batch limit
-
 /**
  * Embed multiple texts in a single API call using batchEmbedContents.
  * Falls back to individual calls if batch fails.
@@ -122,10 +120,10 @@ export async function batchEmbed(items: BatchEmbedItem[]): Promise<number[][]> {
 
   const model = genAI.getGenerativeModel({ model: "gemini-embedding-2" });
 
-  // Split into chunks of BATCH_SIZE
+  // Split into chunks of EMBED_BATCH_SIZE
   const results: number[][] = [];
-  for (let i = 0; i < items.length; i += BATCH_SIZE) {
-    const chunk = items.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < items.length; i += EMBED_BATCH_SIZE) {
+    const chunk = items.slice(i, i + EMBED_BATCH_SIZE);
 
     await acquireEmbedSlot();
     try {

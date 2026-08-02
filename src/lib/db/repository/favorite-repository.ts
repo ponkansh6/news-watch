@@ -1,7 +1,7 @@
 import { db } from "../index";
 import { articles, favorites } from "../schema";
 import { eq, desc } from "drizzle-orm";
-import type { ArticleInsert } from "./article-repository";
+import { ARTICLE_LIST_COLUMNS, type ArticleListRow } from "../query/article-queries";
 
 /** Toggle favorite status for an article. Returns the new state (true = favorited). */
 export async function toggleFavorite(articleId: number): Promise<boolean> {
@@ -40,34 +40,15 @@ export async function getFavoriteIds(): Promise<number[]> {
 }
 
 /** Get full article data for all favorited articles. */
-export async function getFavoriteArticles(): Promise<ArticleInsert[]> {
+export async function getFavoriteArticles(): Promise<ArticleListRow[]> {
   try {
     const rows = await db
-      .select()
+      .select(ARTICLE_LIST_COLUMNS)
       .from(articles)
       .innerJoin(favorites, eq(articles.id, favorites.articleId))
       .orderBy(desc(favorites.createdAt));
 
-    return rows.map((r) => ({
-      title: r.articles.title,
-      description: r.articles.description,
-      url: r.articles.url,
-      urlToImage: r.articles.urlToImage,
-      publishedAt: r.articles.publishedAt,
-      sourceName: r.articles.sourceName,
-      sourceId: r.articles.sourceId,
-      author: r.articles.author,
-      keyword: r.articles.keyword,
-      summary: r.articles.summary,
-      relevance: r.articles.relevance,
-      usefulness: r.articles.usefulness,
-      recency: r.articles.recency,
-      recencyRefreshedAt: r.articles.recencyRefreshedAt,
-      reason: r.articles.reason,
-      scoredAt: r.articles.scoredAt,
-      score: r.articles.score,
-      embedding: r.articles.embedding,
-    }));
+    return rows as ArticleListRow[];
   } catch (err) {
     console.warn(`[db] getFavoriteArticles error:`, err);
     return [];

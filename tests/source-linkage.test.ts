@@ -12,7 +12,7 @@ vi.mock("@/lib/db/actions", () => ({
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("@/lib/llm/gemini", () => ({ scoreArticles: vi.fn(), scoreArticle: vi.fn() }));
+vi.mock("@/lib/llm", () => ({ scoreArticles: vi.fn(), scoreArticle: vi.fn() }));
 vi.mock("@/lib/embeddings", () => ({
   embedArticle: vi.fn(),
   embedQuery: vi.fn(),

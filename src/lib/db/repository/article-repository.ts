@@ -1,6 +1,6 @@
 import { db } from "../index";
 import { articles } from "../schema";
-import { and, lt, inArray, eq, notInArray, isNotNull, desc } from "drizzle-orm";
+import { and, lt, inArray, eq, notInArray, isNotNull } from "drizzle-orm";
 import { calcRecencyScore } from "../../scoring";
 import {
   DEFAULT_SCORED_ARTICLES_LIMIT,

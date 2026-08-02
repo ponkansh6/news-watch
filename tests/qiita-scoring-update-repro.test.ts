@@ -65,7 +65,7 @@ vi.mock("@/lib/news/codezine", () => ({
 }));
 
 // LLMスコアリングは正常に動作するモック
-vi.mock("@/lib/llm/gemini", () => ({
+vi.mock("@/lib/llm", () => ({
   scoreArticles: vi.fn().mockResolvedValue([
     {
       relevance: 8,

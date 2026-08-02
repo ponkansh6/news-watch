@@ -72,8 +72,7 @@ describe("schema consistency", () => {
   test("all defined indexes exist in the database and can be queried", async () => {
     const expectedIndexes = [
       { table: "articles", index: "idx_keyword" },
-      { table: "articles", index: "idx_relevance_pub" },
-      { table: "articles", index: "idx_recency_pub" },
+      { table: "articles", index: "idx_source_score_pub" },
       { table: "articles", index: "idx_created_at" },
     ];
 

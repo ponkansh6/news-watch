@@ -4,6 +4,25 @@ import { desc, asc, isNotNull, inArray, eq, sql, and } from "drizzle-orm";
 import { DEFAULT_SCORED_ARTICLES_LIMIT, DEFAULT_ALL_ARTICLES_LIMIT } from "../../constants";
 import { getAllowedSortColumns } from "@/app/admin/db/lib/table-config";
 
+/** Display-safe columns for article list (excludes embedding, description, and other unused fields). */
+export const ARTICLE_LIST_COLUMNS = {
+  id: articles.id,
+  title: articles.title,
+  url: articles.url,
+  publishedAt: articles.publishedAt,
+  sourceName: articles.sourceName,
+  sourceId: articles.sourceId,
+  keyword: articles.keyword,
+  summary: articles.summary,
+  relevance: articles.relevance,
+  usefulness: articles.usefulness,
+  recency: articles.recency,
+  score: articles.score,
+  reason: articles.reason,
+} as const;
+
+export type ArticleListRow = Awaited<ReturnType<typeof getScoredArticles>>[number];
+
 /** Articles with composite score, ordered by score then date. */
 export async function getScoredArticles(
   limit = DEFAULT_SCORED_ARTICLES_LIMIT,
@@ -19,7 +38,7 @@ export async function getScoredArticles(
       }
     }
     return await db
-      .select()
+      .select(ARTICLE_LIST_COLUMNS)
       .from(articles)
       .where(and(...conditions))
       .orderBy(desc(articles.score), desc(articles.publishedAt))

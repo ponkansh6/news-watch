@@ -1,12 +1,16 @@
-import { scoreArticles } from "@/lib/llm/gemini";
+import { scoreArticles } from "@/lib/llm";
 import { upsertArticle } from "@/lib/db/actions";
 import {
   calcRecencyScore,
   calcCompositeScore,
   normalizeSimilaritiesWithTagged,
 } from "@/lib/scoring";
-import { LLM_BATCH_SIZE, JAPANESE_RATIO_THRESHOLD, JAPANESE_LARGE_BATCH } from "./constants";
-import { SOFTMAX_SCALE } from "./constants";
+import {
+  LLM_BATCH_SIZE,
+  JAPANESE_RATIO_THRESHOLD,
+  JAPANESE_LARGE_BATCH,
+  SOFTMAX_SCALE,
+} from "./constants";
 import type { ArticleWithTag } from "@/lib/types";
 
 function getBatchSize(articles: ArticleWithTag[]): number {

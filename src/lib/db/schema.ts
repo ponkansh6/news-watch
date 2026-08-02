@@ -35,8 +35,11 @@ export const articles = sqliteTable(
   },
   (table) => ({
     keywordIdx: index("idx_keyword").on(table.keyword),
-    relevancePubIdx: index("idx_relevance_pub").on(table.relevance, table.publishedAt),
-    recencyPubIdx: index("idx_recency_pub").on(table.recency, table.publishedAt),
+    sourceScorePubIdx: index("idx_source_score_pub").on(
+      table.sourceId,
+      table.score,
+      table.publishedAt,
+    ),
     createdAtIdx: index("idx_created_at").on(table.createdAt),
   }),
 );
@@ -70,8 +73,6 @@ export const favorites = sqliteTable(
       .$defaultFn(() => new Date().toISOString()),
   },
   (table) => ({
-    uniqueArticle: uniqueIndex("idx_fav_article").on(table.articleId),
+    uniqueArticle: uniqueIndex("favorites_article_id_unique").on(table.articleId),
   }),
 );
-
-// test

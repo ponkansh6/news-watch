@@ -25,7 +25,7 @@ export default async function BookmarksPage() {
             No bookmarked articles yet.
           </div>
         ) : (
-          <ArticleList articles={articles as any} />
+          <ArticleList articles={articles} />
         )}
       </main>
     </div>

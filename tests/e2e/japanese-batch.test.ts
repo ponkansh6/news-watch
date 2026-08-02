@@ -1,8 +1,8 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
-import * as gemini from "@/lib/llm/gemini";
+import * as gemini from "@/lib/llm";
 
-vi.mock("@/lib/llm/gemini", () => ({
+vi.mock("@/lib/llm", () => ({
   scoreArticles: vi.fn().mockImplementation(async (articles) => {
     return articles.map(() => ({
       summary: "テスト用サマリーです（20文字以上）",

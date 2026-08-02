@@ -31,7 +31,7 @@ vi.mock("@/lib/embeddings", () => ({
 
 // ── Mock LLM (configurable per test via vi.mocked) ─────────────────
 const mockScoreArticles = vi.fn();
-vi.mock("@/lib/llm/gemini", () => ({
+vi.mock("@/lib/llm", () => ({
   scoreArticles: (...args: any[]) => mockScoreArticles(...args),
 }));
 

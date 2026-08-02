@@ -45,7 +45,7 @@ const mockScoreArticle = vi.fn(async (article: any) => ({
   usefulness: 8,
   reason: "フォールバックによる個別スコアリング",
 }));
-vi.mock("@/lib/llm/gemini", () => ({
+vi.mock("@/lib/llm", () => ({
   scoreArticles: (...args: any[]) => mockScoreArticles(...args),
   scoreArticle: (article: any) => mockScoreArticle(article),
 }));
@@ -318,9 +318,9 @@ describe("xtech: パイプライン統合（実データフィクスチャ）", 
   });
 
   it("LLMバッチが全nullを返した場合、savedCount=0（個別フォールバックはscoreArticles内部で処理）", async () => {
-    // NOTE: このテストでは @/lib/llm/gemini モジュール全体がモックされているため、
+    // NOTE: このテストでは @/lib/llm モジュール全体がモックされているため、
     // scoreArticles 内部のフォールバックロジック（全null→個別スコアリング）は実行されない。
-    // 内部フォールバックのテストは tests/lib/llm/gemini.test.ts で実施する。
+    // 内部フォールバックのテストは tests/lib/llm.test.ts で実施する。
     mockScoreArticles.mockResolvedValue([null, null]);
 
     const articles: NormalizedArticle[] = [

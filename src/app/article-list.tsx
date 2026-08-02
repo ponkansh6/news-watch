@@ -2,27 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { KEYWORD_LABELS } from "@/lib/config";
+import type { ArticleListRow } from "@/lib/db/query/article-queries";
 
-export interface Article {
-  id: number;
-  title: string;
-  description: string | null;
-  url: string;
-  urlToImage: string | null;
-  publishedAt: string;
-  sourceName: string | null;
-  sourceId: string | null;
-  author: string | null;
-  keyword: string | null;
-  summary: string | null;
-  relevance: number | null;
-  usefulness: number | null;
-  recency: number | null;
-  score: number | null;
-  reason: string | null;
-  scoredAt: string | null;
-  createdAt: string | null;
-}
+export type Article = ArticleListRow;
 
 function formatDate(iso: string): string {
   try {

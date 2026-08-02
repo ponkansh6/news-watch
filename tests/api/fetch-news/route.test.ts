@@ -1,7 +1,7 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST, GET } from "@/app/api/fetch-news/route";
-import * as gemini from "@/lib/llm/gemini";
+import * as gemini from "@/lib/llm";
 import * as db from "@/lib/db/actions";
 
 // Mock news source modules
@@ -49,7 +49,7 @@ vi.mock("@/lib/news/hatena-discovery", () => ({
   discoverHatenaFeeds: vi.fn().mockResolvedValue({ discovered: 0, updated: 0, errors: [] }),
 }));
 
-vi.mock("@/lib/llm/gemini", () => ({
+vi.mock("@/lib/llm", () => ({
   scoreArticles: vi.fn().mockResolvedValue([
     {
       relevance: 9,

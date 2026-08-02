@@ -46,7 +46,7 @@ vi.mock("@/lib/news/yamadashy", () => ({
   ]),
 }));
 
-vi.mock("@/lib/llm/gemini", () => ({
+vi.mock("@/lib/llm", () => ({
   scoreArticles: vi
     .fn()
     .mockImplementation((articles: { title: string; description: string | null }[]) =>

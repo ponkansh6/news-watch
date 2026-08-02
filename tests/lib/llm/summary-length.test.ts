@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SCORING_PROMPT, BATCH_SCORING_PROMPT } from "@/lib/llm/prompts";
-import { LLMResponseSchema } from "@/lib/llm/gemini";
+import { LLMResponseSchema } from "@/lib/llm";
 import { z } from "zod/v4";
 
 describe("Summary length and prompt constraints (20-40 characters)", () => {

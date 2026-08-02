@@ -7,13 +7,10 @@ import "@testing-library/jest-dom/vitest";
 const mockArticle: Article = {
   id: 42,
   title: "Test Article Title",
-  description: "Test description",
   url: "https://example.com/article",
-  urlToImage: null,
   publishedAt: "2026-01-01T00:00:00Z",
   sourceName: "Zenn",
   sourceId: "zenn",
-  author: "Author",
   keyword: "test",
   summary: "Test summary",
   relevance: 8,
@@ -21,8 +18,6 @@ const mockArticle: Article = {
   recency: 8,
   score: 8,
   reason: "This is a great reason for testing",
-  scoredAt: "2026-01-01T00:00:00Z",
-  createdAt: "2026-01-01T00:00:00Z",
 };
 
 describe("FavoriteArticleList Component", () => {

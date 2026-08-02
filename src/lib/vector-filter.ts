@@ -32,7 +32,7 @@ export async function tagArticlesByKeyword(
     return articles.map((article) => ({ article, embedding: [], keyword: "", similarity: 0 }));
   }
 
-  // 1. 既存の記事埋め込みをDBから取得（バッチ查询）
+  // 1. 既存の記事埋め込みをDBから取得（バッチクエリ）
   const urls = articles.map((a) => a.url);
   const existingEmbeddings = new Map<string, number[]>();
   try {

@@ -57,8 +57,8 @@ vi.mock("@/lib/news/qiita", () => ({
     .mockImplementation(() => Promise.resolve(Object.values(QIITA_ARTICLES).flat())),
 }));
 
-vi.mock("@/lib/llm/gemini", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/llm/gemini")>();
+vi.mock("@/lib/llm", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/llm")>();
   return {
     ...actual,
     scoreArticles: mockScoreArticles,
@@ -314,7 +314,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     });
 
     try {
-      const { scoreArticle } = await import("@/lib/llm/gemini");
+      const { scoreArticle } = await import("@/lib/llm");
       const result = await scoreArticle({ title: "Test Qiita Article", description: null });
 
       expect(result).not.toBeNull();

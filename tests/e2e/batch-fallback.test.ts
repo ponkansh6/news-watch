@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { scoreArticles } from "@/lib/llm/gemini";
+import { scoreArticles } from "@/lib/llm";
 
 const { mockGenerateContent } = vi.hoisted(() => ({
   mockGenerateContent: vi.fn(),
