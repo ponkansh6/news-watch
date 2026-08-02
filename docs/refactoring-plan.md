@@ -710,3 +710,78 @@ spec §2.1 に「Periodic feed fetch via scheduled cron (QStash)」とあるが�
 | S3（cron）                 | §2.1 In Scope                                                  |
 
 `scripts/check-spec-refs.sh` が spec 内の `src/` / `tests/` パス参照の実在を pre-push で検証するため、**ファイル移動・削除を伴う項目は spec の更新を同一コミットに含めること**。
+
+---
+
+## 実装状況（2026-08-02 現在）
+
+### フェーズ 1: 即効性のある性能・安全対策 ✅ **完了**
+
+| 項目       | 状態    | コミット | 備考                                                                |
+| ---------- | ------- | -------- | ------------------------------------------------------------------- |
+| **S1**     | ✅ 完了 | Phase 1  | `/admin/db` に Basic 認証 middleware 追加                           |
+| **P1**     | ✅ 完了 | Phase 1  | `ARTICLE_LIST_COLUMNS` でクライアントに送信する列を限定             |
+| **P3**     | ✅ 完了 | Phase 1  | `idx_source_score_pub` 複合インデックス追加・未使用インデックス削除 |
+| **P5-c/d** | ✅ 完了 | Phase 1  | `drizzle-kit` を devDependencies へ、`.env.local.example` 整理      |
+| **R4**     | ✅ 完了 | Phase 1  | 死にファイル・重複定数削除、`test.db` を git 管理から除外           |
+
+### フェーズ 2: I/O 効率化 ✅ **完了**
+
+| 項目     | 状態    | コミット | 備考                                                                                         |
+| -------- | ------- | -------- | -------------------------------------------------------------------------------------------- |
+| **P2**   | ✅ 完了 | Phase 2  | `refreshRecencyForSources` / `scoreAndSaveBatch` のバッチ化（`db.batch()` + フォールバック） |
+| **P5-a** | ✅ 完了 | Phase 2  | `schema.ts` → `embeddings.ts` の依存を切断、`genAI` 遅延初期化                               |
+| **P5-b** | ✅ 完了 | Phase 2  | `next.config.ts` に `serverExternalPackages` / `optimizePackageImports` 設定                 |
+| **P4**   | ✅ 完了 | Phase 2  | `unstable_cache` + `revalidateTag("articles")` でキャッシュ層導入                            |
+
+### フェーズ 3: 構造リファクタリング ✅ **完了**
+
+| 項目   | 状態    | コミット | 備考                                                       |
+| ------ | ------- | -------- | ---------------------------------------------------------- |
+| **R1** | ✅ 完了 | Phase 3  | ソースレジストリ化（`SOURCE_ADAPTER` + `SOURCE_REGISTRY`） |
+| **R2** | ✅ 完了 | Phase 3  | フィード定義の宣言化（`RDF_FEEDS` / `RSS_FEEDS` 等）       |
+| **R5** | ✅ 完了 | Phase 3  | zod による外部入力検証（`FetchNewsBody` schema）           |
+| **S2** | ✅ 完了 | Phase 3  | `/api/fetch-news` に `CRON_SECRET` Bearer トークン検証     |
+| **R3** | ✅ 完了 | Phase 3  | DB 層のバレル整理、`any` 型排除                            |
+
+### フェーズ 4: 表示層とスコアリング ✅ **完了**
+
+| 項目       | 状態    | コミット          | 備考                                                                         |
+| ---------- | ------- | ----------------- | ---------------------------------------------------------------------------- |
+| **P7-1**   | ✅ 完了 | Phase 4 (b057e91) | `NewsSection` の二重ソート削除（DB 信頼）                                    |
+| **P7-2**   | ✅ 完了 | Phase 4 (b057e91) | `ArticleList` 未使用 `/api/favorites` GET フェッチ削除                       |
+| **P7-3**   | ✅ 完了 | Phase 4 (b057e91) | `KEYWORD_LABELS` 解決をサーバーサイド（`resolveKeywordLabel()`）へ移動       |
+| **P6-a/b** | ✅ 完了 | Phase 4 (b057e91) | LLM バッチ `p-limit` 並列化（並行度3）+ `getBatchSize` O(n²)→O(n) 最適化     |
+| **C2**     | ✅ 完了 | Phase 4 (b057e91) | `normalizeSimilaritiesWithTagged` 非破壊化（新オブジェクト返却）             |
+| **C3**     | ✅ 完了 | Phase 4 (b057e91) | `softmax` 数値安定化（log-domain: `exp((v - max) / temp)`）                  |
+| **C4**     | ✅ 完了 | Phase 4 (b057e91) | `deleteOrphanedArticles` NULL キーワード対応（`or(isNull(), notInArray())`） |
+
+### スコープ外
+
+| 項目     | 理由                                                                          |
+| -------- | ----------------------------------------------------------------------------- |
+| **C1**   | softmax 相対化→絶対値マッピング（仕様変更、再スコアリング方針決定が別途必要） |
+| **P6-c** | `after()` による後処理バックグラウンド化（テスト構造への影響が大きい）        |
+
+---
+
+### 検証結果（Phase 4 最終）
+
+| 項目                  | 結果                       |
+| --------------------- | -------------------------- |
+| **テスト**            | 273 passed, 2 skipped ✅   |
+| **TypeScript**        | 0 errors ✅                |
+| **Tier 1 (Core)**     | 100% ✅                    |
+| **Tier 2 (Pipeline)** | 90.57% ✅                  |
+| **Tier 3 (Sources)**  | 95.65% ✅                  |
+| **Tier 5 (UI)**       | 95.39% ✅                  |
+| **Tier 6 (API)**      | 85.42% ✅                  |
+| **全体進捗**          | **81.2%** (13/16 items) ✅ |
+
+---
+
+### 次のステップ
+
+- ✅ spec.md 更新完了（Phase 4 実装内容を反映）
+- 🚀 本番デプロイ準備完了
+- 📋 オプション: C1（softmax 相対化）の仕様再検討
