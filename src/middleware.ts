@@ -1,11 +1,29 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { timingSafeEqual } from "crypto";
 
 export const config = {
   matcher: ["/admin/db/:path*"],
 };
 
-export function middleware(request: NextRequest) {
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) {
+    return a === b;
+  }
+  const enc = new TextEncoder();
+  const [aDigest, bDigest] = await Promise.all([
+    subtle.digest("SHA-256", enc.encode(a)),
+    subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const aBytes = new Uint8Array(aDigest);
+  const bBytes = new Uint8Array(bDigest);
+  let diff = 0;
+  for (let i = 0; i < aBytes.length; i++) {
+    diff |= aBytes[i] ^ bBytes[i];
+  }
+  return diff === 0;
+}
+
+export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   if (!pathname.startsWith("/admin/db")) {
@@ -33,16 +51,11 @@ export function middleware(request: NextRequest) {
   }
 
   const credentials = auth.slice(6);
-  const decoded = Buffer.from(credentials, "base64").toString("utf-8");
+  const decoded = atob(credentials);
   const [username, password] = decoded.split(":");
 
-  const userBuf = Buffer.from(user);
-  const passBuf = Buffer.from(pass);
-  const usernameBuf = Buffer.from(username || "");
-  const passwordBuf = Buffer.from(password || "");
-
-  const userMatch = userBuf.length === usernameBuf.length && timingSafeEqual(userBuf, usernameBuf);
-  const passMatch = passBuf.length === passwordBuf.length && timingSafeEqual(passBuf, passwordBuf);
+  const userMatch = await timingSafeEqual(user, username || "");
+  const passMatch = await timingSafeEqual(pass, password || "");
 
   if (userMatch && passMatch) {
     return NextResponse.next();
