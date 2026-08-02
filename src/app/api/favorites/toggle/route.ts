@@ -1,21 +1,18 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { toggleFavorite } from "@/lib/db/actions";
+import { ToggleFavoriteBodySchema } from "./schema";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { articleId } = body;
-
-    if (typeof articleId !== "number" || isNaN(articleId)) {
+    const parsed = ToggleFavoriteBodySchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json({ error: "Invalid articleId" }, { status: 400 });
     }
 
-    const favorited = await toggleFavorite(articleId);
-
-    // Invalidate bookmarks cache
+    const favorited = await toggleFavorite(parsed.data.articleId);
     revalidateTag("favorites", "max");
-
     return NextResponse.json({ favorited });
   } catch (err) {
     console.error("[api] favorites/toggle error:", err);

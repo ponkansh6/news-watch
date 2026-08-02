@@ -1,18 +1,13 @@
+import { SOURCE_REGISTRY, SOURCE_IDS } from "@/lib/news/registry";
+
 export interface SourceDef {
   id: string;
   name: string;
 }
 
-export const SOURCES: SourceDef[] = [
-  { id: "zenn", name: "Zenn" },
-  { id: "qiita", name: "Qiita" },
-  { id: "yamadashy", name: "Tech Blog" },
-  { id: "itmedia", name: "@IT" },
-  { id: "codezine", name: "CodeZine" },
-  { id: "zdnet", name: "ZDNet Japan" },
-  { id: "xtech", name: "日経クロステック" },
-  { id: "cloudwatch", name: "クラウド Watch" },
-  { id: "hatena", name: "Hatena Blog" },
-];
+export const SOURCES: SourceDef[] = SOURCE_IDS.map((id) => ({
+  id,
+  name: SOURCE_REGISTRY[id].name,
+}));
 
-export const SOURCE_IDS = SOURCES.map((s) => s.id);
+export { SOURCE_IDS };

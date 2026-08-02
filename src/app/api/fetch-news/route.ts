@@ -1,166 +1,24 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { KEYWORDS } from "@/lib/config";
-import { searchZenn, type ZennArticle } from "@/lib/news/zenn";
-import { searchQiita, type QiitaFeedItem } from "@/lib/news/qiita";
-import { searchYamadashy, type YamadashyItem } from "@/lib/news/yamadashy";
-import { searchITmedia, type ItmediaItem } from "@/lib/news/itmedia";
-import { searchCodeZine, type CodeZineItem } from "@/lib/news/codezine";
-import { searchZdnet, type ZdnetItem } from "@/lib/news/zdnet";
-import { searchXtech, type XtechItem } from "@/lib/news/xtech";
-import { searchCloudWatch, type CloudWatchItem } from "@/lib/news/cloudwatch";
-import { searchHatena, type HatenaItem } from "@/lib/news/hatena";
+import { SOURCE_IDS, getSourceAdapter, normalizeUnknownSource } from "@/lib/news/registry";
+import { FetchNewsBodySchema } from "./schema";
 import { cleanupOrphaned, refreshRecency, cleanupLowScored } from "./pipeline/maintenance";
 import { type NormalizedArticle } from "@/lib/types";
-import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
 import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 
 // Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
 
-export const SUPPORTED_SOURCE_IDS = [
-  "zenn",
-  "qiita",
-  "yamadashy",
-  "itmedia",
-  "codezine",
-  "zdnet",
-  "xtech",
-  "cloudwatch",
-  "hatena",
-];
+export const SUPPORTED_SOURCE_IDS = SOURCE_IDS;
 
 const MAX_ARTICLES = 20;
+const FETCH_LIMIT = 20;
 
-export function normalize(
-  article:
-    | ZennArticle
-    | QiitaFeedItem
-    | YamadashyItem
-    | ItmediaItem
-    | CodeZineItem
-    | ZdnetItem
-    | XtechItem
-    | CloudWatchItem
-    | HatenaItem,
-  sourceId: string,
-): NormalizedArticle {
-  let sourceName: string | null = null;
-  let author: string | null = null;
-  let title = "";
-  let url = "";
-  let publishedAt = "";
-  let urlToImage: string | null = null;
-
-  switch (sourceId) {
-    case "zenn": {
-      const z = article as ZennArticle;
-      title = z.title;
-      url = `https://zenn.dev${z.path}`;
-      publishedAt = z.published_at ?? new Date().toISOString();
-      sourceName = "Zenn";
-      author = z.user?.name ?? z.user?.username ?? null;
-      break;
-    }
-    case "qiita": {
-      const q = article as QiitaFeedItem;
-      title = q.title;
-      url = typeof q.link === "string" ? q.link : q.link["@_href"];
-      publishedAt = q.published ?? new Date().toISOString();
-      sourceName = "Qiita";
-      author = q.author?.name ?? null;
-      break;
-    }
-
-    case "yamadashy": {
-      const yd = article as YamadashyItem;
-      title = yd.title;
-      url = yd.link ?? "";
-      publishedAt = yd.pubDate ?? new Date().toISOString();
-      sourceName = "Tech Blog";
-      author = yd.author ?? null;
-      break;
-    }
-    case "itmedia": {
-      const it = article as ItmediaItem;
-      title = it.title;
-      url = it.link;
-      publishedAt = it.pubDate ?? new Date().toISOString();
-      sourceName = "@IT";
-      author = null;
-      break;
-    }
-    case "codezine": {
-      const cz = article as CodeZineItem;
-      title = cz.title;
-      url = cz.link;
-      publishedAt = cz.pubDate ?? new Date().toISOString();
-      sourceName = "CodeZine";
-      author = null;
-      break;
-    }
-    case "zdnet": {
-      const z = article as ZdnetItem;
-      title = z.title;
-      url = z.link;
-      publishedAt = z.date ?? new Date().toISOString();
-      sourceName = "ZDNet Japan";
-      author = z.creator ?? null;
-      break;
-    }
-    case "xtech": {
-      const x = article as XtechItem;
-      title = x.title;
-      url = x.link;
-      publishedAt = x.date ?? new Date().toISOString();
-      sourceName = "日経クロステック";
-      author = x.creator ?? null;
-      break;
-    }
-    case "cloudwatch": {
-      const cw = article as CloudWatchItem;
-      title = cw.title;
-      url = cw.link;
-      publishedAt = cw.date ?? new Date().toISOString();
-      sourceName = "クラウド Watch";
-      author = cw.creator ?? null;
-      break;
-    }
-    case "hatena": {
-      const h = article as HatenaItem;
-      title = h.title;
-      url = h.link;
-      publishedAt = h.pubDate ?? new Date().toISOString();
-      sourceName = "Hatena Blog";
-      author = h.author ?? null;
-      break;
-    }
-    default: {
-      const a = article as any;
-      title = a.title;
-      url = a.url ?? a.link ?? "";
-      publishedAt = a.publishedAt ?? a.published ?? a.pubDate ?? a.date ?? new Date().toISOString();
-      sourceName = a.source?.name ?? null;
-      author = a.author ?? a.creator ?? null;
-    }
-  }
-
-  return {
-    title,
-    description:
-      "description" in article
-        ? ((article as any).description ?? null)
-        : "content" in article
-          ? ((article as any).content ?? null)
-          : null,
-    url,
-    urlToImage,
-    publishedAt,
-    sourceName,
-    sourceId,
-    author,
-  };
+export function normalize(article: unknown, sourceId: string): NormalizedArticle {
+  const adapter = getSourceAdapter(sourceId);
+  return adapter ? adapter.toArticle(article, sourceId) : normalizeUnknownSource(article, sourceId);
 }
 
 /* ---------- deduplicate by normalised URL ---------- */
@@ -185,103 +43,26 @@ function deduplicate(articles: NormalizedArticle[]): NormalizedArticle[] {
 /* ---------- POST handler ---------- */
 
 export async function POST(request: Request) {
-  // Remove articles for keywords no longer in config
   await cleanupOrphaned();
 
-  // Parse request body to get selected source
-  let selectedSource: string = "zenn";
-  try {
-    const body = await request.json();
-    selectedSource = body.source || "zenn";
-  } catch {
-    selectedSource = "zenn";
+  const rawBody = await request.json().catch(() => ({}));
+  const parsed = FetchNewsBodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { ok: false, error: "invalid source", issues: parsed.error.issues },
+      { status: 400 },
+    );
   }
+  const selectedSource = parsed.data.source;
+  const adapter = getSourceAdapter(selectedSource)!;
 
-  const results: {
-    keyword: string;
-    fetched: number;
-    saved?: number;
-    errors: string[];
-  }[] = [];
+  const raw = await adapter.fetch(FETCH_LIMIT);
+  const all = deduplicate(raw.map((item) => adapter.toArticle(item, adapter.id))).slice(
+    0,
+    MAX_ARTICLES,
+  );
+  const perSource = [{ source: adapter.id, fetched: raw.length }];
 
-  // Build fetchPromises and sourceOrder for the selected source
-  const fetchPromises: Array<Promise<any>> = [];
-  const sourceOrder: string[] = [];
-
-  if (selectedSource === "zenn") {
-    fetchPromises.push(searchZenn(20));
-    sourceOrder.push("zenn");
-  }
-  if (selectedSource === "qiita") {
-    fetchPromises.push(searchQiita(20));
-    sourceOrder.push("qiita");
-  }
-
-  if (selectedSource === "yamadashy") {
-    fetchPromises.push(searchYamadashy(20));
-    sourceOrder.push("yamadashy");
-  }
-  if (selectedSource === "itmedia") {
-    fetchPromises.push(searchITmedia(20));
-    sourceOrder.push("itmedia");
-  }
-  if (selectedSource === "codezine") {
-    fetchPromises.push(searchCodeZine(20));
-    sourceOrder.push("codezine");
-  }
-  if (selectedSource === "zdnet") {
-    fetchPromises.push(searchZdnet(20));
-    sourceOrder.push("zdnet");
-  }
-  if (selectedSource === "xtech") {
-    fetchPromises.push(searchXtech(20));
-    sourceOrder.push("xtech");
-  }
-  if (selectedSource === "cloudwatch") {
-    fetchPromises.push(searchCloudWatch(20));
-    sourceOrder.push("cloudwatch");
-  }
-  if (selectedSource === "hatena") {
-    const hatena = await searchHatena(20);
-    fetchPromises.push(Promise.resolve(hatena));
-    sourceOrder.push("hatena");
-  }
-
-  const fetchedResults = await Promise.all(fetchPromises);
-
-  // Per-source diagnostic breakdown. Kept separate from `results` so the UI's
-  // completion accounting (which uses the post-dedupe `all.length`) is unchanged.
-  const perSource = sourceOrder.map((source, index) => ({
-    source,
-    fetched: (fetchedResults[index] ?? []).length,
-  }));
-
-  // Normalize + deduplicate + slice to 50 total articles
-  const resultsBySource: Record<string, any[]> = {};
-  sourceOrder.forEach((source, index) => {
-    resultsBySource[source] = fetchedResults[index];
-  });
-
-  const all = deduplicate([
-    ...(resultsBySource.zenn ? resultsBySource.zenn.map((a) => normalize(a, "zenn")) : []),
-    ...(resultsBySource.qiita ? resultsBySource.qiita.map((a) => normalize(a, "qiita")) : []),
-
-    ...(resultsBySource.yamadashy
-      ? resultsBySource.yamadashy.map((a) => normalize(a, "yamadashy"))
-      : []),
-    ...(resultsBySource.itmedia ? resultsBySource.itmedia.map((a) => normalize(a, "itmedia")) : []),
-    ...(resultsBySource.codezine
-      ? resultsBySource.codezine.map((a) => normalize(a, "codezine"))
-      : []),
-    ...(resultsBySource.zdnet ? resultsBySource.zdnet.map((a) => normalize(a, "zdnet")) : []),
-    ...(resultsBySource.xtech ? resultsBySource.xtech.map((a) => normalize(a, "xtech")) : []),
-    ...(resultsBySource.cloudwatch
-      ? resultsBySource.cloudwatch.map((a) => normalize(a, "cloudwatch"))
-      : []),
-    ...(resultsBySource.hatena ? resultsBySource.hatena.map((a) => normalize(a, "hatena")) : []),
-  ]).slice(0, MAX_ARTICLES);
-
-  // Build a single result with keyword "latest"
   const result = { keyword: "latest", fetched: all.length, errors: [] as string[] } as {
     keyword: string;
     fetched: number;
@@ -303,12 +84,8 @@ export async function POST(request: Request) {
     }
   }
 
-  results.push(result);
-
-  // Remove low-scored articles after each batch
+  const results = [result];
   await cleanupLowScored(since);
-
-  // Invalidate dashboard cache
   revalidateTag("articles", "max");
 
   return NextResponse.json({ ok: true, message: "Scoring queued", results, perSource, since });

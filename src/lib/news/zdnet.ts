@@ -1,7 +1,5 @@
-import { fetchRssText } from "./base/rss-fetcher";
-import { parseRdf, StandardRdfItem } from "./base/rdf-parser";
-
-const FEED_URL = "https://feeds.japan.zdnet.com/rss/zdnet/all.rdf";
+import { createRdfSource, RDF_FEEDS } from "./feeds";
+import { parseRdf, type StandardRdfItem } from "./base/rdf-parser";
 
 export type ZdnetItem = StandardRdfItem;
 
@@ -9,10 +7,4 @@ export function parseZdnetRss(xml: string): ZdnetItem[] {
   return parseRdf(xml);
 }
 
-export async function searchZdnet(limit = 50): Promise<ZdnetItem[]> {
-  const xml = await fetchRssText(FEED_URL, "zdnet", {
-    headers: { "User-Agent": "news-watch/1.0 (+https://github.com/shunki/news-watch)" },
-  });
-  if (!xml) return [];
-  return parseZdnetRss(xml).slice(0, limit);
-}
+export const searchZdnet = createRdfSource("zdnet", RDF_FEEDS.zdnet, 50);

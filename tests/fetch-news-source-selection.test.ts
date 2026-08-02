@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/fetch-news/route";
 
@@ -155,5 +155,20 @@ describe("fetch-news route source selection", () => {
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
     expect(data.results[0].errors).toHaveLength(0);
+  });
+
+  test("should return 400 when invalid source is provided", async () => {
+    const request = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "not-a-real-source" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.ok).toBe(false);
+    expect(data.error).toBe("invalid source");
   });
 });
