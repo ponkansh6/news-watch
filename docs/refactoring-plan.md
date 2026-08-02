@@ -810,3 +810,189 @@ spec §2.1 に「Periodic feed fetch via scheduled cron (QStash)」とあるが�
 **オプション**:
 
 - C1: softmax → 絶対値スコア（仕様変更、再スコアリング方針決定必須）
+
+---
+
+## Phase 5: R3 DB層構造最適化（詳細実行計画）
+
+### R3-a: DB層バレル統合（優先度：高 / 難度：低）
+
+**概要**: `src/lib/db/actions.ts` を廃止し、すべての import を `@/lib/db` に統一する。
+
+**現状**:
+
+- `actions.ts` は純粋な re-export バレル（47 行）
+- 8 箇所から `@/lib/db/actions` を import
+- `@/lib/db` から直接 import する箇所も混在
+
+**修正内容** (作業量：**5-10 分**)：
+
+```bash
+# 1. 8 箇所の import パス変更
+sed -i 's#@/lib/db/actions#@/lib/db#g' \
+  src/app/page.tsx \
+  src/app/bookmarks/page.tsx \
+  src/app/api/fetch-news/pipeline/maintenance.ts \
+  src/app/api/favorites/toggle/route.ts \
+  src/app/api/favorites/route.ts \
+  src/app/admin/db/page.tsx \
+  src/lib/score-pipeline.ts \
+  src/app/admin/db/[table]/page.tsx
+
+# 2. actions.ts 削除
+rm src/lib/db/actions.ts
+
+# 3. index.ts が全エクスポートを含むことを確認（既に含む）
+
+# 4. テスト実行
+pnpm test
+```
+
+**テスト修正**: 不要（re-export なので）
+
+**リスク**: 低（単純な import パス変更）
+
+---
+
+### R3-c & R3-d: getTablePage 軽微改善（優先度：中 / 難度：低）
+
+#### R3-d: 引数重複削除
+
+**現状**:
+
+```ts
+// admin/db/[table]/page.tsx:27
+const result = await getTablePage(table, { table, sortCol, dir, limit });
+```
+
+引数 `table` と `options.table` が重複。
+
+**修正** (作業量：**3-5 分**):
+
+```ts
+// 1. query/article-queries.ts
+interface TablePageOptions {
+  sortCol?: string;
+  // 2. table を削除
+  dir?: "asc" | "desc";
+  limit?: number;
+}
+
+export async function getTablePage<T extends TableName>(
+  table: T,
+  options: TablePageOptions,
+) { ... }
+
+// 2. admin/db/[table]/page.tsx
+const result = await getTablePage(table, { sortCol, dir, limit });
+```
+
+---
+
+#### R3-c: countRows の重複削除
+
+**現状**:
+
+- `getTablePage` 内で各テーブルの COUNT を 3 箇所でインライン実装
+- 別途 `countRows()` が定義されている
+
+**修正** (作業量：**5-10 分**):
+
+```ts
+// 1. countRows を export
+export async function countRows(tableObj: any): Promise<number> { ... }
+
+// 2. getTablePage 内の COUNT インラインをまとめる
+export async function getTableCounts() {
+  return Promise.all([
+    countRows(articles),
+    countRows(keywordEmbeddings),
+    countRows(favorites),
+  ]);
+}
+```
+
+---
+
+### R3-b: getTablePage 型安全化（優先度：低 / 難度：中）
+
+**現状**:
+
+```ts
+export async function getTablePage<T extends TableName>(
+  table: T,
+  options?: TablePageOptions,
+): Promise<{ rows: any[]; total: number }> {
+  // ← any[]
+  const tableObj = TABLE_CONFIG[table];
+  const colsRecord = tableObj as Record<string, any>; // ← any キャスト
+  // ...
+}
+```
+
+**修正戦略**:
+
+**オプション A（推奨）**: TABLE_CONFIG 構造化
+
+```ts
+// TABLE_CONFIG に列参照を持たせる
+const TABLE_CONFIG = {
+  articles: {
+    table: articles,
+    columns: { id: articles.id, title: articles.title, ... },
+  },
+  // ...
+} satisfies Record<TableName, TableConfig>;
+
+export async function getTablePage<T extends TableName>(
+  table: T,
+  options?: TablePageOptions,
+): Promise<{ rows: ReturnType<typeof TABLE_CONFIG[T]['columns']>[]; total: number }> {
+  const config = TABLE_CONFIG[table];
+  // config.columns から型推論
+}
+```
+
+**オプション B（シンプル）**: switch で分岐
+
+```ts
+export async function getTablePage<T extends TableName>(table: T, ...) {
+  switch (table) {
+    case "articles":
+      return {
+        rows: (result as typeof articles[]),
+        total,
+      };
+    case "keyword_embeddings":
+      return {
+        rows: (result as typeof keywordEmbeddings[]),
+        total,
+      };
+    // ...
+  }
+}
+```
+
+**テスト修正**: `admin/db/[table]/page.tsx` のテストで型チェック (10 分)
+
+**リスク**: 中（型推論の複雑性、テスト修正が必要）
+
+---
+
+### 実装順序と作業量サマリー
+
+| #   | 項目     | 難度 | 作業量     | テスト修正 | リスク | 実行       |
+| --- | -------- | ---- | ---------- | ---------- | ------ | ---------- |
+| 1   | **R3-a** | 低   | 5-10m      | 不要       | 低     | **推奨順** |
+| 2   | **R3-d** | 低   | 3-5m       | 不要       | 低     | 次         |
+| 3   | **R3-c** | 低   | 5-10m      | 不要       | 低     | 次         |
+| 4   | **R3-b** | 中   | 30-40m     | 必要 (10m) | 中     | 最後       |
+|     | **合計** | —    | **50-65m** | **10m**    | —      | —          |
+
+**本番デプロイ前**: R3-a を必ず実施（他は optional）
+
+**推奨フェーズ分け**:
+
+- **Phase 5-α** (即時): R3-a のみ → 低リスク、即効果
+- **Phase 5-β** (1 週間後): R3-c/d → 軽微改善
+- **Phase 5-γ** (2 週間後): R3-b → 型安全化（時間あるなら）
