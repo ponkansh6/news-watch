@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import { scoreArticles } from "@/lib/llm";
 import { upsertArticles } from "@/lib/db/actions";
 import {
@@ -9,6 +10,7 @@ import {
   LLM_BATCH_SIZE,
   JAPANESE_RATIO_THRESHOLD,
   JAPANESE_LARGE_BATCH,
+  LLM_BATCH_CONCURRENCY,
   SOFTMAX_SCALE,
 } from "./constants";
 import type { ArticleWithTag } from "@/lib/types";
@@ -43,27 +45,30 @@ export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<numb
     }
   }
 
-  let savedCount = 0;
+  // Build batch list with pre-computed batch sizes (P6-b: compute once per group)
+  const batches: { items: ArticleWithTag[]; keyword: string | null }[] = [];
 
-  // Score and save keyword-grouped articles
   for (const [keyword, group] of taggedByKeyword) {
-    for (let start = 0; start < group.length; ) {
-      const batchSize = getBatchSize(group.slice(start));
-      const batch = group.slice(start, start + batchSize);
-      savedCount += await scoreAndSaveBatch(batch, keyword);
-      start += batchSize;
+    const batchSize = getBatchSize(group);
+    for (let start = 0; start < group.length; start += batchSize) {
+      batches.push({ items: group.slice(start, start + batchSize), keyword });
     }
   }
 
-  // Score and save untagged articles (below threshold, keyword=null)
-  for (let start = 0; start < untagged.length; ) {
-    const batchSize = getBatchSize(untagged.slice(start));
-    const batch = untagged.slice(start, start + batchSize);
-    savedCount += await scoreAndSaveBatch(batch, null);
-    start += batchSize;
+  {
+    const batchSize = getBatchSize(untagged);
+    for (let start = 0; start < untagged.length; start += batchSize) {
+      batches.push({ items: untagged.slice(start, start + batchSize), keyword: null });
+    }
   }
 
-  return savedCount;
+  // Score and save all batches with concurrency limit (P6-a)
+  const limit = pLimit(LLM_BATCH_CONCURRENCY);
+  const counts = await Promise.all(
+    batches.map((b) => limit(() => scoreAndSaveBatch(b.items, b.keyword))),
+  );
+
+  return counts.reduce((sum, c) => sum + c, 0);
 }
 
 /** Score a batch of articles via LLM and persist to DB. */

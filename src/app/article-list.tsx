@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { KEYWORD_LABELS } from "@/lib/config";
 import type { ArticleListRow } from "@/lib/db/query/article-queries";
 
 export type Article = ArticleListRow;
@@ -54,7 +53,8 @@ function ScoreBadge({
   );
 }
 
-function getKeywordColor(keyword: string): string {
+function getKeywordColor(keyword: string | null): string {
+  if (!keyword) return "bg-gray-50 text-gray-600 border-gray-200";
   const colors = [
     "bg-rose-50 text-rose-600 border-rose-200",
     "bg-blue-50 text-blue-600 border-blue-200",
@@ -74,7 +74,6 @@ function getKeywordColor(keyword: string): string {
 }
 
 export default function ArticleList({ articles }: { articles: Article[] }) {
-  const [favoritedIds, setFavoritedIds] = useState<Set<number>>(new Set());
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const clickCountsRef = useRef<
     Record<number, { count: number; timer: ReturnType<typeof setTimeout> | null }>
@@ -88,30 +87,6 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
       return () => clearTimeout(timer);
     }
   }, [message]);
-
-  useEffect(() => {
-    fetch("/api/favorites")
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`お気に入りの取得に失敗しました (${res.status})`);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (data && Array.isArray(data.ids)) {
-          setFavoritedIds(new Set(data.ids));
-        } else {
-          throw new Error("お気に入りのデータ形式が不正です");
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to fetch favorites:", err);
-        setMessage({
-          text: err instanceof Error ? err.message : "お気に入りの取得に失敗しました",
-          type: "error",
-        });
-      });
-  }, []);
 
   const handleTap = (articleId: number) => {
     const record = clickCountsRef.current[articleId] || { count: 0, timer: null };
@@ -148,15 +123,6 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
       })
       .then((data) => {
         if (data && typeof data.favorited === "boolean") {
-          setFavoritedIds((prev) => {
-            const next = new Set(prev);
-            if (data.favorited) {
-              next.add(articleId);
-            } else {
-              next.delete(articleId);
-            }
-            return next;
-          });
           setMessage({
             text: data.favorited ? "お気に入りに登録しました" : "お気に入りを解除しました",
             type: "success",
@@ -239,11 +205,9 @@ export default function ArticleList({ articles }: { articles: Article[] }) {
                   </time>
                   {article.keyword && (
                     <span
-                      className={`rounded border px-2 py-0.5 ${getKeywordColor(
-                        KEYWORD_LABELS[article.keyword] || article.keyword.split(" ")[0],
-                      )}`}
+                      className={`rounded border px-2 py-0.5 ${getKeywordColor(article.keywordLabel)}`}
                     >
-                      {KEYWORD_LABELS[article.keyword] || article.keyword.split(" ")[0]}
+                      {article.keywordLabel}
                     </span>
                   )}
                   {article.reason && (

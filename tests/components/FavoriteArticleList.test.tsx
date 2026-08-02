@@ -12,6 +12,7 @@ const mockArticle: Article = {
   sourceName: "Zenn",
   sourceId: "zenn",
   keyword: "test",
+  keywordLabel: "Test",
   summary: "Test summary",
   relevance: 8,
   usefulness: 8,
@@ -29,31 +30,14 @@ describe("FavoriteArticleList Component", () => {
     vi.useRealTimers();
   });
 
-  it("fetches favorite IDs on mount", async () => {
-    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValueOnce({
+  it("does not toggle favorite on fewer than 5 taps", () => {
+    const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ ids: [42] }),
-    } as Response);
-
-    render(<ArticleList articles={[mockArticle]} />);
-
-    expect(fetchSpy).toHaveBeenCalledWith("/api/favorites");
-  });
-
-  it("does not toggle favorite on fewer than 5 taps", async () => {
-    const fetchMock = vi.fn().mockImplementation(async (url) => {
-      if (url === "/api/favorites") {
-        return { ok: true, json: async () => ({ ids: [] }) };
-      }
-      return { ok: true, json: async () => ({ favorited: true }) };
+      json: async () => ({ favorited: true }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<ArticleList articles={[mockArticle]} />);
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/favorites");
-    });
 
     const wrapperEl = screen.getByText("Test summary").parentElement!;
 
@@ -66,23 +50,14 @@ describe("FavoriteArticleList Component", () => {
     expect(toggleCalls).toHaveLength(0);
   });
 
-  it("toggles favorite on 5 taps", async () => {
-    const fetchMock = vi.fn().mockImplementation(async (url) => {
-      if (url === "/api/favorites") {
-        return { ok: true, json: async () => ({ ids: [] }) };
-      }
-      if (url === "/api/favorites/toggle") {
-        return { ok: true, json: async () => ({ favorited: true }) };
-      }
-      return { ok: false };
+  it("toggles favorite on 5 taps", () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ favorited: true }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<ArticleList articles={[mockArticle]} />);
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/favorites");
-    });
 
     const wrapperEl = screen.getByText("Test summary").parentElement!;
 
@@ -91,26 +66,20 @@ describe("FavoriteArticleList Component", () => {
       fireEvent.pointerDown(wrapperEl);
     }
 
-    await waitFor(() => {
-      const toggleCalls = fetchMock.mock.calls.filter(
-        (call) => call[0] === "/api/favorites/toggle",
-      );
-      expect(toggleCalls).toHaveLength(1);
-      expect(toggleCalls[0][1]).toMatchObject({
-        method: "POST",
-        body: JSON.stringify({ articleId: 42 }),
-      });
+    const toggleCalls = fetchMock.mock.calls.filter((call) => call[0] === "/api/favorites/toggle");
+    expect(toggleCalls).toHaveLength(1);
+    expect(toggleCalls[0][1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ articleId: 42 }),
     });
   });
 
-  it("resets tap counter after timeout between taps", async () => {
+  it("resets tap counter after timeout between taps", () => {
     vi.useFakeTimers();
 
-    const fetchMock = vi.fn().mockImplementation(async (url) => {
-      if (url === "/api/favorites") {
-        return { ok: true, json: async () => ({ ids: [] }) };
-      }
-      return { ok: true, json: async () => ({ favorited: true }) };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ favorited: true }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -134,22 +103,13 @@ describe("FavoriteArticleList Component", () => {
   });
 
   it("shows success message when toggle favorite adds or removes article", async () => {
-    const fetchMock = vi.fn().mockImplementation(async (url) => {
-      if (url === "/api/favorites") {
-        return { ok: true, json: async () => ({ ids: [] }) };
-      }
-      if (url === "/api/favorites/toggle") {
-        return { ok: true, json: async () => ({ favorited: true }) };
-      }
-      return { ok: false };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ favorited: true }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<ArticleList articles={[mockArticle]} />);
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/favorites");
-    });
 
     const wrapperEl = screen.getByText("Test summary").parentElement!;
     for (let i = 0; i < 5; i++) {
@@ -161,14 +121,9 @@ describe("FavoriteArticleList Component", () => {
     });
 
     // Mock un-favoriting next
-    fetchMock.mockImplementation(async (url) => {
-      if (url === "/api/favorites") {
-        return { ok: true, json: async () => ({ ids: [42] }) };
-      }
-      if (url === "/api/favorites/toggle") {
-        return { ok: true, json: async () => ({ favorited: false }) };
-      }
-      return { ok: false };
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ favorited: false }),
     });
 
     for (let i = 0; i < 5; i++) {
@@ -181,22 +136,13 @@ describe("FavoriteArticleList Component", () => {
   });
 
   it("shows error message when toggle favorite fails (API error)", async () => {
-    const fetchMock = vi.fn().mockImplementation(async (url) => {
-      if (url === "/api/favorites") {
-        return { ok: true, json: async () => ({ ids: [] }) };
-      }
-      if (url === "/api/favorites/toggle") {
-        return { ok: false, status: 500 };
-      }
-      return { ok: false };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
     });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<ArticleList articles={[mockArticle]} />);
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/favorites");
-    });
 
     const wrapperEl = screen.getByText("Test summary").parentElement!;
     for (let i = 0; i < 5; i++) {

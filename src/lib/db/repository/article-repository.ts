@@ -1,6 +1,6 @@
 import { db } from "../index";
 import { articles } from "../schema";
-import { and, lt, inArray, eq, notInArray, isNotNull } from "drizzle-orm";
+import { and, lt, inArray, eq, notInArray, isNotNull, isNull, or } from "drizzle-orm";
 import { calcRecencyScore } from "../../scoring";
 import {
   DEFAULT_SCORED_ARTICLES_LIMIT,
@@ -133,10 +133,13 @@ export async function upsertArticles(
   }
 }
 
-/** Delete articles whose keyword is not in the active set. */
+/** Delete articles whose keyword is not in the active set, or has no keyword
+ *  (below TAGGING_THRESHOLD, stale from a prior fetch cycle). */
 export async function deleteOrphanedArticles(activeKeywords: string[]) {
   try {
-    const result = await db.delete(articles).where(notInArray(articles.keyword, activeKeywords));
+    const result = await db
+      .delete(articles)
+      .where(or(isNull(articles.keyword), notInArray(articles.keyword, activeKeywords)));
     return result;
   } catch (err) {
     console.warn(`[db] delete error:`, err);

@@ -23,3 +23,8 @@ export const KEYWORD_LABELS: Record<string, string> = {
   "docomo ドコモ ドコモビジネス business": "docomo",
   "Copilot GitHub Microsoft WorkIQ": "Copilot",
 };
+
+export function resolveKeywordLabel(keyword: string | null): string | null {
+  if (keyword === null) return null;
+  return KEYWORD_LABELS[keyword] ?? keyword.split(" ")[0];
+}

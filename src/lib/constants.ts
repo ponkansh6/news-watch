@@ -23,6 +23,7 @@ export const TAGGING_THRESHOLD = 6.0;
 export const LLM_BATCH_SIZE = 20;
 export const JAPANESE_RATIO_THRESHOLD = 0.5;
 export const JAPANESE_LARGE_BATCH = 8;
+export const LLM_BATCH_CONCURRENCY = 3;
 
 // ── Embeddings ──
 export const EMBEDDING_MODEL_VERSION = "gemini-embedding-2";

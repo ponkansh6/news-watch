@@ -3,6 +3,7 @@ import { articles, favorites } from "../schema";
 import { eq, desc } from "drizzle-orm";
 import { ARTICLE_LIST_COLUMNS, type ArticleListRow } from "../query/article-queries";
 import { unstable_cache } from "next/cache";
+import { resolveKeywordLabel } from "../../config";
 
 /** Toggle favorite status for an article. Returns the new state (true = favorited). */
 export async function toggleFavorite(articleId: number): Promise<boolean> {
@@ -49,7 +50,10 @@ export async function getFavoriteArticles(): Promise<ArticleListRow[]> {
       .innerJoin(favorites, eq(articles.id, favorites.articleId))
       .orderBy(desc(favorites.createdAt));
 
-    return rows as ArticleListRow[];
+    return rows.map((r) => ({
+      ...r,
+      keywordLabel: resolveKeywordLabel(r.keyword),
+    })) as ArticleListRow[];
   } catch (err) {
     console.warn(`[db] getFavoriteArticles error:`, err);
     return [];

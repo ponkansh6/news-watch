@@ -4,6 +4,7 @@ import { desc, asc, isNotNull, inArray, eq, sql, and } from "drizzle-orm";
 import { DEFAULT_SCORED_ARTICLES_LIMIT, DEFAULT_ALL_ARTICLES_LIMIT } from "../../constants";
 import { getAllowedSortColumns } from "@/app/admin/db/lib/table-config";
 import { unstable_cache } from "next/cache";
+import { resolveKeywordLabel } from "../../config";
 
 /** Display-safe columns for article list (excludes embedding, description, and other unused fields). */
 export const ARTICLE_LIST_COLUMNS = {
@@ -38,12 +39,13 @@ export async function getScoredArticles(
         conditions.push(eq(articles.sourceId, sourceIds));
       }
     }
-    return await db
+    const rows = await db
       .select(ARTICLE_LIST_COLUMNS)
       .from(articles)
       .where(and(...conditions))
       .orderBy(desc(articles.score), desc(articles.publishedAt))
       .limit(limit);
+    return rows.map((r) => ({ ...r, keywordLabel: resolveKeywordLabel(r.keyword) }));
   } catch (err) {
     console.warn(`[db] query error:`, err);
     return [];

@@ -49,7 +49,8 @@ export function calcCompositeScore(
 }
 
 export function softmax(values: number[], temperature = 1.0): number[] {
-  const exponents = values.map((v) => Math.exp(v / temperature));
+  const max = Math.max(...values);
+  const exponents = values.map((v) => Math.exp((v - max) / temperature));
   const sum = exponents.reduce((a, b) => a + b, 0);
   return exponents.map((e) => e / sum);
 }
@@ -63,12 +64,14 @@ export function normalizeSimilaritiesWithTagged(tagged: ArticleWithTag[]): Artic
     byKeyword.set(t.keyword, list);
   }
 
+  const normalizedByRef = new Map<ArticleWithTag, number>();
   for (const [, group] of byKeyword) {
     const similarities = group.map((t) => t.similarity);
     const normalized = softmax(similarities);
-    for (let i = 0; i < group.length; i++) {
-      group[i].similarity = normalized[i] * SOFTMAX_SCALE;
-    }
+    group.forEach((t, i) => normalizedByRef.set(t, normalized[i] * SOFTMAX_SCALE));
   }
-  return tagged;
+
+  return tagged.map((t) =>
+    normalizedByRef.has(t) ? { ...t, similarity: normalizedByRef.get(t)! } : t,
+  );
 }
