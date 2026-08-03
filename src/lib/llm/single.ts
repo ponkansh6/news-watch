@@ -5,11 +5,13 @@ import { LLMResponseSchema, LLMResponse, ArticleInput } from "./schemas";
 import { parseWithRetry } from "./parser";
 
 /** Score a single article via Gemini LLM. */
-export async function scoreArticle(article: ArticleInput): Promise<LLMResponse | null> {
-  const prompt = SCORING_PROMPT.replace("{{title}}", article.title).replace(
-    "{{description}}",
-    article.description ?? "(no description)",
-  );
+export async function scoreArticle(
+  article: ArticleInput,
+  preferenceSection = "",
+): Promise<LLMResponse | null> {
+  const prompt = SCORING_PROMPT.replace("{{title}}", () => article.title)
+    .replace("{{description}}", () => article.description ?? "(no description)")
+    .replace("{{preferenceSection}}", () => preferenceSection);
 
   return parseWithRetry(
     () => callGemini(prompt, LLM_SINGLE_MAX_TOKENS, LLM_SINGLE_TIMEOUT_MS),

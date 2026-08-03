@@ -71,6 +71,23 @@ export const TABLE_CONFIG: Record<string, { columns: ColumnDef[] }> = {
       },
     ],
   },
+  preference_profiles: {
+    columns: [
+      { key: "id", label: "ID", sortable: true, align: "right" },
+      { key: "version", label: "Version", sortable: true, align: "right" },
+      { key: "favoriteCount", label: "Fav Count", sortable: true, align: "right" },
+      { key: "favoriteMaxId", label: "Fav Max ID", sortable: true, align: "right" },
+      { key: "model", label: "Model", sortable: true },
+      { key: "analysis", label: "Analysis", sortable: false, hidden: true },
+      { key: "promptSection", label: "Prompt Section", sortable: false, hidden: true },
+      {
+        key: "createdAt",
+        label: "Created",
+        sortable: true,
+        format: (v) => (v ? new Date(v).toLocaleString("ja-JP") : "—"),
+      },
+    ],
+  },
 };
 
 // Helper to get sortable column keys for a table

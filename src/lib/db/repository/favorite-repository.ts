@@ -1,6 +1,6 @@
 import { db } from "../index";
 import { articles, favorites } from "../schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { ARTICLE_LIST_COLUMNS, type ArticleListRow } from "../query/article-queries";
 import { unstable_cache } from "next/cache";
 import { resolveKeywordLabel } from "../../config";
@@ -65,3 +65,19 @@ export const getFavoriteArticlesCached = unstable_cache(
   ["favorite-articles"],
   { tags: ["favorites"], revalidate: 300 },
 );
+
+/** Favorite count and max favorite id (for cooldown/change detection). */
+export async function getFavoriteStats(): Promise<{ count: number; maxId: number }> {
+  try {
+    const [row] = await db
+      .select({
+        count: sql<number>`count(*)`,
+        maxId: sql<number>`coalesce(max(${favorites.id}), 0)`,
+      })
+      .from(favorites);
+    return { count: Number(row?.count ?? 0), maxId: Number(row?.maxId ?? 0) };
+  } catch (err) {
+    console.warn(`[db] getFavoriteStats error:`, err);
+    return { count: 0, maxId: 0 };
+  }
+}

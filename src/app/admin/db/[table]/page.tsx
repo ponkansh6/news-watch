@@ -15,7 +15,7 @@ export default async function TablePage({
   const { table } = await params;
   const { page = "1", limit = "50", sort, dir } = await searchParams;
 
-  const validTables = ["articles", "keyword_embeddings", "favorites"];
+  const validTables = ["articles", "keyword_embeddings", "favorites", "preference_profiles"];
   if (!validTables.includes(table)) {
     notFound();
   }

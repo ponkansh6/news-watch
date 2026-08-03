@@ -1,6 +1,6 @@
 import pLimit from "p-limit";
-import { scoreArticles } from "@/lib/llm";
-import { upsertArticles } from "@/lib/db";
+import { scoreArticles, buildPreferencePromptSection } from "@/lib/llm";
+import { upsertArticles, getLatestPreferenceProfile } from "@/lib/db";
 import {
   calcRecencyScore,
   calcCompositeScore,
@@ -27,10 +27,25 @@ function getBatchSize(articles: ArticleWithTag[]): number {
  *  which are below the tagging threshold), score each group in batches of
  *  LLM_BATCH_SIZE via LLM, and save. Returns count of LLM-scored (saved)
  *  articles. Null-keyword articles are still scored and saved for display. */
-export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<number> {
+export async function scoreAndSaveTagged(
+  tagged: ArticleWithTag[],
+  options?: { preferenceSection?: string },
+): Promise<number> {
   // Normalize similarities using softmax (null-keyword articles are skipped from
   // normalization but included in results)
   const normalizedTagged = normalizeSimilaritiesWithTagged(tagged);
+
+  let preferenceSection = "";
+  if (options?.preferenceSection !== undefined) {
+    preferenceSection = options.preferenceSection;
+  } else {
+    try {
+      const profile = await getLatestPreferenceProfile();
+      preferenceSection = buildPreferencePromptSection(profile?.analysis ?? null);
+    } catch (err) {
+      console.warn(`[pipeline] Failed to load preference profile, continuing without it:`, err);
+    }
+  }
 
   // Separate tagged and untagged (below threshold) articles
   const taggedByKeyword = new Map<string, ArticleWithTag[]>();
@@ -65,16 +80,21 @@ export async function scoreAndSaveTagged(tagged: ArticleWithTag[]): Promise<numb
   // Score and save all batches with concurrency limit (P6-a)
   const limit = pLimit(LLM_BATCH_CONCURRENCY);
   const counts = await Promise.all(
-    batches.map((b) => limit(() => scoreAndSaveBatch(b.items, b.keyword))),
+    batches.map((b) => limit(() => scoreAndSaveBatch(b.items, b.keyword, preferenceSection))),
   );
 
   return counts.reduce((sum, c) => sum + c, 0);
 }
 
 /** Score a batch of articles via LLM and persist to DB. */
-async function scoreAndSaveBatch(batch: ArticleWithTag[], keyword: string | null): Promise<number> {
+async function scoreAndSaveBatch(
+  batch: ArticleWithTag[],
+  keyword: string | null,
+  preferenceSection: string,
+): Promise<number> {
   const llmResults = await scoreArticles(
     batch.map((t) => ({ title: t.article.title, description: t.article.description })),
+    preferenceSection,
   );
 
   // Build upsert list

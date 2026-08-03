@@ -1,5 +1,5 @@
 import { db } from "../index";
-import { articles, keywordEmbeddings, favorites } from "../schema";
+import { articles, keywordEmbeddings, favorites, preferenceProfiles } from "../schema";
 import { desc, asc, isNotNull, inArray, eq, sql, and } from "drizzle-orm";
 import { DEFAULT_SCORED_ARTICLES_LIMIT, DEFAULT_ALL_ARTICLES_LIMIT } from "../../constants";
 import { getAllowedSortColumns } from "@/app/admin/db/lib/table-config";
@@ -62,16 +62,18 @@ export async function getAllArticles(limit = DEFAULT_ALL_ARTICLES_LIMIT) {
   }
 }
 
-export type TableName = "articles" | "keyword_embeddings" | "favorites";
+export type TableName = "articles" | "keyword_embeddings" | "favorites" | "preference_profiles";
 
 export type ArticleRow = typeof articles.$inferSelect;
 export type KeywordEmbeddingRow = typeof keywordEmbeddings.$inferSelect;
 export type FavoriteRow = typeof favorites.$inferSelect;
+export type PreferenceProfileRow = typeof preferenceProfiles.$inferSelect;
 
 export type TableRowMap = {
   articles: ArticleRow;
   keyword_embeddings: KeywordEmbeddingRow;
   favorites: FavoriteRow;
+  preference_profiles: PreferenceProfileRow;
 };
 
 export interface TablePageOptions {
@@ -85,6 +87,7 @@ const tableMap = {
   articles,
   keyword_embeddings: keywordEmbeddings,
   favorites,
+  preference_profiles: preferenceProfiles,
 } as const;
 
 export async function getTablePage<T extends TableName>(
@@ -132,16 +135,19 @@ async function countRows(tableObj: any): Promise<number> {
 }
 
 export async function getTableCounts(): Promise<Record<TableName, number>> {
-  const [articlesCount, embeddingsCount, favoritesCount] = await Promise.all([
-    countRows(articles),
-    countRows(keywordEmbeddings),
-    countRows(favorites),
-  ]);
+  const [articlesCount, embeddingsCount, favoritesCount, preferenceProfilesCount] =
+    await Promise.all([
+      countRows(articles),
+      countRows(keywordEmbeddings),
+      countRows(favorites),
+      countRows(preferenceProfiles),
+    ]);
 
   return {
     articles: articlesCount,
     keyword_embeddings: embeddingsCount,
     favorites: favoritesCount,
+    preference_profiles: preferenceProfilesCount,
   };
 }
 

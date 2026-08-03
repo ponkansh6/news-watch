@@ -44,3 +44,6 @@ next-env.d.ts
 # deepwork scratch (orchestrator internal state)
 .slim/
 test.db
+
+# local tool settings
+.claude/

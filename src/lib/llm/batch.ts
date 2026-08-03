@@ -6,7 +6,10 @@ import { scoreArticle } from "./single";
 import { parseWithRetry } from "./parser";
 
 /** Score multiple articles in a single LLM call (batch). */
-export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMResponse | null)[]> {
+export async function scoreArticles(
+  articles: ArticleInput[],
+  preferenceSection = "",
+): Promise<(LLMResponse | null)[]> {
   if (articles.length === 0) return [];
 
   const articlesBlock = articles
@@ -15,10 +18,9 @@ export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMRespo
     )
     .join("\n");
 
-  const prompt = BATCH_SCORING_PROMPT.replace("{{articleCount}}", String(articles.length)).replace(
-    "{{articles}}",
-    articlesBlock,
-  );
+  const prompt = BATCH_SCORING_PROMPT.replace("{{articleCount}}", () => String(articles.length))
+    .replace("{{preferenceSection}}", () => preferenceSection)
+    .replace("{{articles}}", () => articlesBlock);
 
   const parsedArray = await parseWithRetry(
     () => callGemini(prompt, LLM_BATCH_MAX_TOKENS, LLM_BATCH_TIMEOUT_MS),
@@ -39,16 +41,16 @@ export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMRespo
     console.warn(
       `[llm] Batch scoring failed or returned invalid array, falling back to single-article scoring`,
     );
-    return await Promise.all(articles.map((a) => scoreArticle(a)));
+    return await Promise.all(articles.map((a) => scoreArticle(a, preferenceSection)));
   }
 
   const padded: (LLMResponse | null)[] = articles.map((_, i) => {
-    const r = parsedArray[i];
+    const r = parsedArray[i] as Record<string, unknown> | undefined;
     if (!r) return null;
     return {
-      summary: r.summary || "(no summary)",
-      usefulness: r.usefulness,
-      reason: r.reason || "(no reason)",
+      summary: (typeof r.summary === "string" && r.summary) || "(no summary)",
+      usefulness: typeof r.usefulness === "number" ? r.usefulness : 0,
+      reason: (typeof r.reason === "string" && r.reason) || "(no reason)",
     };
   });
 
@@ -56,7 +58,7 @@ export async function scoreArticles(articles: ArticleInput[]): Promise<(LLMRespo
     console.warn(
       `[llm] Batch scoring returned all nulls for ${articles.length} articles, falling back to single-article scoring`,
     );
-    return await Promise.all(articles.map((a) => scoreArticle(a)));
+    return await Promise.all(articles.map((a) => scoreArticle(a, preferenceSection)));
   }
 
   return padded;

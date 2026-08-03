@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
-import { EMBEDDING_DIMENSIONS } from "../constants";
+import { EMBEDDING_DIMENSIONS, PREFERENCE_PROFILE_VERSION } from "../constants";
 
 /**
  * Scored news articles.
@@ -76,3 +76,22 @@ export const favorites = sqliteTable(
     uniqueArticle: uniqueIndex("favorites_article_id_unique").on(table.articleId),
   }),
 );
+
+/**
+ * User preference profiles extracted from favorites by LLM (append-only history).
+ * - active profile = latest by id (created_at is ISO string with second tie).
+ * - analysis stores the validated JSON (PreferenceAnalysis); prompt_section is
+ *   an audit snapshot of the generated prompt text (rebuilt on read).
+ */
+export const preferenceProfiles = sqliteTable("preference_profiles", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  version: integer("version").notNull().default(PREFERENCE_PROFILE_VERSION),
+  analysis: text("analysis").notNull(),
+  promptSection: text("prompt_section").notNull(),
+  favoriteCount: integer("favorite_count").notNull(),
+  favoriteMaxId: integer("favorite_max_id").notNull().default(0),
+  model: text("model").notNull(),
+  createdAt: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});

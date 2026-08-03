@@ -16,6 +16,10 @@ const TABLE_DESCRIPTIONS: Record<string, { name: string; desc: string }> = {
     name: "Favorites",
     desc: "Hidden bookmarks for favorite articles (unofficial feature).",
   },
+  preference_profiles: {
+    name: "Preference Profiles",
+    desc: "User preference profiles extracted from favorites by LLM (append-only history).",
+  },
 };
 
 export default async function AdminDbLandingPage() {

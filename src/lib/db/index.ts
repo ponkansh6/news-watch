@@ -27,7 +27,19 @@ import {
   getFavoriteIds,
   getFavoriteArticles,
   getFavoriteArticlesCached,
+  getFavoriteStats,
 } from "./repository/favorite-repository";
+
+import {
+  savePreferenceProfile,
+  type SavePreferenceProfileInput,
+} from "./repository/preference-repository";
+
+import {
+  getLatestPreferenceProfile,
+  getLatestPreferenceProfileCached,
+  type PreferenceProfile,
+} from "./query/preference-queries";
 
 const client = createClient({
   url: process.env.TURSO_DATABASE_URL ?? ":memory:",
@@ -37,7 +49,13 @@ const client = createClient({
 export const db = drizzle({ client, schema });
 
 // Re-export all public APIs
-export type { ArticleInsert, TableName, TablePageOptions };
+export type {
+  ArticleInsert,
+  TableName,
+  TablePageOptions,
+  SavePreferenceProfileInput,
+  PreferenceProfile,
+};
 export {
   upsertArticle,
   upsertArticles,
@@ -53,4 +71,8 @@ export {
   getFavoriteIds,
   getFavoriteArticles,
   getFavoriteArticlesCached,
+  getFavoriteStats,
+  savePreferenceProfile,
+  getLatestPreferenceProfile,
+  getLatestPreferenceProfileCached,
 };
