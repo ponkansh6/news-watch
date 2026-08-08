@@ -11,7 +11,7 @@ import { useState } from "react";
 const navItems = [
   { href: "/", label: "ニュース", icon: Newspaper },
   { href: "/bookmarks", label: "ブックマーク", icon: Bookmark },
-  { href: "/admin/db", label: "DB", icon: Database },
+  { href: "/admin/db", label: "DB", icon: Database, prefetch: false },
 ];
 
 export function AppNav() {
@@ -27,6 +27,7 @@ export function AppNav() {
             <Link
               key={item.href}
               href={item.href}
+              prefetch={item.prefetch ?? true}
               aria-current={isActive ? "page" : undefined}
               className={cn(
                 "flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
@@ -61,6 +62,7 @@ export function AppNav() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    prefetch={item.prefetch ?? true}
                     onClick={() => setOpen(false)}
                     aria-current={isActive ? "page" : undefined}
                     className={cn(
