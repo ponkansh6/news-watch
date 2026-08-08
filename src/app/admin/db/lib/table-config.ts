@@ -3,7 +3,7 @@ export interface ColumnDef {
   label: string;
   sortable: boolean;
   hidden?: boolean; // hidden by default (like embedding)
-  format?: (value: any) => string; // optional formatter
+  format?: (value: unknown) => string; // optional formatter
   align?: "left" | "right" | "center";
 }
 
@@ -20,7 +20,7 @@ export const TABLE_CONFIG: Record<string, { columns: ColumnDef[] }> = {
         label: "Score",
         sortable: true,
         align: "right",
-        format: (v) => v?.toFixed(2) ?? "—",
+        format: (v) => (typeof v === "number" ? v.toFixed(2) : "—"),
       },
       { key: "relevance", label: "Relv", sortable: true, align: "right" },
       { key: "usefulness", label: "Usef", sortable: true, align: "right" },
@@ -29,13 +29,13 @@ export const TABLE_CONFIG: Record<string, { columns: ColumnDef[] }> = {
         key: "publishedAt",
         label: "Published",
         sortable: true,
-        format: (v) => (v ? new Date(v).toLocaleDateString("ja-JP") : "—"),
+        format: (v) => (typeof v === "string" && v ? new Date(v).toLocaleDateString("ja-JP") : "—"),
       },
       {
         key: "createdAt",
         label: "Created",
         sortable: true,
-        format: (v) => (v ? new Date(v).toLocaleDateString("ja-JP") : "—"),
+        format: (v) => (typeof v === "string" && v ? new Date(v).toLocaleDateString("ja-JP") : "—"),
       },
       { key: "author", label: "Author", sortable: false, hidden: true },
       { key: "summary", label: "Summary", sortable: false, hidden: true },
@@ -54,7 +54,7 @@ export const TABLE_CONFIG: Record<string, { columns: ColumnDef[] }> = {
         key: "createdAt",
         label: "Created",
         sortable: true,
-        format: (v) => (v ? new Date(v).toLocaleDateString("ja-JP") : "—"),
+        format: (v) => (typeof v === "string" && v ? new Date(v).toLocaleDateString("ja-JP") : "—"),
       },
       { key: "embedding", label: "Embedding", sortable: false, hidden: true },
     ],
@@ -67,7 +67,7 @@ export const TABLE_CONFIG: Record<string, { columns: ColumnDef[] }> = {
         key: "createdAt",
         label: "Favorited At",
         sortable: true,
-        format: (v) => (v ? new Date(v).toLocaleString("ja-JP") : "—"),
+        format: (v) => (typeof v === "string" && v ? new Date(v).toLocaleString("ja-JP") : "—"),
       },
     ],
   },
@@ -84,7 +84,7 @@ export const TABLE_CONFIG: Record<string, { columns: ColumnDef[] }> = {
         key: "createdAt",
         label: "Created",
         sortable: true,
-        format: (v) => (v ? new Date(v).toLocaleString("ja-JP") : "—"),
+        format: (v) => (typeof v === "string" && v ? new Date(v).toLocaleString("ja-JP") : "—"),
       },
     ],
   },

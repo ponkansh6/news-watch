@@ -5,6 +5,7 @@ import { useRefresh } from "@/app/refresh-context";
 
 interface FetchActionProps {
   isLoading: boolean;
+  // eslint-disable-next-line @sbougerel/next-use-client-boundary/props-must-be-serializable
   onFetch: () => void;
   className?: string;
 }

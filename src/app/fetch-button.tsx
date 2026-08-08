@@ -16,8 +16,15 @@ interface FetchResultData {
   errors: string[];
 }
 
+interface FetchResultItem {
+  fetched?: number;
+  saved?: number;
+  errors?: string[];
+}
+
 interface FetchButtonProps {
   selectedSource: string;
+  // eslint-disable-next-line @sbougerel/next-use-client-boundary/props-must-be-serializable
   onSourceChange: (source: string) => Promise<void>;
 }
 
@@ -74,12 +81,15 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
 
       if (data.ok && Array.isArray(data.results)) {
         const totalFetched = data.results.reduce(
-          (acc: number, r: any) => acc + (r.fetched || 0),
+          (acc: number, r: FetchResultItem) => acc + (r.fetched || 0),
           0,
         );
-        const totalSaved = data.results.reduce((acc: number, r: any) => acc + (r.saved || 0), 0);
+        const totalSaved = data.results.reduce(
+          (acc: number, r: FetchResultItem) => acc + (r.saved || 0),
+          0,
+        );
         const hasErrors = data.results.some(
-          (r: any) => Array.isArray(r.errors) && r.errors.length > 0,
+          (r: FetchResultItem) => Array.isArray(r.errors) && r.errors.length > 0,
         );
 
         setResults([

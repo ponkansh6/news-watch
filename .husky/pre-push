@@ -22,6 +22,20 @@ if echo "$PUSH_FILES" | grep -qE "^src/"; then
   fi
 fi
 
+# --- ESLint on src/ (Server Action boundary + type hygiene) ---
+# The @sbougerel/next-use-client-boundary rule catches non-serializable props
+# crossing the Server → Client boundary. See shared-plan/12-rsc-cookie-fix.md.
+pnpm exec eslint src/
+
+# --- RSC smoke test (build + start + curl) ---
+# Catches runtime errors that `next build` passes through. Runs only when
+# src/ changed (same condition as coverage). ~30s.
+if echo "$PUSH_FILES" | grep -qE "^src/"; then
+  echo ""
+  echo "🚀 Running RSC smoke test..."
+  bash scripts/smoke-test.sh
+fi
+
 # --- Schema consistency check (local in-memory DB) ---
 pnpm exec vitest run tests/db/schema-consistency.test.ts
 

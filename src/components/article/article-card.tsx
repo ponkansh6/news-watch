@@ -24,6 +24,7 @@ export interface ArticleCardProps {
   recency?: number | null;
   keywordLabel?: string | null;
   reason?: string | null;
+  // eslint-disable-next-line @sbougerel/next-use-client-boundary/props-must-be-serializable
   onPointerDown?: React.PointerEventHandler<HTMLDivElement>;
 }
 

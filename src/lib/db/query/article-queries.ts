@@ -1,6 +1,6 @@
 import { db } from "../index";
 import { articles, keywordEmbeddings, favorites, preferenceProfiles } from "../schema";
-import { desc, asc, isNotNull, inArray, eq, sql, and } from "drizzle-orm";
+import { desc, asc, isNotNull, inArray, eq, sql, and, type SQL } from "drizzle-orm";
 import { DEFAULT_SCORED_ARTICLES_LIMIT, DEFAULT_ALL_ARTICLES_LIMIT } from "../../constants";
 import { getAllowedSortColumns } from "@/app/admin/db/lib/table-config";
 import { unstable_cache } from "next/cache";
@@ -114,7 +114,7 @@ export async function getTablePage<T extends TableName>(
     const rows = await db
       .select()
       .from(tableObj)
-      .orderBy(sortDir(colRef as any))
+      .orderBy(sortDir(colRef as SQL))
       .limit(Math.min(options.limit, 200))
       .offset(options.offset);
 
@@ -125,7 +125,7 @@ export async function getTablePage<T extends TableName>(
   }
 }
 
-async function countRows(tableObj: any): Promise<number> {
+async function countRows(tableObj: (typeof tableMap)[TableName]): Promise<number> {
   try {
     const [result] = await db.select({ count: sql<number>`count(*)` }).from(tableObj);
     return Number(result?.count ?? 0);

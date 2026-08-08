@@ -21,7 +21,11 @@ AGENTS.md の「Git Hooks の対処ルール」の詳細版。コミット / pus
    - 対処: `src/lib/db/schema.ts` とマイグレーション / テストの同期を確認する。
 3. **カバレッジ段階検証**（`src/` 変更時のみ実行・約30秒）— `vitest run --coverage` 後に `node scripts/check-coverage-tiers.mjs` を実行し、spec.md §7.1 のティア別目標（Tier 1: 95% 〜 Tier 6: 65%）を達成しているか検証する。
    - 対処: 未達のモジュールにテストを追加する。検証コマンド: `pnpm exec vitest run --coverage && node scripts/check-coverage-tiers.mjs`
-4. **本番スキーマ drift 検出**（`.env.local` に Turso 認証情報がある場合のみ実行）— `scripts/check-prod-schema.sh` が本番 Turso DB と `src/lib/db/schema.ts` のスキーマを比較し、未適用のマイグレーションを検出する。
+4. **`pnpm exec eslint src/`** — Server Action 境界の静的検査（`@sbougerel/next-use-client-boundary/props-must-be-serializable` が RSC→Client 境界の非シリアライズ可能 props を検出）。
+   - 対処: エラーを修正するか、意図的な場合は eslint-disable コメントに理由を添える。
+5. **`bash scripts/smoke-test.sh`**（`src/` 変更時のみ・約30秒）— `pnpm build && pnpm start` 後に `/` を curl し、本文に RSC エラーダイジェスト（`E{"digest"`）や `Cookies can only be modified` が無いことを検証。HTTP 200 は成功判定に使わない（壊れた状態でも 200 が返るため）。
+   - 対処: ビルドエラーや RSC レンダリングエラーを修正する。
+6. **本番スキーマ drift 検出**（`.env.local` に Turso 認証情報がある場合のみ実行）— `scripts/check-prod-schema.sh` が本番 Turso DB と `src/lib/db/schema.ts` のスキーマを比較し、未適用のマイグレーションを検出する。
    - 対処: `pnpm exec drizzle-kit push` で本番スキーマを最新化する。
 
 ## pre-commit warning: `spec.md` 未更新

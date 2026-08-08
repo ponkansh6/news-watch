@@ -6,6 +6,7 @@ import type { AssertSerializable } from "@/lib/serializable";
 type RowDetailProps = AssertSerializable<{
   row: Record<string, unknown>;
 }> & {
+  // eslint-disable-next-line @sbougerel/next-use-client-boundary/props-must-be-serializable
   onClose: () => void; // function is allowed cross client-to-client
 };
 

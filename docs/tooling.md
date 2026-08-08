@@ -24,3 +24,14 @@ AGENTS.md の「ツール使用に関するガイドライン」の詳細版。
   - `rtk proxy <cmd>`: フィルタリングなし＋使用状況追跡
   - `rtk pipe`: 標準入力から読み取りフィルタリング
   - `rtk next` / `rtk vitest` / `rtk git` など: 各コマンドのラッパー（出力最適化あり）
+
+## スモークテスト（scripts/smoke-test.sh）
+
+- `pnpm build && pnpm start` 後に `/` を curl し、RSC レンダリングエラー（cookie 書き込み等）を検出する。
+- 実行: `bash scripts/smoke-test.sh`（pre-push で `src/` 変更時に自動実行）
+- 判定は HTTP 200 ではなく、本文に `E{"digest"` が無いこと・ログに `Cookies can only be modified` が無いこと・`News Watch` 見出しが描画されること。
+
+## CI（.github/workflows/ci.yml）
+
+- GitHub Actions で lint / type-check / vitest / カバレッジ Tier / spec 参照 / スモークテストを実行。
+- フックは `--no-verify` で迂回できるため、CI が非迂回の検査層となる。

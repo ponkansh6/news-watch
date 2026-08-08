@@ -12,16 +12,17 @@ type JSONValue = JSONPrimitive | JSONValue[] | { [key: string]: JSONValue };
 
 // 3. Types that are NOT assignable to JSON
 type NotAssignableToJson =
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
   | Function
   | symbol
   | bigint
   | Date
   | RegExp
-  | Map<any, any>
-  | Set<any>
-  | WeakMap<any, any>
-  | WeakSet<any>
-  | Promise<any>;
+  | Map<unknown, unknown>
+  | Set<unknown>
+  | WeakMap<object, unknown>
+  | WeakSet<object>
+  | Promise<unknown>;
 
 // 4. Deep serializable check - blocks unknown, recurses into objects
 type DeepSerializable<T> = unknown extends T

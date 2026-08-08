@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { AssertSerializable } from "@/lib/serializable";
 import RowDetail from "./RowDetail";
@@ -39,7 +40,7 @@ export default function DataTable({
   const searchParams = useSearchParams();
 
   const [showHidden, setShowHidden] = useState(false);
-  const [selectedRow, setSelectedRow] = useState<any | null>(null);
+  const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
 
   const visibleColumns = columns.filter((col) => !col.hidden || showHidden);
 
@@ -78,9 +79,9 @@ export default function DataTable({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card p-4 border border-border rounded-lg shadow-xs">
         <div>
           <div className="flex items-center space-x-2">
-            <a href="/admin/db" className="text-xs text-muted-foreground hover:text-foreground">
+            <Link href="/admin/db" className="text-xs text-muted-foreground hover:text-foreground">
               Tables
-            </a>
+            </Link>
             <span className="text-muted-foreground/50">/</span>
             <h1 className="text-lg font-bold text-foreground capitalize">{table}</h1>
           </div>

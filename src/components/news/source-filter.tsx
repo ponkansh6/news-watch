@@ -5,6 +5,7 @@ import { SOURCES } from "@/lib/sources";
 
 interface SourceFilterProps {
   value: string;
+  // eslint-disable-next-line @sbougerel/next-use-client-boundary/props-must-be-serializable
   onSourceChange: (source: string) => Promise<void>;
 }
 

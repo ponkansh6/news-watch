@@ -101,7 +101,7 @@ export async function upsertArticles(
             },
           }),
       );
-      await db.batch(statements as any);
+      await db.batch(statements as unknown as Parameters<typeof db.batch>[0]);
       return {
         succeeded: dataList.map((d) => d.url),
         failed: [],
@@ -212,7 +212,7 @@ export async function refreshRecencyForSources(
           })
           .where(eq(articles.url, u.url)),
       );
-      await db.batch(statements as any);
+      await db.batch(statements as unknown as Parameters<typeof db.batch>[0]);
       return updates.length;
     } catch (batchErr) {
       // Fallback: individual updates

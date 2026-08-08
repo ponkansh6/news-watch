@@ -173,19 +173,23 @@ export const SOURCE_REGISTRY = {
       author: h.author ?? null,
     }),
   },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } satisfies Record<string, SourceAdapter<any>>;
 
 export type SourceId = keyof typeof SOURCE_REGISTRY;
 export const SOURCE_IDS = Object.keys(SOURCE_REGISTRY) as SourceId[];
 export const SOURCE_ID_TUPLE = SOURCE_IDS as [SourceId, ...SourceId[]];
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getSourceAdapter(sourceId: string): SourceAdapter<any> | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (SOURCE_REGISTRY as Record<string, SourceAdapter<any>>)[sourceId];
 }
 
 /** normalize() の元の default: ダックタイピング分岐を再現。未知sourceIdを
  * 直接テストする2ファイルのために維持。 */
 export function normalizeUnknownSource(article: unknown, sourceId: string): NormalizedArticle {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const a = article as Record<string, any>;
   return {
     title: a.title,

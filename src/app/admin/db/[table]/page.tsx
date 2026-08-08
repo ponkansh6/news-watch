@@ -29,7 +29,7 @@ export default async function TablePage({
     offset,
     limit: parsedLimit,
     sort,
-    dir: (dir === "asc" ? "asc" : "desc") as any,
+    dir: dir === "asc" ? "asc" : "desc",
   });
 
   // Pre-format display values on the server

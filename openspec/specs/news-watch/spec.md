@@ -308,6 +308,9 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 | Component (UI rendering)        | Key components  | **Tier 5: 93.85% (168/179 statements)** ✅          |
 | Schema Consistency              | Automated       | Automated ✅                                        |
 
+- **CI**: `.github/workflows/ci.yml` が lint / typecheck / vitest / カバレッジ Tier / spec 参照 / スモークテストを実行する（フックは `--no-verify` で迂回可能なため、CI が非迂回の検査ライン）。
+- **スモークテスト**: `scripts/smoke-test.sh` が `pnpm build && pnpm start` 後に `/` を検証し、RSC レンダリング中の cookie 書き込み等の実行時エラーを検出する（HTTP 200 は成功判定に使わない）。
+
 ### 7.1 Tiered Coverage Targets
 
 プロジェクトの全ソースファイルをカバレッジ計測対象としているが、コードの性質によってテストの優先度と目標値を明確に区分する。
