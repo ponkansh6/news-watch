@@ -25,7 +25,9 @@ echo "[spec-refs] Checking spec.md file references..."
 #   `src/lib/news/`              → directory
 #   `tests/db/actions.test.ts`   → file
 #   `news/{zenn,qiita,...}.ts`   → brace expansion (handle below)
-REFS=$(grep -oP '`((src|tests)/[^`]+)' "$SPEC_FILE" 2>/dev/null | sed 's/`//g' || true)
+REFS_TICK=$(grep -oP '`((src|tests)/[^`]+)' "$SPEC_FILE" | sed 's/`//g' || true)
+REFS_BARE=$(grep -oP '(?<![`\w/])(src|tests)/[\w./\[\]{},*-]+\.(ts|tsx|css|sql|mjs)\b' "$SPEC_FILE" || true)
+REFS=$(printf '%s\n%s\n' "$REFS_TICK" "$REFS_BARE" | sed '/^$/d')
 
 if [ -z "$REFS" ]; then
   echo "[spec-refs] No source references found in spec.md."

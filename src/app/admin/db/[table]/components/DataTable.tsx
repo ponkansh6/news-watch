@@ -75,16 +75,16 @@ export default function DataTable({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-4 border border-neutral-200 rounded-lg shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card p-4 border border-border rounded-lg shadow-xs">
         <div>
           <div className="flex items-center space-x-2">
-            <a href="/admin/db" className="text-xs text-neutral-500 hover:text-neutral-900">
+            <a href="/admin/db" className="text-xs text-muted-foreground hover:text-foreground">
               Tables
             </a>
-            <span className="text-neutral-300">/</span>
-            <h1 className="text-lg font-bold text-neutral-900 capitalize">{table}</h1>
+            <span className="text-muted-foreground/50">/</span>
+            <h1 className="text-lg font-bold text-foreground capitalize">{table}</h1>
           </div>
-          <p className="text-xs text-neutral-500 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             Showing {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of{" "}
             {total.toLocaleString()} rows
           </p>
@@ -95,8 +95,8 @@ export default function DataTable({
             onClick={() => setShowHidden(!showHidden)}
             className={`text-xs px-3 py-1.5 rounded-md border font-medium transition ${
               showHidden
-                ? "bg-neutral-900 text-white border-neutral-900"
-                : "bg-white text-neutral-700 border-neutral-300 hover:bg-neutral-50"
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card text-foreground border-border hover:bg-muted"
             }`}
           >
             {showHidden ? "Hide Extra Columns" : "Show Extra Columns"}
@@ -104,11 +104,11 @@ export default function DataTable({
         </div>
       </div>
 
-      <div className="bg-white border border-neutral-200 rounded-lg shadow-xs overflow-hidden">
+      <div className="bg-card border border-border rounded-lg shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead>
-              <tr className="bg-neutral-50 border-b border-neutral-200 text-neutral-700 text-xs font-semibold">
+              <tr className="bg-muted border-b border-border text-foreground text-xs font-semibold">
                 {visibleColumns.map((col) => {
                   const isSorted = currentSort === col.key;
                   return (
@@ -116,7 +116,7 @@ export default function DataTable({
                       key={col.key}
                       onClick={() => handleSort(col.key, col.sortable)}
                       className={`px-4 py-3 whitespace-nowrap ${
-                        col.sortable ? "cursor-pointer hover:bg-neutral-100 select-none" : ""
+                        col.sortable ? "cursor-pointer hover:bg-muted select-none" : ""
                       } ${col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left"}`}
                     >
                       <div
@@ -130,7 +130,7 @@ export default function DataTable({
                       >
                         <span>{col.label}</span>
                         {col.sortable && (
-                          <span className="text-neutral-400 text-xs">
+                          <span className="text-muted-foreground text-xs">
                             {isSorted ? (currentDir === "desc" ? "↓" : "↑") : "↕"}
                           </span>
                         )}
@@ -140,12 +140,12 @@ export default function DataTable({
                 })}
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-200">
+            <tbody className="divide-y divide-border">
               {rows.length === 0 ? (
                 <tr>
                   <td
                     colSpan={visibleColumns.length}
-                    className="px-4 py-12 text-center text-neutral-500"
+                    className="px-4 py-12 text-center text-muted-foreground"
                   >
                     No records found in this table.
                   </td>
@@ -155,7 +155,7 @@ export default function DataTable({
                   <tr
                     key={(row.id as string | number) ?? idx}
                     onClick={() => setSelectedRow(row)}
-                    className="hover:bg-neutral-50 cursor-pointer transition"
+                    className="hover:bg-muted cursor-pointer transition"
                   >
                     {visibleColumns.map((col) => {
                       const rawVal = row[col.key];
@@ -171,7 +171,7 @@ export default function DataTable({
                               : col.align === "center"
                                 ? "text-center"
                                 : "text-left"
-                          } ${col.key === "id" ? "font-mono text-xs text-neutral-500" : ""}`}
+                          } ${col.key === "id" ? "font-mono text-xs text-muted-foreground" : ""}`}
                         >
                           <span title={typeof rawVal === "string" ? rawVal : undefined}>
                             {displayVal as string}
@@ -186,24 +186,24 @@ export default function DataTable({
           </table>
         </div>
 
-        <div className="bg-white border-t border-neutral-200 px-4 py-3 flex items-center justify-between">
-          <div className="text-xs text-neutral-500">
-            Page <span className="font-semibold text-neutral-900">{page}</span> of{" "}
-            <span className="font-semibold text-neutral-900">{totalPages}</span>
+        <div className="bg-card border-t border-border px-4 py-3 flex items-center justify-between">
+          <div className="text-xs text-muted-foreground">
+            Page <span className="font-semibold text-foreground">{page}</span> of{" "}
+            <span className="font-semibold text-foreground">{totalPages}</span>
           </div>
 
           <div className="flex items-center space-x-2">
             <button
               onClick={() => goToPage(page - 1)}
               disabled={page <= 1}
-              className="px-3 py-1.5 text-xs font-medium border border-neutral-300 rounded-md bg-white text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1.5 text-xs font-medium border border-border rounded-md bg-card text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Previous
             </button>
             <button
               onClick={() => goToPage(page + 1)}
               disabled={page >= totalPages}
-              className="px-3 py-1.5 text-xs font-medium border border-neutral-300 rounded-md bg-white text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1.5 text-xs font-medium border border-border rounded-md bg-card text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
             </button>

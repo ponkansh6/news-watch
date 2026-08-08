@@ -57,20 +57,20 @@ export default function AnalyzeButton({
         <button
           disabled={disabled}
           onClick={handleClick}
-          className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? "分析中…（最大45秒）" : "傾向を分析"}
         </button>
       </div>
       {favoriteCount < minFavorites && (
-        <span className="text-xs text-neutral-500">
+        <span className="text-xs text-muted-foreground">
           お気に入りが{minFavorites}件以上で分析できます（現在 {favoriteCount} 件）
         </span>
       )}
       {message && (
         <span
           aria-live="polite"
-          className={`text-xs ${message.type === "success" ? "text-emerald-600" : "text-red-600"}`}
+          className={`text-xs ${message.type === "success" ? "text-score-high" : "text-destructive"}`}
         >
           {message.text}
         </span>

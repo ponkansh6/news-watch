@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, renderHook, act } from "@testing-library/react";
+import { render, screen, renderHook, act } from "../lib/test-utils";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import NewsSection from "../../src/app/news-section";
-import { SkeletonList, type Article } from "../../src/app/article-list";
+import { NewsSection } from "@/components/news/news-section";
+import { type ArticleListRow as Article } from "@/components/article/article-list";
+import { SkeletonList } from "@/components/article/article-skeleton";
 import { RefreshProvider, useRefresh } from "../../src/app/refresh-context";
 import "@testing-library/jest-dom/vitest";
 

@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useRefresh } from "./refresh-context";
-import ArticleList, { SkeletonList } from "./article-list";
+import { useRefresh } from "@/app/refresh-context";
+import { ArticleList, type Article } from "@/components/article/article-list";
+import { SkeletonList } from "@/components/article/article-skeleton";
 
-export default function NewsSection({
+export function NewsSection({
   articles,
   emptyMessage,
 }: {
-  articles: import("./article-list").Article[];
+  articles: Article[];
   emptyMessage?: string;
 }) {
   const { isRefreshing, setRefreshing, isFiltering } = useRefresh();
@@ -32,13 +33,23 @@ export default function NewsSection({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-semibold">
           スコアリング済み記事
-          <span className="ml-2 text-sm font-normal text-neutral-400">{headerSuffix}</span>
+          <span
+            className="ml-2 text-sm font-normal text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
+            {headerSuffix}
+          </span>
           {isFiltering && !isRefreshing && (
-            <span className="ml-2 inline-flex items-center gap-1 text-sm font-normal text-blue-500">
-              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+            <span
+              className="ml-2 inline-flex items-center gap-1 text-sm font-normal text-primary"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
               フィルタリング中...
             </span>
           )}
@@ -48,7 +59,7 @@ export default function NewsSection({
       {isRefreshing ? (
         <SkeletonList count={5} />
       ) : articles.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-neutral-300 p-12 text-center text-neutral-400">
+        <div className="rounded-lg border border-dashed border-border p-12 text-center text-muted-foreground">
           <p className="mb-2 text-lg">まだ記事がありません</p>
           <p className="text-sm">
             {emptyMessage || "「ニュースを取得」ボタンで最新ニュースを取得・スコアリングできます"}
@@ -60,3 +71,5 @@ export default function NewsSection({
     </div>
   );
 }
+
+export default NewsSection;

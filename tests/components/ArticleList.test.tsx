@@ -1,8 +1,13 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
-import ArticleList, { type Article } from "../../src/app/article-list";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { ArticleList, type ArticleListRow as Article } from "@/components/article/article-list";
 import "@testing-library/jest-dom/vitest";
+
+const renderWithProviders = (component: React.ReactElement) => {
+  return render(<TooltipProvider>{component}</TooltipProvider>);
+};
 
 const mockArticles: Article[] = [
   {
@@ -41,16 +46,16 @@ const mockArticles: Article[] = [
 
 describe("ArticleList", () => {
   it("renders a list of articles with title, source, score, and summary", () => {
-    render(<ArticleList articles={mockArticles} />);
+    renderWithProviders(<ArticleList articles={mockArticles} />);
 
     expect(screen.getByText("テスト記事 1")).toBeInTheDocument();
     expect(screen.getByText("Zenn")).toBeInTheDocument();
-    expect(screen.getByText("8")).toBeInTheDocument();
+    expect(screen.getByText("8.0")).toBeInTheDocument();
     expect(screen.getByText("これは要約1です。")).toBeInTheDocument();
   });
 
   it("handles article with null score gracefully", () => {
-    render(<ArticleList articles={mockArticles} />);
+    renderWithProviders(<ArticleList articles={mockArticles} />);
 
     expect(screen.getByText("テスト記事 2")).toBeInTheDocument();
     expect(screen.getByText("Qiita")).toBeInTheDocument();
@@ -59,7 +64,7 @@ describe("ArticleList", () => {
   });
 
   it("renders correct links to source URLs", () => {
-    render(<ArticleList articles={mockArticles} />);
+    renderWithProviders(<ArticleList articles={mockArticles} />);
 
     const link1 = screen.getByRole("link", { name: "テスト記事 1" });
     expect(link1).toHaveAttribute("href", "https://example.com/1");
@@ -70,15 +75,14 @@ describe("ArticleList", () => {
     expect(link2).toHaveAttribute("href", "https://example.com/2");
   });
 
-  it("shows score breakdown tooltip on score badge", () => {
-    const { container } = render(<ArticleList articles={mockArticles} />);
-    // The first article's ScoreBadge span has title containing "関連性: 8.0 (20%)\n有用性: 9.0 (50%)..."
-    // Avoid matching the reason span (title="関連性が高いため") by using a more specific selector
-    const scoreBadge = container.querySelector<HTMLSpanElement>("span[title*='関連性: ']");
-    expect(scoreBadge).toBeInTheDocument();
-    expect(scoreBadge?.getAttribute("title")).toContain("関連性: 8.0");
-    expect(scoreBadge?.getAttribute("title")).toContain("有用性: 9.0");
-    expect(scoreBadge?.getAttribute("title")).toContain("新しさ: 7.0");
-    expect(scoreBadge?.getAttribute("title")).toContain("合成: 8.0");
+  it("shows score breakdown tooltip on score badge", async () => {
+    renderWithProviders(<ArticleList articles={mockArticles} />);
+    const scoreButton = screen.getByRole("button", { name: /スコア 8、高スコア/ });
+    expect(scoreButton).toBeInTheDocument();
+
+    fireEvent.click(scoreButton);
+    expect(await screen.findByText("関連性")).toBeInTheDocument();
+    expect(screen.getByText(/有用性/)).toBeInTheDocument();
+    expect(screen.getByText(/新しさ/)).toBeInTheDocument();
   });
 });

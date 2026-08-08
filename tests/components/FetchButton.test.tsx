@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "../lib/test-utils";
 import userEvent from "@testing-library/user-event";
 import { useState, useEffect, useRef } from "react";
 import FetchButton from "../../src/app/fetch-button";
-import NewsSection from "../../src/app/news-section";
+import { NewsSection } from "@/components/news/news-section";
 import { RefreshProvider } from "../../src/app/refresh-context";
 import { SOURCES } from "@/lib/sources";
-import type { Article } from "../../src/app/article-list";
+import type { ArticleListRow as Article } from "@/components/article/article-list";
 import "@testing-library/jest-dom/vitest";
 
 const mockReplace = vi.fn();

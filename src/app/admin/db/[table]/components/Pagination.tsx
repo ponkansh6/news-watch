@@ -21,28 +21,28 @@ export default function Pagination({ total, page, limit, table }: PaginationProp
   };
 
   return (
-    <div className="bg-white border-t border-neutral-200 px-4 py-3 flex items-center justify-between">
-      <div className="text-xs text-neutral-500">
-        Showing <span className="font-semibold text-neutral-900">{(page - 1) * limit + 1}</span> to{" "}
-        <span className="font-semibold text-neutral-900">{Math.min(page * limit, total)}</span> of{" "}
-        <span className="font-semibold text-neutral-900">{total.toLocaleString()}</span> results
+    <div className="bg-card border-t border-border px-4 py-3 flex items-center justify-between">
+      <div className="text-xs text-muted-foreground">
+        Showing <span className="font-semibold text-foreground">{(page - 1) * limit + 1}</span> to{" "}
+        <span className="font-semibold text-foreground">{Math.min(page * limit, total)}</span> of{" "}
+        <span className="font-semibold text-foreground">{total.toLocaleString()}</span> results
       </div>
 
       <div className="flex items-center space-x-2">
         <button
           onClick={() => goToPage(page - 1)}
           disabled={page <= 1}
-          className="px-3 py-1.5 text-xs font-medium border border-neutral-300 rounded-md bg-white text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 text-xs font-medium border border-border rounded-md bg-card text-foreground/90 hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Previous
         </button>
-        <span className="text-xs text-neutral-600 px-2 font-mono">
+        <span className="text-xs text-muted-foreground px-2 font-mono">
           {page} / {totalPages}
         </span>
         <button
           onClick={() => goToPage(page + 1)}
           disabled={page >= totalPages}
-          className="px-3 py-1.5 text-xs font-medium border border-neutral-300 rounded-md bg-white text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 text-xs font-medium border border-border rounded-md bg-card text-foreground/90 hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Next
         </button>

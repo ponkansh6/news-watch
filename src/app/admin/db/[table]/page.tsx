@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getTablePage, TableName } from "@/lib/db";
 import { TABLE_CONFIG } from "../lib/table-config";
 import DataTable from "./components/DataTable";
+import { PageShell } from "@/components/layout/page-shell";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export default async function TablePage({
   const serializableColumns = columns.map(({ format, ...rest }) => rest);
 
   return (
-    <div className="space-y-6">
+    <PageShell width="wide" title={table}>
       <DataTable
         table={table}
         rows={formattedRows}
@@ -59,6 +60,6 @@ export default async function TablePage({
         currentSort={sort}
         currentDir={dir}
       />
-    </div>
+    </PageShell>
   );
 }

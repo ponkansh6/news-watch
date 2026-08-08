@@ -70,7 +70,9 @@ authors: [shunki]
 - **Acceptance Criteria**:
   - WHEN the user visits the home page
   - THEN the system renders a list of articles sorted by score or date
-  - AND each article shows title, source, score breakdown, and summary
+  - AND each article shows title, source, score (with tier-based styling), and summary
+  - AND clicking the score button opens a Popover showing 3-metric breakdown (関連性/有用性/新しさ with weights × 20%/50%/30%, rendered as horizontal bars)
+  - AND the breakdown is accessible via keyboard (Enter/Space on button)
 
 #### FR-004: Loading State
 
@@ -192,20 +194,52 @@ authors: [shunki]
 ### Component Tree (src/app/)
 
 ```
-Layout (src/app/layout.tsx)
-└── RefreshProvider (src/app/refresh-context.tsx - Client Context)
-    └── Page (src/app/page.tsx - RSC)
-        ├── FetchButton (src/app/fetch-button.tsx - Client)
-        └── NewsSection (src/app/news-section.tsx - Client)
-            ├── ArticleList (src/app/article-list.tsx - Client)
-            ├── SkeletonList (src/app/article-list.tsx - Client, skeleton placeholder)
-            └── AnalyzeButton (src/app/bookmarks/analyze-button.tsx - Client, only on /bookmarks)
-            └── Admin DB Viewer (src/app/admin/db/layout.tsx - RSC, Basic Auth protected)
-                ├── Page (src/app/admin/db/page.tsx - RSC, table list landing)
-                └── [table] (src/app/admin/db/[table]/page.tsx - RSC, paginated table view)
-                    ├── DataTable (src/app/admin/db/[table]/components/DataTable.tsx - Client)
-                    ├── Pagination (src/app/admin/db/[table]/components/Pagination.tsx - Client)
-                    └── RowDetail (src/app/admin/db/[table]/components/RowDetail.tsx - Client)
+RootLayout (src/app/layout.tsx)
+├── ThemeProvider (next-themes)
+│   ├── TooltipProvider (shadcn/ui Popover base)
+│   ├── AppHeader (src/components/layout/app-header.tsx - Client)
+│   │   ├── Link → News Watch
+│   │   ├── AppNav (src/components/layout/app-nav.tsx - Client Desktop)
+│   │   │   └── NavItems with aria-current="page"
+│   │   ├── ThemeToggle (src/components/layout/theme-toggle.tsx - Client)
+│   │   └── MobileNav (src/components/layout/app-nav.tsx - Sheet)
+│   ├── RefreshProvider (src/app/refresh-context.tsx - Client Context)
+│   ├── Toaster (sonner - richColors, top-center)
+│   └── PageShell (src/components/layout/page-shell.tsx - Shared main wrapper)
+│
+├── / (src/app/page.tsx - RSC)
+│   └── PageShell
+│       ├── FetchButton (src/app/fetch-button.tsx - Client, data fetch + source selection)
+│       └── NewsSection (src/components/news/news-section.tsx - Client)
+│           ├── ArticleList (src/components/article/article-list.tsx - Client)
+│           │   └── ArticleCard[*] (src/components/article/article-card.tsx - Client)
+│           │       ├── Title (link, target=_blank)
+│           │       ├── Summary (2-line clamp, muted)
+│           │       ├── Source + Date + Keyword Badge
+│           │       ├── Reason (title attribute)
+│           │       └── ScorePopover (src/components/article/score-popover.tsx - Client)
+│           │           └── ScoreBreakdown (3 metrics + weights as horizontal bars)
+│           └── SkeletonList (src/components/article/article-skeleton.tsx - 5 cards, role=status)
+│
+├── /bookmarks (src/app/bookmarks/page.tsx - RSC)
+│   └── PageShell
+│       ├── PreferenceProfile (嗜好プロファイルカード)
+│       ├── AnalyzeButton (src/app/bookmarks/analyze-button.tsx - Client)
+│       └── ArticleList (same as above)
+│
+├── /admin/db (src/app/admin/db/page.tsx - RSC, Basic Auth protected)
+│   └── PageShell width="wide"
+│       └── Table list with counts
+│
+└── /admin/db/[table] (src/app/admin/db/[table]/page.tsx - RSC)
+    └── PageShell width="wide"
+        └── DataTable (src/app/admin/db/[table]/components/DataTable.tsx - Client)
+            ├── Pagination (src/app/admin/db/[table]/components/Pagination.tsx - Client)
+            └── RowDetail (src/app/admin/db/[table]/components/RowDetail.tsx - Client Sheet)
+
+Supporting utilities:
+├── src/lib/ui/score.ts (scoreTier / SCORE_TIER_LABEL - pure functions)
+└── src/components/ui/* (shadcn primitives: Button, Card, Badge, Popover, Sheet, etc.)
 ```
 
 ### Data Flow
@@ -220,8 +254,8 @@ External APIs (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロ�
         → src/lib/db (Persistence)
             → SQLite Database (articles)
               → src/app/page.tsx (RSC: getScoredArticles → taggedCache)
-                → src/app/news-section.tsx (Client: isRefreshing → skeleton / ArticleList rendering)
-                  → src/app/article-list.tsx (Client: Rendering + tooltip breakdown, 5-tap favorites)
+                → src/components/news/news-section.tsx (Client: isRefreshing → skeleton / ArticleList rendering)
+                  → src/components/article/article-list.tsx (Client: Rendering + Popover breakdown, 5-tap favorites)
               → src/app/bookmarks/page.tsx (RSC: getFavoriteArticlesCached + getLatestPreferenceProfileCached)
                 → src/app/bookmarks/analyze-button.tsx (Client: POST /api/favorites/analyze)
               → src/app/api/favorites/analyze/route.ts (min 5件 + cooldown + reuse)
@@ -255,18 +289,21 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 - **Language**: TypeScript 6 (strict mode)
 - **Database**: SQLite via Turso (libSQL)
 - **ORM**: Drizzle ORM + Drizzle Kit
-- **Styling**: Tailwind CSS v4
+- **Styling**: Tailwind CSS v4 + **shadcn/ui (Radix + CVA)** + **tw-animate-css**
+- **Components**: **Radix UI primitives** + **lucide-react** icons
+- **Theme**: **next-themes** (light/dark/system toggle)
+- **Toasts**: **sonner** (rich notifications)
 - **LLM**: Gemini 3.1 Flash Lite (via `@google/generative-ai` SDK)
 - **News Sources**: Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Blog
 - **Deployment**: Vercel
 
 ## 7. Test Strategy
 
-| Test Type                       | Coverage Target | Measured (2026-07-27) |
-| ------------------------------- | --------------- | --------------------- |
-| Unit (data processing, scoring) | >80%            | 81.47% ✅             |
-| Component (UI rendering)        | Key components  | 100% component files  |
-| Schema Consistency              | Automated       | Automated ✅          |
+| Test Type                       | Coverage Target | Measured (2026-08-08)                               |
+| ------------------------------- | --------------- | --------------------------------------------------- |
+| Unit (data processing, scoring) | >80%            | **Tier 1: 100%, Tier 2: 98.41%, Tier 3: 95.65%** ✅ |
+| Component (UI rendering)        | Key components  | **Tier 5: 92.09% (163/177 statements)** ✅          |
+| Schema Consistency              | Automated       | Automated ✅                                        |
 
 ### 7.1 Tiered Coverage Targets
 
@@ -278,7 +315,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 | **Tier 2: Pipeline Orchestration** | `fetch-news/route.ts`, `fetch-news/pipeline/maintenance.ts`                                                                   | リクエスト処理＋パイプライン制御                     | **>85%**                        | 正常系 + 主要エラー系をカバー                                                                                                                |
 | **Tier 3: Source Adapters**        | `news/{zenn,qiita,hatena,itmedia,codezine,xtech,cloudwatch,yamadashy,zdnet}.ts`                                               | IO + XML/JSONパース。外部API呼び出し含む             | **>80%**                        | パースロジックとソース選択を網羅。ネットワーク部分はモック                                                                                   |
 | **Tier 4: Data Access**            | `db/{repository,query}/*.ts` (`actions.ts` removed in R3-a, re-exported via barrel)                                           | DB CRUD操作。Drizzle ORMラッパー                     | **>65%**                        | 全CRUD操作の正常系をカバー。catch節のエラーハンドリングは軽量で可。                                                                          |
-| **Tier 5: UI Components**          | `article-list.tsx`, `news-section.tsx`, `fetch-button.tsx`, `refresh-context.tsx`, `admin/db/[table]/components/*.tsx`        | Client Component。Reactレンダリング                  | **>80%**                        | 主要レンダリングパス・状態遷移（loading/empty/error）をカバー                                                                                |
+| **Tier 5: UI Components**          | `components/{article,news,layout}/*.tsx`, `fetch-button.tsx`, `refresh-context.tsx`, `admin/db/[table]/components/*.tsx`      | Client Component。Reactレンダリング                  | **>80%**                        | 主要レンダリングパス・状態遷移（loading/empty/error）をカバー                                                                                |
 | **Tier 6: External API Wrappers**  | `llm/*.ts`, `embeddings.ts`                                                                                                   | 外部APIの薄いラッパー                                | **llm: >65%, embeddings: skip** | embeddings.ts は vector-filter.ts (100%) で統合テスト済みのため、単体カバレッジ計測対象外。API自体のテストは `RUN_LIVE_TESTS=1` でオプトイン |
 | **Tier 7: RSC Pages**              | `app/page.tsx`, `app/bookmarks/page.tsx`, `app/admin/db/page.tsx`, `app/admin/db/[table]/page.tsx`, `app/admin/db/layout.tsx` | React Server Component                               | **対象外**                      | ロジックはClient Componentに委譲されており、単体テストは実質不可能                                                                           |
 | **Schema Consistency**             | `db/schema.ts`, migrations/\*.sql                                                                                             | DDL定義                                              | **Automated**                   | pre-push hookで自動検証                                                                                                                      |

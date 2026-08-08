@@ -15,7 +15,12 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html", "json-summary"],
       include: ["src/**/*"],
-      exclude: ["src/**/*.d.ts", "src/lib/db/migrations/**", "src/lib/db/index.ts"],
+      exclude: [
+        "src/**/*.d.ts",
+        "src/lib/db/migrations/**",
+        "src/lib/db/index.ts",
+        "src/components/ui/**",
+      ],
     },
   },
   resolve: {

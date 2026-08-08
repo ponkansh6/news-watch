@@ -23,10 +23,10 @@ import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { KEYWORDS } from "@/lib/config";
 import type { NormalizedArticle } from "@/lib/types";
-import { screen, render } from "@testing-library/react";
+import { screen, render } from "../lib/test-utils";
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import ArticleList from "@/app/article-list";
+import { ArticleList } from "@/components/article/article-list";
 
 // --- Mock embeddings so tagArticlesByKeyword needs no real API ----------
 vi.mock("@/lib/embeddings", () => ({

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import ArticleList, { type Article } from "@/app/article-list";
+import { render, screen, fireEvent, waitFor } from "../lib/test-utils";
+import { ArticleList, type ArticleListRow as Article } from "@/components/article/article-list";
 import "@testing-library/jest-dom/vitest";
 
 const mockArticle: Article = {

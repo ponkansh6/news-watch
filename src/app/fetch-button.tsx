@@ -153,13 +153,13 @@ export default function FetchButton() {
   return (
     <div className="flex flex-col gap-3">
       {/* Source Selection */}
-      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+      <div className="rounded-lg border border-border bg-muted p-3">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-medium text-neutral-600">データソース</span>
-          <span className="text-xs text-neutral-500">
+          <span className="text-xs font-medium text-muted-foreground">データソース</span>
+          <span className="text-xs text-muted-foreground">
             {isPending && !isRefreshing && (
               <span className="flex items-center gap-1">
-                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
                 フィルタリング中...
               </span>
             )}
@@ -168,7 +168,7 @@ export default function FetchButton() {
         <select
           value={selectedSource}
           onChange={handleSourceChange}
-          className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"
         >
           {SOURCES.map((source) => (
             <option key={source.id} value={source.id}>
@@ -183,17 +183,17 @@ export default function FetchButton() {
           type="button"
           onClick={handleFetch}
           disabled={apiInFlight || !selectedSource}
-          className="rounded-lg bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {apiInFlight ? "取得・スコアリング中..." : "ニュースを取得してスコアリング"}
         </button>
-        <span className="text-xs text-neutral-400">
+        <span className="text-xs text-muted-foreground">
           {SOURCES.find((s) => s.id === selectedSource)?.name} → LLMスコアリング
         </span>
       </div>
 
       {fetchError && (
-        <div className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
+        <div className="rounded-lg bg-destructive/15 px-4 py-2 text-sm text-destructive">
           {fetchError}
           <button type="button" onClick={handleFetch} className="ml-2 underline hover:no-underline">
             リトライ
@@ -202,32 +202,32 @@ export default function FetchButton() {
       )}
 
       {results && !fetchError && (
-        <div className="rounded-lg border border-neutral-200 bg-white px-4 py-3 text-sm">
+        <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm">
           <div className="flex items-center justify-between">
-            <span className="font-medium text-neutral-700">
+            <span className="font-medium text-foreground">
               {results.reduce((a, r) => a + r.scored, 0)}件 スコアリング完了
             </span>
             <button
               type="button"
               onClick={() => setShowDetail(!showDetail)}
-              className="text-xs text-neutral-400 hover:text-neutral-600 transition-colors"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               {showDetail ? "閉じる" : "詳細を表示"}
             </button>
           </div>
 
           {showDetail && (
-            <div className="mt-3 space-y-1.5 border-t border-neutral-100 pt-3">
+            <div className="mt-3 space-y-1.5 border-t border-border pt-3">
               {results.map((r) => (
                 <div key={r.keyword} className="flex items-center justify-between">
-                  <span className="font-medium text-neutral-600">合計</span>
+                  <span className="font-medium text-muted-foreground">合計</span>
                   <span className="flex items-center gap-1.5">
                     {r.errors.length > 0 ? (
-                      <span className="text-red-500" title={r.errors.join("; ")}>
+                      <span className="text-destructive" title={r.errors.join("; ")}>
                         {r.fetched}件取得 / {r.scored}件スコアリング ⚠
                       </span>
                     ) : (
-                      <span className="text-emerald-600">
+                      <span className="text-score-high">
                         {r.fetched}件取得 / {r.scored}件スコアリング ✅
                       </span>
                     )}
@@ -240,8 +240,8 @@ export default function FetchButton() {
       )}
 
       {isRefreshing && (
-        <div className="flex items-center gap-2 text-sm text-neutral-400">
-          <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-neutral-400" />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-muted-foreground" />
           記事を更新中...
         </div>
       )}

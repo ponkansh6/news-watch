@@ -1,7 +1,11 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono, Noto_Sans_JP } from "next/font/google";
+import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { RefreshProvider } from "./refresh-context";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
+import { AppHeader } from "@/components/layout/app-header";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,9 +17,27 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const notoSansJP = Noto_Sans_JP({
+  variable: "--font-noto-sans-jp",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "700"],
+});
+
 export const metadata: Metadata = {
-  title: "News Watch",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  title: { default: "News Watch", template: "%s — News Watch" },
   description: "AIスコアリングで注目ニュースをキャッチ",
+  openGraph: { type: "website", locale: "ja_JP", siteName: "News Watch" },
+  robots: { index: false, follow: false },
+  icons: { icon: "/favicon.svg" },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
 };
 
 export default function RootLayout({
@@ -24,9 +46,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html
+      lang="ja"
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} ${notoSansJP.variable} h-full antialiased`}
+    >
       <body className="min-h-full flex flex-col">
-        <RefreshProvider>{children}</RefreshProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <TooltipProvider>
+            <AppHeader />
+            <RefreshProvider>{children}</RefreshProvider>
+            <Toaster richColors position="top-center" />
+          </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

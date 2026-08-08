@@ -67,15 +67,14 @@ const TIERS = [
     name: "Tier 4: Data Access",
     target: 65,
     metric: "statements",
-    patterns: [/\/db\/actions\.ts$/],
+    patterns: [/\/db\/(repository|query)\/.+\.ts$/],
   },
   {
     name: "Tier 5: UI Components",
     target: 80,
     metric: "statements",
     patterns: [
-      /\/article-list\.tsx$/,
-      /\/news-section\.tsx$/,
+      /\/components\/(article|news|layout)\/.+\.tsx$/,
       /\/fetch-button\.tsx$/,
       /\/feed-dashboard\.tsx$/,
       /\/refresh-context\.tsx$/,

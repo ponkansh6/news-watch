@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["@libsql/client"],
   experimental: {
-    optimizePackageImports: ["@google/generative-ai"],
+    optimizePackageImports: ["@google/generative-ai", "lucide-react"],
   },
 };
 

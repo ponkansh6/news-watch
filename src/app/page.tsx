@@ -1,6 +1,7 @@
 import { getScoredArticlesCached } from "@/lib/db";
 import FetchButton from "./fetch-button";
-import NewsSection from "./news-section";
+import { NewsSection } from "@/components/news/news-section";
+import { PageShell } from "@/components/layout/page-shell";
 
 export default async function Home(props: { searchParams: Promise<{ source?: string }> }) {
   const searchParams = await props.searchParams;
@@ -8,18 +9,14 @@ export default async function Home(props: { searchParams: Promise<{ source?: str
   const scored = await getScoredArticlesCached(100, selectedSource);
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">News Watch</h1>
-      </header>
-
-      <section className="mb-12">
+    <PageShell title="News Watch">
+      <section>
         <FetchButton />
       </section>
 
-      <section className="mb-12">
+      <section>
         <NewsSection articles={scored} />
       </section>
-    </main>
+    </PageShell>
   );
 }
