@@ -47,3 +47,33 @@
    - 元のスコア内訳Popover（スコアボタンタップ）の挙動に影響がないことを確認。
 3. デスクトップ幅でも同様に確認し、レイアウト崩れがないこと・スコアボタンサイズが従来通り(44px)であることを確認。
 4. `pnpm lint` / `pnpm build` を実行し、型エラー・lintエラー（未使用importのTooltip関連含む）がないことを確認。
+
+## 実行結果（2026-08-09）
+
+### 実装内容
+
+1. **スコア領域のレスポンシブ化** — `article-card.tsx` のルート要素・スコア列・tier bar、および `score-popover.tsx` のボタン/プレースホルダに `sm:` ブレークポイントを追加し、モバイル時のみコンパクト化（PC は従来の 44px を維持）。
+2. **選定理由の Tooltip → Popover 化** — `article-card.tsx` の reason 表示を Radix `Popover`（`@/components/ui/popover`）ベースのタップ開閉に変更。手動 `reason.slice(0, 30)}…` を廃止し、CSS `truncate` + `max-w-[8rem] sm:max-w-[12rem]` による自然な省略表示に変更。`PopoverContent` に全文を表示（`w-72 text-sm leading-relaxed`）。
+3. **テスト追加** — `tests/components/ArticleCard.test.tsx` に「reason が Popover で表示され、クリックで開く」テストを追加（`fireEvent.click` で開閉を検証）。
+4. **spec.md 更新** — コンポーネントツリーの `ArticleCard` 記述を「mobile compact score area」「Reason (Popover on ⓘ button, tap to open full text)」に更新。
+
+### 検証結果
+
+| チェック                                                     | 結果                                   |
+| ------------------------------------------------------------ | -------------------------------------- |
+| `pnpm run lint:fast`                                         | ✅ error 0（warning は既存のもののみ） |
+| `pnpm exec tsgo --noEmit`                                    | ✅ パス                                |
+| `pnpm exec vitest run`                                       | ✅ 336 passed / 2 skipped（65 files）  |
+| `pnpm exec vitest run tests/components/ArticleCard.test.tsx` | ✅ 2 passed                            |
+
+### コミット・プッシュ
+
+- コミット: `caf4ec9` `feat(ui): ArticleCard モバイルUI改善 — スコア領域のレスポンシブ化と選定理由のPopover化`
+- 対象: `openspec/specs/news-watch/spec.md` / `src/components/article/article-card.tsx` / `src/components/article/score-popover.tsx` / `tests/components/ArticleCard.test.tsx` / `shared-plan/13-mobile-ui-article-card.md`
+- pre-commit フック（lint-staged）通過
+- pre-push フック全通過:
+  - spec 参照検証 ✅
+  - スキーマ整合性 ✅
+  - カバレッジ Tier 検証 ✅（Tier 1: 100% 〜 Tier 6: 90.79%）
+  - 本番スキーマ整合 ✅
+- プッシュ: `db54497..caf4ec9 master -> master`
