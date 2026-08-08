@@ -56,7 +56,7 @@ export function ScoreBreakdown({ score, relevance, usefulness, recency }: ScoreP
 export function ScorePopover({ score, relevance, usefulness, recency }: ScorePopoverProps) {
   if (score === null) {
     return (
-      <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-bold text-muted-foreground">
+      <div className="inline-flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-bold text-muted-foreground">
         --
       </div>
     );
@@ -79,7 +79,7 @@ export function ScorePopover({ score, relevance, usefulness, recency }: ScorePop
           type="button"
           aria-label={`スコア ${score}、${SCORE_TIER_LABEL[tier]}。内訳を表示します`}
           className={cn(
-            "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg font-mono text-lg tabular-nums font-bold transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+            "inline-flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-lg font-mono text-base sm:text-lg tabular-nums font-bold transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
             textColorClass,
           )}
         >

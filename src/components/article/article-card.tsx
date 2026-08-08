@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { ScorePopover } from "./score-popover";
 import { scoreTier } from "@/lib/ui/score";
@@ -70,10 +70,10 @@ export function ArticleCard({
   return (
     <li>
       <Card className="group transition-colors hover:shadow-sm">
-        <article className="flex gap-4 p-4 h-full">
+        <article className="flex gap-3 p-3 sm:gap-4 sm:p-4 h-full">
           {/* Left: Score with tier bar */}
-          <div className="shrink-0 flex flex-col items-center gap-2">
-            <div className={`w-1 h-12 rounded-full ${barColor}`} />
+          <div className="shrink-0 flex flex-col items-center gap-1.5 sm:gap-2">
+            <div className={`w-1 h-10 sm:h-12 rounded-full ${barColor}`} />
             <ScorePopover
               score={score ?? null}
               relevance={relevance ?? null}
@@ -124,19 +124,23 @@ export function ArticleCard({
               {reason && (
                 <>
                   <span className="text-muted-foreground">·</span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+                  <Popover>
+                    <PopoverTrigger asChild>
                       <button
                         type="button"
                         className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
                         aria-label={`スコアの理由: ${reason}`}
                       >
                         <HelpCircle className="h-3 w-3" />
-                        <span className="italic">{reason.slice(0, 30)}…</span>
+                        <span className="italic truncate max-w-[8rem] sm:max-w-[12rem]">
+                          {reason}
+                        </span>
                       </button>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">{reason}</TooltipContent>
-                  </Tooltip>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 text-sm leading-relaxed">
+                      {reason}
+                    </PopoverContent>
+                  </Popover>
                 </>
               )}
             </div>

@@ -216,11 +216,11 @@ RootLayout (src/app/layout.tsx)
 │   │   └── FetchResult (src/components/news/fetch-result.tsx - Client)
 │   └── NewsSection (src/components/news/news-section.tsx - Client)
 │       └── ArticleList (src/components/article/article-list.tsx - Client, dimmed via aria-busy + opacity-60 when isRefreshing)
-│           └── ArticleCard[*] (src/components/article/article-card.tsx - Client)
+│           └── ArticleCard[*] (src/components/article/article-card.tsx - Client, mobile compact score area)
 │               ├── Title (link, target=_blank)
 │               ├── Summary (2-line clamp, muted)
 │               ├── Source + Date + Keyword Badge
-│               ├── Reason (Tooltip on ⓘ button)
+│               ├── Reason (Popover on ⓘ button, tap to open full text)
 │               └── ScorePopover (src/components/article/score-popover.tsx - Client)
 │                   └── ScoreBreakdown (3 metrics + weights as horizontal bars)
 │
