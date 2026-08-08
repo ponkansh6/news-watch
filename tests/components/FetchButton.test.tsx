@@ -10,12 +10,12 @@ import { SOURCES } from "@/lib/sources";
 import type { ArticleListRow as Article } from "@/components/article/article-list";
 import "@testing-library/jest-dom/vitest";
 
-const mockReplace = vi.fn();
+const mockPush = vi.fn();
 const mockRefresh = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    replace: mockReplace,
+    push: mockPush,
     refresh: mockRefresh,
   }),
 }));
@@ -74,9 +74,11 @@ const newScoredArticle: Article = {
 };
 
 describe("FetchButton", () => {
+  const mockOnSourceChange = vi.fn();
+
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
+    mockOnSourceChange.mockClear();
   });
 
   afterEach(() => {
@@ -86,7 +88,7 @@ describe("FetchButton", () => {
   it("renders select dropdown with correct sources", () => {
     render(
       <RefreshProvider>
-        <FetchButton />
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
       </RefreshProvider>,
     );
 
@@ -95,10 +97,10 @@ describe("FetchButton", () => {
     }
   });
 
-  it("default selected source is zenn", () => {
+  it("displays the selected source", () => {
     render(
       <RefreshProvider>
-        <FetchButton />
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
       </RefreshProvider>,
     );
 
@@ -106,19 +108,20 @@ describe("FetchButton", () => {
     expect(select.value).toBe("zenn");
   });
 
-  it("source change works correctly", async () => {
+  it("calls onSourceChange when source is changed", async () => {
     const user = userEvent.setup();
     render(
       <RefreshProvider>
-        <FetchButton />
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
       </RefreshProvider>,
     );
 
     const select = screen.getByRole("combobox") as HTMLSelectElement;
-    expect(select.value).toBe("zenn");
-
     await user.selectOptions(select, "qiita");
-    expect(select.value).toBe("qiita");
+
+    await waitFor(() => {
+      expect(mockOnSourceChange).toHaveBeenCalledWith("qiita");
+    });
   });
 
   it("shows loading state during API call", async () => {
@@ -132,7 +135,7 @@ describe("FetchButton", () => {
 
     render(
       <RefreshProvider>
-        <FetchButton />
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
       </RefreshProvider>,
     );
 
@@ -142,15 +145,15 @@ describe("FetchButton", () => {
     expect(screen.getByRole("button", { name: "取得・スコアリング中..." })).toBeInTheDocument();
     expect(screen.getByText("記事を更新中...")).toBeInTheDocument();
 
-    resolveFetch({
-      ok: true,
-      json: async () => ({ ok: true, results: [{ fetched: 5, saved: 3, errors: [] }] }),
+    await act(async () => {
+      resolveFetch({
+        ok: true,
+        json: async () => ({ ok: true, results: [{ fetched: 5, saved: 3, errors: [] }] }),
+      });
     });
 
     await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: "取得・スコアリング中..." }),
-      ).not.toBeInTheDocument();
+      expect(screen.getByText("3件 スコアリング完了")).toBeInTheDocument();
     });
   });
 
@@ -163,7 +166,7 @@ describe("FetchButton", () => {
 
     render(
       <RefreshProvider>
-        <FetchButton />
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
       </RefreshProvider>,
     );
 
@@ -181,7 +184,7 @@ describe("FetchButton", () => {
 
     render(
       <RefreshProvider>
-        <FetchButton />
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
       </RefreshProvider>,
     );
 
@@ -205,7 +208,7 @@ describe("FetchButton", () => {
 
     render(
       <RefreshProvider>
-        <FetchButton />
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
       </RefreshProvider>,
     );
 
@@ -235,7 +238,7 @@ describe("FetchButton", () => {
 
     render(
       <RefreshProvider>
-        <FetchButton />
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
       </RefreshProvider>,
     );
 
@@ -254,16 +257,10 @@ describe("FetchButton", () => {
 });
 
 describe("Refresh lifecycle integration", () => {
+  const mockOnSourceChange = vi.fn();
+
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
-    // Re-setup the router mock after clearing
-    vi.mock("next/navigation", () => ({
-      useRouter: () => ({
-        replace: vi.fn(),
-        refresh: mockRefresh,
-      }),
-    }));
   });
 
   it("clears refreshing when API returns saved=0 and no new article IDs appear", async () => {
@@ -290,7 +287,7 @@ describe("Refresh lifecycle integration", () => {
 
       return (
         <RefreshProvider>
-          <FetchButton />
+          <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
           <NewsSection articles={articles} />
         </RefreshProvider>
       );
@@ -369,7 +366,7 @@ describe("Refresh lifecycle integration", () => {
 
       return (
         <RefreshProvider>
-          <FetchButton />
+          <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
           <NewsSection articles={articles} />
         </RefreshProvider>
       );
@@ -401,11 +398,11 @@ describe("Refresh lifecycle integration", () => {
     const fetchBtn = screen.getByRole("button", { name: "ニュースを取得してスコアリング" });
     await user.click(fetchBtn);
 
-    // Skeleton must be visible immediately
+    // Updating indicator must be visible immediately
     expect(screen.getByText("(更新中...)")).toBeInTheDocument();
-    // Old articles must NOT be visible during loading
-    expect(screen.queryByText("既存記事 1")).not.toBeInTheDocument();
-    expect(screen.queryByText("既存記事 2")).not.toBeInTheDocument();
+    // Old articles must still be visible but dimmed during loading
+    expect(screen.getByText("既存記事 1")).toBeInTheDocument();
+    expect(screen.getByText("既存記事 2")).toBeInTheDocument();
 
     // ----- Phase 3: API completes, scoring done -----
     resolveFetch({
@@ -414,14 +411,14 @@ describe("Refresh lifecycle integration", () => {
     });
 
     // After API returns but before RSC data arrives:
-    // skeleton must STILL be visible, old articles must NOT flash
+    // updating indicator must STILL be visible, old articles stay dimmed
     await waitFor(() => {
       expect(screen.getByText("(更新中...)")).toBeInTheDocument();
     });
 
-    // OLD articles must NOT reappear
-    expect(screen.queryByText("既存記事 1")).not.toBeInTheDocument();
-    expect(screen.queryByText("既存記事 2")).not.toBeInTheDocument();
+    // OLD articles remain visible but dimmed
+    expect(screen.getByText("既存記事 1")).toBeInTheDocument();
+    expect(screen.getByText("既存記事 2")).toBeInTheDocument();
 
     // "0件" empty state must NOT appear during loading
     expect(screen.queryByText("(0件)")).not.toBeInTheDocument();

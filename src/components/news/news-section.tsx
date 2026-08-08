@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { Newspaper } from "lucide-react";
 import { useRefresh } from "@/app/refresh-context";
 import { ArticleList, type Article } from "@/components/article/article-list";
-import { SkeletonList } from "@/components/article/article-skeleton";
+import { Card } from "@/components/ui/card";
 
 export function NewsSection({
   articles,
@@ -56,17 +57,16 @@ export function NewsSection({
         </h2>
       </div>
 
-      {isRefreshing ? (
-        <SkeletonList count={5} />
-      ) : articles.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-12 text-center text-muted-foreground">
-          <p className="mb-2 text-lg">まだ記事がありません</p>
-          <p className="text-sm">
+      {articles.length === 0 ? (
+        <Card className="p-12 text-center">
+          <Newspaper className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold">まだ記事がありません</h3>
+          <p className="text-sm text-muted-foreground mt-2">
             {emptyMessage || "「ニュースを取得」ボタンで最新ニュースを取得・スコアリングできます"}
           </p>
-        </div>
+        </Card>
       ) : (
-        <ArticleList articles={articles} />
+        <ArticleList articles={articles} isLoading={isRefreshing} />
       )}
     </div>
   );

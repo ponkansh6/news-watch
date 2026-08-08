@@ -86,21 +86,23 @@ describe("SkeletonList", () => {
 });
 
 describe("NewsSection", () => {
-  it("shows skeleton when isRefreshing=true", () => {
-    render(
+  it("shows dimmed articles when isRefreshing=true", () => {
+    const articles = mockArticles.slice(0, 2);
+    const { container } = render(
       <Wrapper refreshing={true}>
-        <NewsSection articles={[]} />
+        <NewsSection articles={articles} />
       </Wrapper>,
     );
 
     expect(screen.getByText("スコアリング済み記事")).toBeInTheDocument();
     expect(screen.getByText("(更新中...)")).toBeInTheDocument();
-    const { container } = render(
-      <Wrapper refreshing={true}>
-        <NewsSection articles={[]} />
-      </Wrapper>,
-    );
-    expect(container.querySelectorAll("article").length).toBeGreaterThan(0);
+    expect(screen.getByText("テスト記事 1")).toBeInTheDocument();
+
+    // Check that the ul has aria-busy and opacity-60 class
+    const ul = container.querySelector('ul[role="list"]');
+    expect(ul).toHaveAttribute("aria-busy", "true");
+    expect(ul).toHaveClass("opacity-60");
+    expect(ul).toHaveClass("pointer-events-none");
   });
 
   it("shows empty state when not refreshing and no articles", () => {

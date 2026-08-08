@@ -8,7 +8,12 @@ import { SkeletonList } from "./article-skeleton";
 export type Article = ArticleListRow;
 export type { ArticleListRow };
 
-export function ArticleList({ articles }: { articles: Article[] }) {
+interface ArticleListProps {
+  articles: Article[];
+  isLoading?: boolean;
+}
+
+export function ArticleList({ articles, isLoading }: ArticleListProps) {
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const clickCountsRef = useRef<
     Record<number, { count: number; timer: ReturnType<typeof setTimeout> | null }>
@@ -101,7 +106,11 @@ export function ArticleList({ articles }: { articles: Article[] }) {
           </button>
         </div>
       )}
-      <ul role="list" className="space-y-3">
+      <ul
+        role="list"
+        className={`space-y-3 ${isLoading ? "opacity-60 pointer-events-none" : ""}`}
+        aria-busy={isLoading}
+      >
         {articles.map((article) => (
           <ArticleCard key={article.id} {...article} onPointerDown={() => handleTap(article.id)} />
         ))}
