@@ -76,7 +76,6 @@ const TIERS = [
     patterns: [
       /\/components\/(article|news|layout)\/.+\.tsx$/,
       /\/fetch-button\.tsx$/,
-      /\/feed-dashboard\.tsx$/,
       /\/refresh-context\.tsx$/,
     ],
   },

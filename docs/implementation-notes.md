@@ -159,23 +159,23 @@ handleTap(articleId):
 
 対象テスト（`tests/components/`、`tests/integration/`）:
 
-| テスト                          | 検証内容                                                                                               |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `ArticleList.test.tsx`          | タイトル/ソース/スコア(`8.0`)/要約表示、null スコアの `--`、リンク属性、スコア内訳 Popover の表示      |
-| `FavoriteArticleList.test.tsx`  | 5 回タップで `POST /api/favorites/toggle`、4 回未満は不発火、4,000ms タイムアウト、成功/エラートースト |
-| `NewsSection.test.tsx`          | ヘッダー・件数、スケルトン、空状態、フィルタ中表示、記事順序、ID 差分によるリフレッシュ解除            |
-| `FetchButton.test.tsx`          | 取得フロー、失敗表示、リフレッシュライフサイクル（saved=0 のフォールバック解除、新着到着での解除）     |
-| `ArticleCard.test.tsx`          | 必須フィールド欠落時の表示（`source` フォールバック、`--`）                                            |
-| `ScorePopover.test.tsx`         | null スコアの `--`、aria-label、内訳表示（関連性/有用性/新しさ/合成）                                  |
-| `display-after-scoring.test.ts` | 取得→タグ付け→スコアリング→表示の E2E 契約                                                             |
+| テスト                          | 検証内容                                                                                                         |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `ArticleList.test.tsx`          | タイトル/ソース/スコア(`8.0`)/要約表示、null スコアの `--`、リンク属性、スコア内訳 Popover の表示                |
+| `FavoriteArticleList.test.tsx`  | 5 回タップで `POST /api/favorites/toggle`、4 回未満は不発火、4,000ms タイムアウト、成功/エラートースト           |
+| `NewsSection.test.tsx`          | ヘッダー・件数、更新中の減光表示（`aria-busy`）、空状態、フィルタ中表示、記事順序、ID 差分によるリフレッシュ解除 |
+| `FetchButton.test.tsx`          | 取得フロー、失敗表示、リフレッシュライフサイクル（saved=0 のフォールバック解除、新着到着での解除）               |
+| `ArticleCard.test.tsx`          | 必須フィールド欠落時の表示（`source` フォールバック、`--`）                                                      |
+| `ScorePopover.test.tsx`         | null スコアの `--`、aria-label、内訳表示（関連性/有用性/新しさ/合成）                                            |
+| `display-after-scoring.test.ts` | 取得→タグ付け→スコアリング→表示の E2E 契約                                                                       |
 
 **検証結果（2026-08-08 時点）— 更新**:
 
-- 全テスト: **326 passed / 2 skipped（63 ファイル）** ✅
+- 全テスト: **328 passed / 2 skipped（63 ファイル）** ✅
 - 型チェック: `tsgo --noEmit` クリーン ✅
 - リント: oxlint エラーなし（警告のみ・既存） ✅
 - スキーマ整合性: `tests/db/schema-consistency.test.ts` 5 テスト通過 ✅
-- カバレッジ段階検証: 全ティア目標達成（Tier 1: 100% / Tier 5: 92.09%） ✅
+- カバレッジ段階検証: 全ティア目標達成（Tier 1: 100% / Tier 5: 93.85%） ✅
 - spec.md 参照検証: 強化版スクリプトで腐敗パス 3 件を検出・修復済み ✅
 
 ## 7. 経緯メモ（この実装に至った経緯）

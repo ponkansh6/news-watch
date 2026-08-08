@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, renderHook, act } from "../lib/test-utils";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { describe, it, expect } from "vitest";
+import { render, screen } from "../lib/test-utils";
+import { useEffect, type ReactNode } from "react";
 import { NewsSection } from "@/components/news/news-section";
 import { type ArticleListRow as Article } from "@/components/article/article-list";
 import { SkeletonList } from "@/components/article/article-skeleton";

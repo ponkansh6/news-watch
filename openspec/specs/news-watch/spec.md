@@ -209,17 +209,19 @@ RootLayout (src/app/layout.tsx)
 │
 ├── / (src/app/page.tsx - RSC)
 │   └── PageShell
-│       ├── FetchButton (src/app/fetch-button.tsx - Client, data fetch + source selection)
-│       └── NewsSection (src/components/news/news-section.tsx - Client)
-│           ├── ArticleList (src/components/article/article-list.tsx - Client)
-│           │   └── ArticleCard[*] (src/components/article/article-card.tsx - Client)
-│           │       ├── Title (link, target=_blank)
-│           │       ├── Summary (2-line clamp, muted)
-│           │       ├── Source + Date + Keyword Badge
-│           │       ├── Reason (title attribute)
-│           │       └── ScorePopover (src/components/article/score-popover.tsx - Client)
-│           │           └── ScoreBreakdown (3 metrics + weights as horizontal bars)
-│           └── SkeletonList (src/components/article/article-skeleton.tsx - 5 cards, role=status)
+│   ├── FetchButton (src/app/fetch-button.tsx - Client, data fetch + source selection)
+│   │   ├── SourceFilter (src/components/news/source-filter.tsx - Client)
+│   │   ├── FetchAction (src/components/news/fetch-action.tsx - Client)
+│   │   └── FetchResult (src/components/news/fetch-result.tsx - Client)
+│   └── NewsSection (src/components/news/news-section.tsx - Client)
+│       └── ArticleList (src/components/article/article-list.tsx - Client, dimmed via aria-busy + opacity-60 when isRefreshing)
+│           └── ArticleCard[*] (src/components/article/article-card.tsx - Client)
+│               ├── Title (link, target=_blank)
+│               ├── Summary (2-line clamp, muted)
+│               ├── Source + Date + Keyword Badge
+│               ├── Reason (Tooltip on ⓘ button)
+│               └── ScorePopover (src/components/article/score-popover.tsx - Client)
+│                   └── ScoreBreakdown (3 metrics + weights as horizontal bars)
 │
 ├── /bookmarks (src/app/bookmarks/page.tsx - RSC)
 │   └── PageShell
@@ -254,7 +256,7 @@ External APIs (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロ�
         → src/lib/db (Persistence)
             → SQLite Database (articles)
               → src/app/page.tsx (RSC: getScoredArticles → taggedCache)
-                → src/components/news/news-section.tsx (Client: isRefreshing → skeleton / ArticleList rendering)
+                → src/components/news/news-section.tsx (Client: isRefreshing → ArticleList dimmed via aria-busy + opacity-60)
                   → src/components/article/article-list.tsx (Client: Rendering + Popover breakdown, 5-tap favorites)
               → src/app/bookmarks/page.tsx (RSC: getFavoriteArticlesCached + getLatestPreferenceProfileCached)
                 → src/app/bookmarks/analyze-button.tsx (Client: POST /api/favorites/analyze)
@@ -302,7 +304,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 | Test Type                       | Coverage Target | Measured (2026-08-08)                               |
 | ------------------------------- | --------------- | --------------------------------------------------- |
 | Unit (data processing, scoring) | >80%            | **Tier 1: 100%, Tier 2: 98.41%, Tier 3: 95.65%** ✅ |
-| Component (UI rendering)        | Key components  | **Tier 5: 92.09% (163/177 statements)** ✅          |
+| Component (UI rendering)        | Key components  | **Tier 5: 93.85% (168/179 statements)** ✅          |
 | Schema Consistency              | Automated       | Automated ✅                                        |
 
 ### 7.1 Tiered Coverage Targets
@@ -315,7 +317,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 | **Tier 2: Pipeline Orchestration** | `fetch-news/route.ts`, `fetch-news/pipeline/maintenance.ts`                                                                   | リクエスト処理＋パイプライン制御                     | **>85%**                        | 正常系 + 主要エラー系をカバー                                                                                                                |
 | **Tier 3: Source Adapters**        | `news/{zenn,qiita,hatena,itmedia,codezine,xtech,cloudwatch,yamadashy,zdnet}.ts`                                               | IO + XML/JSONパース。外部API呼び出し含む             | **>80%**                        | パースロジックとソース選択を網羅。ネットワーク部分はモック                                                                                   |
 | **Tier 4: Data Access**            | `db/{repository,query}/*.ts` (`actions.ts` removed in R3-a, re-exported via barrel)                                           | DB CRUD操作。Drizzle ORMラッパー                     | **>65%**                        | 全CRUD操作の正常系をカバー。catch節のエラーハンドリングは軽量で可。                                                                          |
-| **Tier 5: UI Components**          | `components/{article,news,layout}/*.tsx`, `fetch-button.tsx`, `refresh-context.tsx`, `admin/db/[table]/components/*.tsx`      | Client Component。Reactレンダリング                  | **>80%**                        | 主要レンダリングパス・状態遷移（loading/empty/error）をカバー                                                                                |
+| **Tier 5: UI Components**          | `components/{article,news,layout}/*.tsx`, `fetch-button.tsx`, `refresh-context.tsx`                                           | Client Component。Reactレンダリング                  | **>80%**                        | 主要レンダリングパス・状態遷移（loading/empty/error）をカバー                                                                                |
 | **Tier 6: External API Wrappers**  | `llm/*.ts`, `embeddings.ts`                                                                                                   | 外部APIの薄いラッパー                                | **llm: >65%, embeddings: skip** | embeddings.ts は vector-filter.ts (100%) で統合テスト済みのため、単体カバレッジ計測対象外。API自体のテストは `RUN_LIVE_TESTS=1` でオプトイン |
 | **Tier 7: RSC Pages**              | `app/page.tsx`, `app/bookmarks/page.tsx`, `app/admin/db/page.tsx`, `app/admin/db/[table]/page.tsx`, `app/admin/db/layout.tsx` | React Server Component                               | **対象外**                      | ロジックはClient Componentに委譲されており、単体テストは実質不可能                                                                           |
 | **Schema Consistency**             | `db/schema.ts`, migrations/\*.sql                                                                                             | DDL定義                                              | **Automated**                   | pre-push hookで自動検証                                                                                                                      |

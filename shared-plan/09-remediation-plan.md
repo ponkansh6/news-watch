@@ -6,51 +6,47 @@
 
 ## 進行状況（2026-08-08 追記）
 
-実装途中のスナップショット。**変更の大半は作業ツリー上にあり未コミット**（commit は R2+R1-6+R1-7 を同一コミットにまとめる計画）。
+実測値（`shared-plan/11-09-verification.md` の検証結果）に基づく状態:
 
 ### 完了済み
 
-| 項目 | 内容                                                                           | 状態                                                  |
-| ---- | ------------------------------------------------------------------------------ | ----------------------------------------------------- | ----------------------------------------- |
-| R1-1 | `admin/db/layout.tsx` の `<main>` → `<>`                                       | ✅ 適用済み                                           |
-| R1-2 | `admin/db/[table]/page.tsx` を `PageShell width="wide"` でラップ               | ✅ 適用済み                                           |
-| R1-3 | `src/app/admin/db/error.tsx` 新規作成                                          | ✅ 作成済み                                           |
-| R1-4 | `public/{file,globe,next,vercel,window}.svg` 削除                              | ✅ 削除済み                                           |
-| R1-5 | `layout.tsx` metadata に `icons: { icon: "/favicon.svg" }`                     | ✅ 適用済み                                           |
-| R1-6 | `check-spec-refs.sh` をバッククォート無しパス検出に強化（`REFS_BARE`）         | ✅ 適用済み・**動作確認済み**（3 件の腐敗参照を検出） |
-| R1-7 | `check-coverage-tiers.mjs` Tier 4 を `db/(repository                           | query)/.+.ts` に修正                                  | ✅ 適用済み・**Tier 4 が 73.25% PASS に** |
-| R3-a | `article-card.tsx` トークン移行（`transition-all` → `transition-colors` 含む） | ✅ 適用済み                                           |
-| R3-b | `news-section.tsx` トークン移行 + `role="status" aria-live="polite"` 付与      | ✅ 適用済み                                           |
-| R3-c | `article-list.tsx` トークン移行（トースト色 `score-high` / `destructive`）     | ✅ 適用済み                                           |
-| R3-d | `fetch-button.tsx` トークン移行                                                | ✅ 適用済み                                           |
-| R3-e | `analyze-button.tsx` トークン移行                                              | ✅ 適用済み                                           |
-| R3-f | `DataTable.tsx` トークン移行                                                   | ✅ 適用済み                                           |
+| 項目 | 内容                                                                                           | 状態                                                                                                          |
+| ---- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| R1-1 | `admin/db/layout.tsx` の `<main>` → `<>`                                                       | ✅ 適用済み                                                                                                   |
+| R1-2 | `admin/db/[table]/page.tsx` を `PageShell width="wide"` でラップ                               | ✅ 適用済み                                                                                                   |
+| R1-3 | `src/app/admin/db/error.tsx` 新規作成                                                          | ✅ 作成済み                                                                                                   |
+| R1-4 | `public/{file,globe,next,vercel,window}.svg` 削除                                              | ✅ 削除済み                                                                                                   |
+| R1-5 | `layout.tsx` metadata に `icons: { icon: "/favicon.svg" }`                                     | ✅ 適用済み                                                                                                   |
+| R1-6 | `check-spec-refs.sh` をバッククォート無しパス検出に強化（`REFS_BARE`）                         | ✅ 適用済み・**動作確認済み**                                                                                 |
+| R1-7 | `check-coverage-tiers.mjs` Tier 4 を `db/(repository                                           | query)/.+.ts` に修正                                                                                          | ✅ 適用済み・**Tier 4 PASS に** |
+| R2   | spec.md 同期（Component Tree / Data Flow / §7.1 Tier 5 / §7 計測表 / §3.2 / Technology Stack） | ✅ 完了                                                                                                       |
+| R3-a | `article-card.tsx` トークン移行（`transition-all` → `transition-colors` 含む）                 | ✅ 適用済み                                                                                                   |
+| R3-b | `news-section.tsx` トークン移行 + `role="status" aria-live="polite"` 付与                      | ✅ 適用済み                                                                                                   |
+| R3-c | `article-list.tsx` トークン移行（トースト色 `score-high` / `destructive`）                     | ✅ 適用済み                                                                                                   |
+| R3-d | `fetch-button.tsx` トークン移行                                                                | ✅ 適用済み                                                                                                   |
+| R3-e | `analyze-button.tsx` トークン移行                                                              | ✅ 適用済み                                                                                                   |
+| R3-f | `DataTable.tsx` トークン移行                                                                   | ✅ 適用済み（※ `RowDetail.tsx:17` の `bg-black/40` は shadcn DialogOverlay 慣例による意図的な例外として除外） |
+| R4   | ArticleCard 再設計（Card 化・スコア左・h3・Tooltip・縦バー・keyword 削除）                     | ✅ 完了                                                                                                       |
+| R4-8 | `article-list.tsx` の `<ul>/<li>` 化                                                           | ✅ 完了                                                                                                       |
+| R5-1 | `/bookmarks` 空状態の日本語化                                                                  | ✅ 完了                                                                                                       |
+| R5-2 | `ThemeToggle.test.tsx` に light / system 追加                                                  | ✅ 完了                                                                                                       |
+| R5-4 | `implementation-notes.md` §6 検証結果の訂正                                                    | ✅ 完了                                                                                                       |
 
 ### 未着手
 
-| 項目 | 内容                                                                       | 残作業                                                                                                                     |
-| ---- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| R2   | spec.md 同期                                                               | **Component Tree のみ更新済み**。Data Flow 図 / §7.1 Tier 5 / §7 計測表 / §3.2 Article Display / Technology Stack が未更新 |
-| R3-f | `RowDetail.tsx`（24 箇所）・`Pagination.tsx`（15 箇所）                    | 直書き色のまま。計 **39 箇所** 残存                                                                                        |
-| R4   | ArticleCard 再設計（Card 化・スコア左・h3・Tooltip・縦バー・keyword 削除） | 未着手（`<article>` 直書き・スコア右のまま）                                                                               |
-| R4-8 | `article-list.tsx` の `<ul>/<li>` 化                                       | 未着手（`<div className="space-y-3">` のまま）                                                                             |
-| R5-1 | `/bookmarks` 空状態の日本語化                                              | 未着手（`No bookmarked articles yet.` のまま）                                                                             |
-| R5-2 | `ThemeToggle.test.tsx` に light / system 追加                              | 未着手（dark のみ）                                                                                                        |
-| R5-3 | ヘッダーのブックマーク件数バッジ（AppHeader RSC 化）                       | 未着手                                                                                                                     |
-| R5-4 | `implementation-notes.md` §6 検証結果の訂正                                | 未着手                                                                                                                     |
+| 項目 | 内容                                                 | 残作業                                                                                                |
+| ---- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| R5-3 | ヘッダーのブックマーク件数バッジ（AppHeader RSC 化） | ⏭️ 見送り（ユーザー判断により `app-header.tsx` は `"use client"` のまま維持し、バッジ実装は行わない） |
 
 ### 検証結果（2026-08-08 実測）
 
-| コマンド                                    | 結果                                                                                           |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `pnpm exec vitest run`                      | **326 passed / 2 skipped（63 files）** ✅                                                      |
-| `pnpm exec tsgo --noEmit`                   | EXIT=0 ✅                                                                                      |
-| `pnpm run lint:fast`                        | エラー 0（警告のみ・既存） ✅                                                                  |
-| `node scripts/check-coverage-tiers.mjs`     | 全ティア PASS（**Tier 4: 73.25%** / Tier 5: 92.09%） ✅                                        |
-| `bash scripts/check-spec-refs.sh`（強化版） | **❌ FAIL（3 件の腐敗参照を検出）** — R1-6 が機能している証拠。R2 の残り節を更新すれば PASS に |
-
-> ⚠️ 注: `check-spec-refs.sh` は現時点で **FAIL が正しい状態**。R2 が未完のため。
-> R2（spec.md 全節）と R1-6/7 を**同一コミット**にしてから検証を通すこと。
+| コマンド                                    | 結果                                                        |
+| ------------------------------------------- | ----------------------------------------------------------- |
+| `pnpm exec vitest run`                      | **328 passed / 2 skipped（63 files）** ✅                   |
+| `pnpm exec tsgo --noEmit`                   | EXIT=0 ✅                                                   |
+| `pnpm run lint:fast`                        | エラー 0（警告のみ） ✅                                     |
+| `node scripts/check-coverage-tiers.mjs`     | 全ティア PASS（**Tier 4: 73.25%** / **Tier 5: 93.85%**） ✅ |
+| `bash scripts/check-spec-refs.sh`（強化版） | **✅ PASS**                                                 |
 
 ---
 
@@ -175,13 +171,15 @@ REFS=$(printf '%s\n%s\n' "$REFS_TICK" "$REFS_BARE" | sed '/^$/d')
 ### 完了条件
 
 ```bash
-# 直書き色クラスがゼロになること
+# 直書き色クラスがゼロになること（RowDetail.tsx の bg-black/40 は DialogOverlay のスクリム慣例に基づく意図的な例外）
 grep -rnoE "(bg|text|border)-(white|black|neutral|gray|slate|zinc|red|green|blue|emerald|amber|yellow)-?[0-9]{0,3}" \
-  src --include=*.tsx | grep -v "src/components/ui/"
+  src --include=*.tsx | grep -v "src/components/ui/" | grep -v "bg-black/"
 ```
 
+> `RowDetail.tsx:17` の `bg-black/40` は shadcn `DialogOverlay` のスクリム慣例（`bg-black/50`）と同種の**意図的な例外**。テーマトークンに載せないため除外する。
+
 - 上記の出力が空
-- `pnpm exec vitest run --coverage` 全通過（326 passed 維持）
+- `pnpm exec vitest run --coverage` 全通過（328 passed 維持）
 - `.dark` を `<html>` に手動付与して 4 画面を目視 — 白カード / 黒文字の組み合わせが出ない
 
 ---
