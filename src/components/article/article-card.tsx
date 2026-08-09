@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
 import { ScorePopover } from "./score-popover";
 import { scoreTier } from "@/lib/ui/score";
 import { HelpCircle } from "lucide-react";
@@ -68,8 +67,11 @@ export function ArticleCard({
 
   return (
     <li className="relative bg-card transition-colors sm:overflow-hidden sm:rounded-xl sm:ring-1 sm:ring-foreground/10 sm:hover:shadow-sm">
-      <span aria-hidden className={cn("absolute inset-y-0 left-0 w-[3px]", barColor)} />
-      <article className="px-3 py-3 sm:px-4 sm:py-3.5">
+      <span
+        aria-hidden
+        className={cn("absolute inset-y-4 left-0 w-1 rounded-r-full sm:inset-y-3", barColor)}
+      />
+      <article className="px-3 py-4 sm:px-4 sm:py-3.5">
         {/* Title + Summary */}
         <div className="select-none touch-manipulation" onPointerDown={onPointerDown}>
           <h3>
@@ -89,11 +91,8 @@ export function ArticleCard({
           )}
         </div>
 
-        {/* Separator */}
-        <Separator className="my-2" />
-
         {/* Metadata: Score · Source · MM/DD · Keyword Badge · Reason */}
-        <div className="flex items-center gap-1.5 text-xs min-w-0">
+        <div className="mt-2.5 flex items-center gap-1.5 text-xs min-w-0">
           <ScorePopover
             score={score ?? null}
             relevance={relevance ?? null}
