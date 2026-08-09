@@ -2,12 +2,12 @@
 
 import * as React from "react";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { ScorePopover } from "./score-popover";
 import { scoreTier } from "@/lib/ui/score";
 import { HelpCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface ArticleCardProps {
   id: string | number;
@@ -31,7 +31,6 @@ export interface ArticleCardProps {
 function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleDateString("ja-JP", {
-      year: "numeric",
       month: "2-digit",
       day: "2-digit",
     });
@@ -68,85 +67,79 @@ export function ArticleCard({
           : "bg-muted";
 
   return (
-    <li>
-      <Card className="group transition-colors hover:shadow-sm">
-        <article className="flex gap-3 p-3 sm:gap-4 sm:p-4 h-full">
-          {/* Left: Score with tier bar */}
-          <div className="shrink-0 flex flex-col items-center gap-1.5 sm:gap-2">
-            <div className={`w-1 h-10 sm:h-12 rounded-full ${barColor}`} />
-            <ScorePopover
-              score={score ?? null}
-              relevance={relevance ?? null}
-              usefulness={usefulness ?? null}
-              recency={recency ?? null}
-            />
-          </div>
+    <li className="relative bg-card transition-colors sm:overflow-hidden sm:rounded-xl sm:ring-1 sm:ring-foreground/10 sm:hover:shadow-sm">
+      <span aria-hidden className={cn("absolute inset-y-0 left-0 w-[3px]", barColor)} />
+      <article className="px-3 py-3 sm:px-4 sm:py-3.5">
+        {/* Title + Summary */}
+        <div className="select-none touch-manipulation" onPointerDown={onPointerDown}>
+          <h3>
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block font-semibold leading-snug text-foreground transition-colors hover:text-primary text-base line-clamp-2"
+            >
+              {title}
+            </a>
+          </h3>
+          {summary && (
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground line-clamp-3">
+              {summary}
+            </p>
+          )}
+        </div>
 
-          {/* Right: Content */}
-          <div className="min-w-0 flex-1 flex flex-col">
-            {/* Title + Summary */}
-            <div className="select-none touch-manipulation" onPointerDown={onPointerDown}>
-              <h3>
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block font-semibold leading-snug text-foreground transition-colors hover:text-primary text-base line-clamp-2"
-                >
-                  {title}
-                </a>
-              </h3>
-              {summary && (
-                <p className="mt-1 text-sm leading-relaxed text-muted-foreground line-clamp-2">
-                  {summary}
-                </p>
-              )}
-            </div>
+        {/* Separator */}
+        <Separator className="my-2" />
 
-            {/* Separator */}
-            <Separator className="my-3" />
-
-            {/* Metadata: Source · Date · Keyword · Reason */}
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              {displaySource && (
-                <span className="font-medium text-muted-foreground">{displaySource}</span>
-              )}
-              <span className="text-muted-foreground">·</span>
-              <time dateTime={publishedAt} className="text-muted-foreground">
-                {formatDate(publishedAt)}
-              </time>
-              {keywordLabel && (
-                <>
-                  <span className="text-muted-foreground">·</span>
-                  <Badge variant="secondary">{keywordLabel}</Badge>
-                </>
-              )}
-              {reason && (
-                <>
-                  <span className="text-muted-foreground">·</span>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-                        aria-label={`スコアの理由: ${reason}`}
-                      >
-                        <HelpCircle className="h-3 w-3" />
-                        <span className="italic truncate max-w-[8rem] sm:max-w-[12rem]">
-                          {reason}
-                        </span>
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-72 text-sm leading-relaxed">
-                      {reason}
-                    </PopoverContent>
-                  </Popover>
-                </>
-              )}
-            </div>
-          </div>
-        </article>
-      </Card>
+        {/* Metadata: Score · Source · MM/DD · Keyword Badge · Reason */}
+        <div className="flex items-center gap-1.5 text-xs min-w-0">
+          <ScorePopover
+            score={score ?? null}
+            relevance={relevance ?? null}
+            usefulness={usefulness ?? null}
+            recency={recency ?? null}
+          />
+          <span className="text-muted-foreground shrink-0">·</span>
+          {displaySource && (
+            <span className="font-medium text-muted-foreground shrink-0">{displaySource}</span>
+          )}
+          <span className="text-muted-foreground shrink-0">·</span>
+          <time
+            dateTime={publishedAt}
+            title={publishedAt}
+            className="text-muted-foreground shrink-0"
+          >
+            {formatDate(publishedAt)}
+          </time>
+          {keywordLabel && (
+            <>
+              <span className="text-muted-foreground shrink-0">·</span>
+              <Badge variant="secondary" className="shrink-0 max-w-[6rem] truncate">
+                {keywordLabel}
+              </Badge>
+            </>
+          )}
+          {reason && (
+            <>
+              <span className="text-muted-foreground shrink-0">·</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex min-w-0 flex-1 items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label={`スコアの理由: ${reason}`}
+                  >
+                    <HelpCircle className="h-3 w-3 shrink-0" />
+                    <span className="italic truncate">{reason}</span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 text-sm leading-relaxed">{reason}</PopoverContent>
+              </Popover>
+            </>
+          )}
+        </div>
+      </article>
     </li>
   );
 }

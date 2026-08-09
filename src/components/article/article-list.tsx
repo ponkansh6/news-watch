@@ -108,7 +108,7 @@ export function ArticleList({ articles, isLoading }: ArticleListProps) {
       )}
       <ul
         role="list"
-        className={`space-y-3 ${isLoading ? "opacity-60 pointer-events-none" : ""}`}
+        className={`-mx-4 divide-y divide-border sm:mx-0 sm:divide-y-0 sm:space-y-3 ${isLoading ? "opacity-60 pointer-events-none" : ""}`}
         aria-busy={isLoading}
       >
         {articles.map((article) => (
