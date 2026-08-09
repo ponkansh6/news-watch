@@ -6,7 +6,6 @@ import { SourceFilter } from "@/components/news/source-filter";
 import { FetchAction } from "@/components/news/fetch-action";
 import { FetchResult } from "@/components/news/fetch-result";
 import { useRefresh } from "./refresh-context";
-import { SOURCES } from "@/lib/sources";
 
 interface FetchResultData {
   keyword: string;
@@ -127,11 +126,8 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3 border-b border-border pb-4">
+      <div className="flex items-center gap-2 border-b border-border pb-3 sm:gap-3 sm:pb-4">
         <SourceFilter value={selectedSource} onSourceChange={handleSourceChangeWithRouter} />
-        <span className="text-sm text-muted-foreground">
-          {SOURCES.find((s) => s.id === selectedSource)?.name} ソース
-        </span>
         <FetchAction isLoading={apiInFlight} onFetch={handleFetch} className="ml-auto" />
       </div>
 

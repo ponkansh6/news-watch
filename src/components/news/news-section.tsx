@@ -34,8 +34,8 @@ export function NewsSection({
 
   return (
     <div className="space-y-3">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xl font-semibold">
+      <div className="mb-2 flex items-center justify-between sm:mb-4">
+        <h1 className="text-xl font-semibold">
           スコアリング済み記事
           <span
             className="ml-2 text-sm font-normal text-muted-foreground"
@@ -54,7 +54,7 @@ export function NewsSection({
               フィルタリング中...
             </span>
           )}
-        </h2>
+        </h1>
       </div>
 
       {articles.length === 0 ? (

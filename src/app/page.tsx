@@ -16,7 +16,7 @@ export default async function Home(props: { searchParams: Promise<{ source?: str
   const scored = await getScoredArticlesCached(100, selectedSource);
 
   return (
-    <PageShell title="News Watch">
+    <PageShell>
       <section>
         <FetchButton selectedSource={selectedSource} onSourceChange={setSourceCookie} />
       </section>
