@@ -1,13 +1,8 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "../lib/test-utils";
 import { ArticleList, type ArticleListRow as Article } from "@/components/article/article-list";
 import "@testing-library/jest-dom/vitest";
-
-const renderWithProviders = (component: React.ReactElement) => {
-  return render(<TooltipProvider>{component}</TooltipProvider>);
-};
 
 const mockArticles: Article[] = [
   {
@@ -45,8 +40,16 @@ const mockArticles: Article[] = [
 ];
 
 describe("ArticleList", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders a list of articles with title, source, score, and summary", () => {
-    renderWithProviders(<ArticleList articles={mockArticles} />);
+    render(<ArticleList articles={mockArticles} />);
 
     expect(screen.getByText("テスト記事 1")).toBeInTheDocument();
     expect(screen.getByText("Zenn")).toBeInTheDocument();
@@ -55,7 +58,7 @@ describe("ArticleList", () => {
   });
 
   it("handles article with null score gracefully", () => {
-    renderWithProviders(<ArticleList articles={mockArticles} />);
+    render(<ArticleList articles={mockArticles} />);
 
     expect(screen.getByText("テスト記事 2")).toBeInTheDocument();
     expect(screen.getByText("Qiita")).toBeInTheDocument();
@@ -64,7 +67,7 @@ describe("ArticleList", () => {
   });
 
   it("renders correct links to source URLs", () => {
-    renderWithProviders(<ArticleList articles={mockArticles} />);
+    render(<ArticleList articles={mockArticles} />);
 
     const link1 = screen.getByRole("link", { name: "テスト記事 1" });
     expect(link1).toHaveAttribute("href", "https://example.com/1");
@@ -76,7 +79,7 @@ describe("ArticleList", () => {
   });
 
   it("shows score breakdown tooltip on score badge", async () => {
-    renderWithProviders(<ArticleList articles={mockArticles} />);
+    render(<ArticleList articles={mockArticles} />);
     const scoreButton = screen.getByRole("button", { name: /スコア 8、高スコア/ });
     expect(scoreButton).toBeInTheDocument();
 
@@ -84,5 +87,32 @@ describe("ArticleList", () => {
     expect(await screen.findByText("関連性")).toBeInTheDocument();
     expect(screen.getByText(/有用性/)).toBeInTheDocument();
     expect(screen.getByText(/新しさ/)).toBeInTheDocument();
+  });
+
+  it("renders with loading state", () => {
+    const { container } = render(<ArticleList articles={mockArticles} isLoading={true} />);
+    const list = container.querySelector("ul");
+    expect(list).toHaveClass("opacity-60");
+    expect(list).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("renders correctly without articles", () => {
+    const { container } = render(<ArticleList articles={[]} />);
+    const list = container.querySelector("ul");
+    expect(list).toBeInTheDocument();
+    expect(list?.children).toHaveLength(0);
+  });
+
+  it("renders with empty articles array", () => {
+    const { container } = render(<ArticleList articles={[]} />);
+    const list = container.querySelector("ul");
+    expect(list).toBeInTheDocument();
+    expect(list?.children.length).toBe(0);
+  });
+
+  it("renders with isLoading prop", () => {
+    const { container } = render(<ArticleList articles={mockArticles} isLoading={true} />);
+    const list = container.querySelector("ul");
+    expect(list).toHaveClass("opacity-60", "pointer-events-none");
   });
 });

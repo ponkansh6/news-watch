@@ -44,4 +44,21 @@ describe("ArticleCard", () => {
     const matches = await screen.findAllByText("この記事は非常に有用で最新のトレンドです");
     expect(matches.length).toBeGreaterThanOrEqual(2);
   });
+
+  it("handles invalid date format gracefully", () => {
+    render(
+      <ArticleCard
+        id={3}
+        title="無効な日付の記事"
+        url="https://example.com"
+        source="Test"
+        publishedAt="not-a-date"
+      />,
+    );
+
+    expect(screen.getByText("無効な日付の記事")).toBeInTheDocument();
+    // When date parsing fails, formatDate catches the error and returns the original string
+    const timeElement = screen.getByTitle("not-a-date");
+    expect(timeElement).toBeInTheDocument();
+  });
 });
