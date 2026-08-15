@@ -71,12 +71,26 @@ export const TABLE_CONFIG: Record<string, { columns: ColumnDef[] }> = {
       },
     ],
   },
+  not_for_me: {
+    columns: [
+      { key: "id", label: "ID", sortable: true, align: "right" },
+      { key: "articleId", label: "Article ID", sortable: true, align: "right" },
+      {
+        key: "createdAt",
+        label: "NFM At",
+        sortable: true,
+        format: (v) => (typeof v === "string" && v ? new Date(v).toLocaleString("ja-JP") : "—"),
+      },
+    ],
+  },
   preference_profiles: {
     columns: [
       { key: "id", label: "ID", sortable: true, align: "right" },
       { key: "version", label: "Version", sortable: true, align: "right" },
       { key: "favoriteCount", label: "Fav Count", sortable: true, align: "right" },
       { key: "favoriteMaxId", label: "Fav Max ID", sortable: true, align: "right" },
+      { key: "notForMeCount", label: "NFM Count", sortable: true, align: "right" },
+      { key: "notForMeMaxId", label: "NFM Max ID", sortable: true, align: "right" },
       { key: "model", label: "Model", sortable: true },
       { key: "analysis", label: "Analysis", sortable: false, hidden: true },
       { key: "promptSection", label: "Prompt Section", sortable: false, hidden: true },

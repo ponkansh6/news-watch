@@ -113,10 +113,10 @@ authors: [shunki]
   - Given at least 5 favorite articles exist (`PREFERENCE_MIN_FAVORITES`)
   - WHEN the user clicks "傾向を分析" on `/bookmarks`
   - THEN the system calls `POST /api/favorites/analyze`
-  - AND the favorites are analyzed by the LLM (`src/lib/llm/preference.ts`) to extract themes / traits / dislikes / scoring guidance
+  - AND the favorites and optional explicit "Not For Me" (NFM) items (`src/lib/db/repository/not-for-me-repository.ts`) are analyzed by the LLM (`src/lib/llm/preference.ts`) to extract themes / traits / dislikes / scoring guidance
   - AND the resulting profile is stored in `preference_profiles` (append-only)
-  - AND analysis is rate-limited to once per hour (cooldown), and skipped entirely when favorites are unchanged (previous result reused)
-  - AND subsequent scoring injects the profile into the prompt (FR-002)
+  - AND analysis is rate-limited to once per hour (cooldown), and skipped entirely when favorites and NFM states are unchanged (previous result reused via `favoriteCount`, `favoriteMaxId`, `notForMeCount`, `notForMeMaxId`)
+  - AND subsequent scoring injects the profile into the prompt, utilizing NFM as explicit negative examples for disliking and scoring guidance (FR-002)
 
 ## 4. Non-Functional Requirements
 
@@ -184,10 +184,24 @@ authors: [shunki]
 | `promptSection` | text    | Audit snapshot of the generated prompt section (rebuilt on read)                      |
 | `favoriteCount` | integer | Number of favorites at analysis time                                                  |
 | `favoriteMaxId` | integer | Max favorite id at analysis time (change detection)                                   |
+| `notForMeCount` | integer | Number of not-for-me marks at analysis time                                           |
+| `notForMeMaxId` | integer | Max not-for-me id at analysis time (change detection)                                 |
 | `model`         | text    | LLM model used for analysis                                                           |
 | `createdAt`     | text    | Timestamp when the profile was created                                                |
 
 - Append-only history; active profile = latest row by `id`. No index/FK.
+
+### not_for_me (SQLite via Drizzle ORM — `src/lib/db/schema.ts`)
+
+| Field       | Type    | Description                                            |
+| ----------- | ------- | ------------------------------------------------------ |
+| `id`        | integer | Primary key (auto-increment)                           |
+| `articleId` | integer | Foreign key referencing `articles.id` (cascade delete) |
+| `createdAt` | text    | Timestamp when the record was created                  |
+
+**Indexes:**
+
+- `not_for_me_article_id_unique`: Unique index on `articleId`
 
 ## 6. Architecture
 
@@ -217,8 +231,8 @@ RootLayout (src/app/layout.tsx)
 │   └── NewsSection (src/components/news/news-section.tsx - Client, h1 heading)
 │       └── ArticleList (src/components/article/article-list.tsx - Client, dimmed via aria-busy + opacity-60 when isRefreshing, mobile boundary = 8px muted band)
 │           └── ArticleCard[*] (src/components/article/article-card.tsx - Client, mobile-first feed: full-width list on mobile, card on sm+, accent tier pill, no internal separator)
-│               ├── Title (link, target=_blank, 2-line clamp)
-│               ├── Summary (3-line clamp, muted)
+│               ├── Title (link, target=_blank, 2-line clamp, swipe gesture area for Not For Me)
+│               ├── Summary (3-line clamp, muted, tap area for favorites)
 │               ├── Meta row (single line): Score · Source · MM/DD · Keyword Badge · Reason (truncate)
 │               ├── ScorePopover (src/components/article/score-popover.tsx - Client, compact inline trigger in meta row)
 │               │   └── ScoreBreakdown (3 metrics + weights as horizontal bars)
@@ -255,17 +269,17 @@ External APIs (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロ�
         → src/lib/llm/index.ts (LLM batch scoring: usefulness + summary)
       → src/app/api/fetch-news/route.ts (calcRecencyScore + weighted composite)
         → src/lib/db (Persistence)
-            → SQLite Database (articles)
+            → SQLite Database (articles, not_for_me, preference_profiles)
               → src/app/page.tsx (RSC: getScoredArticles → taggedCache; ソース選択は src/app/actions.ts Server Action 経由で cookie へ)
                 → src/components/news/news-section.tsx (Client: isRefreshing → ArticleList dimmed via aria-busy + opacity-60)
-                  → src/components/article/article-list.tsx (Client: Rendering + Popover breakdown, 5-tap favorites)
+                  → src/components/article/article-list.tsx (Client: Rendering + Popover breakdown, 5-tap favorites, 5-swipe NFM via /api/not-for-me/toggle)
               → src/app/bookmarks/page.tsx (RSC: getFavoriteArticlesCached + getLatestPreferenceProfileCached)
                 → src/app/bookmarks/analyze-button.tsx (Client: POST /api/favorites/analyze)
-              → src/app/api/favorites/analyze/route.ts (min 5件 + cooldown + reuse)
-                → src/lib/llm/preference.ts (analyzeFavorites)
+              → src/app/api/favorites/analyze/route.ts (min 5件 + cooldown + reuse with favorites & NFM states)
+                → src/lib/llm/preference.ts (analyzeFavorites with buildNotForMeBlock)
                   → src/lib/db (preference_profiles)
                     → src/lib/score-pipeline.ts (scoreAndSaveTagged: injects profile → LLM scoring prompt)
-              → src/app/admin/db/page.tsx (RSC: table list)
+              → src/app/admin/db/page.tsx (RSC: table list including not_for_me)
                 → src/app/admin/db/[table]/page.tsx (RSC: paginated table view)
                   → DataTable + Pagination + RowDetail (Client: read-only browsing)
 ```
@@ -354,7 +368,8 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 - **Unofficial Favorites**: Allows users to bookmark articles by tapping rapidly (5 taps within 4 seconds) on the article body area. A 4-second timeout resets the tap counter to prevent accidental triggers during normal browsing.
 - **Data Persistence**: Stored in a dedicated server-side `favorites` table with cascade delete on article removal.
 - **Bookmarks Page**: Accessible via hidden route `/bookmarks` (no navigation link on the main dashboard), displaying all bookmarked articles in a shared view.
-- **Preference Analysis**: `/bookmarks` shows a "傾向を分析" button; it analyzes favorites via LLM (`POST /api/favorites/analyze`) and persists the profile to `preference_profiles`. Requires ≥5 favorites; rate-limited to once/hour; reused unchanged when favorites haven't changed.
+- **Preference Analysis**: `/bookmarks` shows a "傾向を分析" button; it analyzes favorites and explicit "Not For Me" (NFM) items via LLM (`POST /api/favorites/analyze`) and persists the profile to `preference_profiles`. Requires ≥5 favorites; rate-limited to once/hour; reused unchanged when favorites and NFM states have not changed.
+- **Unofficial Not For Me (NFM)**: Allows users to mark articles as "Not For Me" by swiping horizontally on the article title area (5 continuous swipes within 4 seconds, horizontal movement dominating vertical movement with a 40px threshold). Stored in the server-side `not_for_me` table with cascade delete on article removal. Visible in the admin database viewer at `/admin/db/not_for_me`. Used indirectly in preference analysis as explicit negative examples.
 
 ## 10. Hybrid Scoring (Vector Pre-Filter) & Threshold Tuning
 
