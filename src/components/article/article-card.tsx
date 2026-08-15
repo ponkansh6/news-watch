@@ -24,7 +24,14 @@ export interface ArticleCardProps {
   keywordLabel?: string | null;
   reason?: string | null;
   // eslint-disable-next-line @sbougerel/next-use-client-boundary/props-must-be-serializable
-  onPointerDown?: React.PointerEventHandler<HTMLDivElement>;
+  onPointerDown?: React.PointerEventHandler<HTMLElement>;
+  // eslint-disable-next-line @sbougerel/next-use-client-boundary/props-must-be-serializable
+  swipeGesture?: {
+    onPointerDown: React.PointerEventHandler<HTMLElement>;
+    onPointerUp: React.PointerEventHandler<HTMLElement>;
+    onPointerCancel: React.PointerEventHandler<HTMLElement>;
+    onClickCapture: React.MouseEventHandler<HTMLElement>;
+  };
 }
 
 function formatDate(iso: string): string {
@@ -53,6 +60,7 @@ export function ArticleCard({
   keywordLabel,
   reason,
   onPointerDown,
+  swipeGesture,
 }: ArticleCardProps) {
   const displaySource = sourceName ?? sourceId ?? source ?? "source";
   const tier = scoreTier(score ?? null);
@@ -73,9 +81,10 @@ export function ArticleCard({
       />
       <article className="px-3 py-4 sm:px-4 sm:py-3.5">
         {/* Title + Summary */}
-        <div className="select-none touch-manipulation" onPointerDown={onPointerDown}>
-          <h3>
+        <div>
+          <h3 className="select-none touch-pan-y py-1 -my-1" {...swipeGesture}>
             <a
+              draggable={false}
               href={url}
               target="_blank"
               rel="noopener noreferrer"
@@ -85,7 +94,10 @@ export function ArticleCard({
             </a>
           </h3>
           {summary && (
-            <p className="mt-1 text-sm leading-relaxed text-muted-foreground line-clamp-3">
+            <p
+              className="mt-1 select-none touch-manipulation text-sm leading-relaxed text-muted-foreground line-clamp-3"
+              onPointerDown={onPointerDown}
+            >
               {summary}
             </p>
           )}
@@ -101,13 +113,19 @@ export function ArticleCard({
           />
           <span className="text-muted-foreground shrink-0">·</span>
           {displaySource && (
-            <span className="font-medium text-muted-foreground shrink-0">{displaySource}</span>
+            <span
+              className="font-medium text-muted-foreground shrink-0 select-none touch-manipulation cursor-pointer"
+              onPointerDown={onPointerDown}
+            >
+              {displaySource}
+            </span>
           )}
           <span className="text-muted-foreground shrink-0">·</span>
           <time
             dateTime={publishedAt}
             title={publishedAt}
-            className="text-muted-foreground shrink-0"
+            className="text-muted-foreground shrink-0 select-none touch-manipulation cursor-pointer"
+            onPointerDown={onPointerDown}
           >
             {formatDate(publishedAt)}
           </time>

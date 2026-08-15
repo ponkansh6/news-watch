@@ -39,7 +39,7 @@ describe("FavoriteArticleList Component", () => {
 
     render(<ArticleList articles={[mockArticle]} />);
 
-    const wrapperEl = screen.getByText("Test summary").parentElement!;
+    const wrapperEl = screen.getByText("Test summary");
 
     // Tap 4 times
     for (let i = 0; i < 4; i++) {
@@ -59,7 +59,7 @@ describe("FavoriteArticleList Component", () => {
 
     render(<ArticleList articles={[mockArticle]} />);
 
-    const wrapperEl = screen.getByText("Test summary").parentElement!;
+    const wrapperEl = screen.getByText("Test summary");
 
     // Tap 5 times
     for (let i = 0; i < 5; i++) {
@@ -85,7 +85,7 @@ describe("FavoriteArticleList Component", () => {
 
     render(<ArticleList articles={[mockArticle]} />);
 
-    const wrapperEl = screen.getByText("Test summary").parentElement!;
+    const wrapperEl = screen.getByText("Test summary");
 
     // Tap 4 times
     for (let i = 0; i < 4; i++) {
@@ -111,7 +111,7 @@ describe("FavoriteArticleList Component", () => {
 
     render(<ArticleList articles={[mockArticle]} />);
 
-    const wrapperEl = screen.getByText("Test summary").parentElement!;
+    const wrapperEl = screen.getByText("Test summary");
     for (let i = 0; i < 5; i++) {
       fireEvent.pointerDown(wrapperEl);
     }
@@ -144,7 +144,7 @@ describe("FavoriteArticleList Component", () => {
 
     render(<ArticleList articles={[mockArticle]} />);
 
-    const wrapperEl = screen.getByText("Test summary").parentElement!;
+    const wrapperEl = screen.getByText("Test summary");
     for (let i = 0; i < 5; i++) {
       fireEvent.pointerDown(wrapperEl);
     }

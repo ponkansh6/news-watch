@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import {
   getFavoriteStats,
+  getNotForMeStats,
   getLatestPreferenceProfile,
   getFavoriteArticles,
+  getNotForMeArticles,
   savePreferenceProfile,
 } from "@/lib/db";
 import {
@@ -32,6 +34,7 @@ export async function POST(request: Request) {
 
     const force = parsed.data?.force ?? false;
     const { count, maxId } = await getFavoriteStats();
+    const nfmStats = await getNotForMeStats();
 
     if (count < PREFERENCE_MIN_FAVORITES) {
       return NextResponse.json(
@@ -64,7 +67,13 @@ export async function POST(request: Request) {
       );
     }
 
-    if (latest && latest.favoriteCount === count && latest.favoriteMaxId === maxId) {
+    if (
+      latest &&
+      latest.favoriteCount === count &&
+      latest.favoriteMaxId === maxId &&
+      latest.notForMeCount === nfmStats.count &&
+      latest.notForMeMaxId === nfmStats.maxId
+    ) {
       return NextResponse.json({
         reused: true,
         profile: {
@@ -85,7 +94,16 @@ export async function POST(request: Request) {
       score: a.score,
     }));
 
-    const analysis = await analyzeFavorites(items);
+    const nfmArticles = await getNotForMeArticles();
+    const nfmItems: FavoriteInput[] = nfmArticles.map((a) => ({
+      title: a.title,
+      summary: a.summary,
+      keywordLabel: a.keywordLabel,
+      reason: a.reason,
+      score: a.score,
+    }));
+
+    const analysis = await analyzeFavorites(items, nfmItems);
 
     if (!analysis || !isUsablePreferenceAnalysis(analysis)) {
       console.warn("[api] favorites/analyze analysis not usable:", analysis);
@@ -98,6 +116,8 @@ export async function POST(request: Request) {
       promptSection,
       favoriteCount: count,
       favoriteMaxId: maxId,
+      notForMeCount: nfmStats.count,
+      notForMeMaxId: nfmStats.maxId,
       model: LLM_MODEL,
     });
 

@@ -5,6 +5,8 @@ import {
   getLatestPreferenceProfile,
   getFavoriteArticles,
   savePreferenceProfile,
+  getNotForMeStats,
+  getNotForMeArticles,
 } from "@/lib/db";
 import {
   analyzeFavorites,
@@ -18,6 +20,8 @@ vi.mock("@/lib/db", () => ({
   getLatestPreferenceProfile: vi.fn(),
   getFavoriteArticles: vi.fn(),
   savePreferenceProfile: vi.fn(),
+  getNotForMeStats: vi.fn(),
+  getNotForMeArticles: vi.fn(),
 }));
 
 vi.mock("@/lib/llm", () => ({
@@ -29,7 +33,9 @@ vi.mock("@/lib/llm", () => ({
 
 describe("POST /api/favorites/analyze", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    vi.mocked(getNotForMeStats).mockResolvedValue({ count: 0, maxId: 0 });
+    vi.mocked(getNotForMeArticles).mockResolvedValue([]);
   });
 
   it("件数不足 400", async () => {
@@ -60,6 +66,8 @@ describe("POST /api/favorites/analyze", () => {
       createdAt: new Date(Date.now() - 60000).toISOString(), // 1 min ago
       favoriteCount: 5,
       favoriteMaxId: 5,
+      notForMeCount: 0,
+      notForMeMaxId: 0,
       model: "test-model",
       analysis: { summary: "test", themes: [], traits: [], dislikes: [], scoringGuidance: [] },
       promptSection: "test",
@@ -88,6 +96,8 @@ describe("POST /api/favorites/analyze", () => {
       createdAt: new Date(Date.now() - 7200000).toISOString(), // 2 hours ago
       favoriteCount: 5,
       favoriteMaxId: 10,
+      notForMeCount: 0,
+      notForMeMaxId: 0,
       model: "test-model",
       analysis: {
         summary: "old summary",
@@ -171,6 +181,8 @@ describe("POST /api/favorites/analyze", () => {
       promptSection: "prompt section",
       favoriteCount: 5,
       favoriteMaxId: 10,
+      notForMeCount: 0,
+      notForMeMaxId: 0,
       model: "test-model",
     });
     expect(revalidateTag).toHaveBeenCalledWith("preference-profile", "max");
@@ -195,6 +207,67 @@ describe("POST /api/favorites/analyze", () => {
     expect(res.status).toBe(502);
     expect(json).toEqual({ error: "Analysis failed" });
     expect(savePreferenceProfile).not.toHaveBeenCalled();
+  });
+
+  it("NFM だけが増えた場合は再分析が走る（reused: false）", async () => {
+    vi.mocked(getFavoriteStats).mockResolvedValueOnce({ count: 5, maxId: 10 });
+    vi.mocked(getNotForMeStats).mockResolvedValueOnce({ count: 1, maxId: 3 });
+    vi.mocked(getLatestPreferenceProfile).mockResolvedValueOnce({
+      id: 1,
+      version: 1,
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+      favoriteCount: 5,
+      favoriteMaxId: 10,
+      notForMeCount: 0,
+      notForMeMaxId: 0,
+      model: "test-model",
+      analysis: { summary: "old", themes: [], traits: [], dislikes: [], scoringGuidance: [] },
+      promptSection: "old",
+    });
+
+    vi.mocked(getFavoriteArticles).mockResolvedValueOnce([]);
+    vi.mocked(getNotForMeArticles).mockResolvedValueOnce([
+      {
+        id: 3,
+        title: "NFM Article",
+        url: "https://example.com/nfm",
+        publishedAt: new Date().toISOString(),
+        sourceName: "Src",
+        sourceId: "src",
+        keyword: "kw",
+        summary: "sum",
+        relevance: 1,
+        usefulness: 1,
+        recency: 1,
+        score: 10,
+        reason: "bad",
+        keywordLabel: "KW",
+      },
+    ]);
+
+    const mockAnalysis = {
+      summary: "updated",
+      themes: [],
+      traits: [],
+      dislikes: ["bad"],
+      scoringGuidance: [],
+    };
+    vi.mocked(analyzeFavorites).mockResolvedValueOnce(mockAnalysis);
+    vi.mocked(isUsablePreferenceAnalysis).mockReturnValueOnce(true);
+    vi.mocked(buildPreferencePromptSection).mockReturnValueOnce("new prompt");
+
+    const req = new Request("http://localhost/api/favorites/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.reused).toBe(false);
+    expect(analyzeFavorites).toHaveBeenCalledWith(expect.any(Array), expect.any(Array));
   });
 
   it("DB throw → 500", async () => {
