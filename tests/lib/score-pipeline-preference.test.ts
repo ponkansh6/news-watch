@@ -122,6 +122,8 @@ describe("scoreAndSaveTagged with preference profiles", () => {
       promptSection: 'section:{"themes":["TypeScript"]}',
       favoriteCount: 5,
       favoriteMaxId: 10,
+      notForMeCount: 0,
+      notForMeMaxId: 0,
       model: "test-model",
       createdAt: "2026-01-01T00:00:00Z",
     };

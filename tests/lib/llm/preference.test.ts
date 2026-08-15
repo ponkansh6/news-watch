@@ -1,7 +1,8 @@
-import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, test, vi, beforeEach } from "vitest";
 import {
   sanitizeForPrompt,
   buildFavoritesBlock,
+  buildNotForMeBlock,
   clampPreferencePayload,
   isUsablePreferenceAnalysis,
   analyzeFavorites,
@@ -59,6 +60,23 @@ describe("preference ユーティリティ & LLM分析のテスト", () => {
       },
     ]);
     expect(nullScoreBlock).toContain("score=-");
+  });
+
+  test("buildNotForMeBlock: NFMリストの整形と最大件数制限", () => {
+    expect(buildNotForMeBlock([])).toBe("(データなし)");
+
+    const items = Array.from({ length: 105 }, (_, i) => ({
+      title: `NFM Title ${i + 1}`,
+      summary: `NFM Summary ${i + 1}`,
+      keywordLabel: `Tag ${i + 1}`,
+      reason: `Reason ${i + 1}`,
+      score: 3.5,
+    }));
+
+    const block = buildNotForMeBlock(items);
+    const lines = block.split("\n");
+    expect(lines.length).toBe(100);
+    expect(lines[0]).toContain("1. [Tag 1] score=3.5 | NFM Title 1");
   });
 
   test("clampPreferencePayload: 配列・文字列のクランプと未定義キーの補完", () => {
@@ -165,6 +183,28 @@ describe("preference ユーティリティ & LLM分析のテスト", () => {
 
       const result = await analyzeFavorites(items);
       expect(result).toBeNull();
+    });
+
+    test("analyzeFavorites に第2引数として notForMeItems を渡せること", async () => {
+      vi.mocked(callGemini).mockResolvedValueOnce(
+        JSON.stringify({
+          themes: [],
+          traits: [],
+          dislikes: ["AI news"],
+          scoringGuidance: [],
+          summary: "sum",
+        }),
+      );
+
+      const items = [{ title: "Fav", summary: "", keywordLabel: "", reason: "", score: 9 }];
+      const nfmItems = [
+        { title: "NFM Title", summary: "", keywordLabel: "", reason: "", score: 2 },
+      ];
+
+      await analyzeFavorites(items, nfmItems);
+      const promptArg = vi.mocked(callGemini).mock.calls[0][0];
+      expect(promptArg).toContain("<not_for_me>");
+      expect(promptArg).toContain("NFM Title");
     });
   });
 

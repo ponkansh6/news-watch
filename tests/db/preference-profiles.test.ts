@@ -87,6 +87,8 @@ describe("Preference Profiles DB Layer", () => {
       promptSection: "section 1",
       favoriteCount: 3,
       favoriteMaxId: 10,
+      notForMeCount: 0,
+      notForMeMaxId: 0,
       model: "gemini-model-v1",
     });
 
@@ -96,6 +98,8 @@ describe("Preference Profiles DB Layer", () => {
       promptSection: "section 2",
       favoriteCount: 4,
       favoriteMaxId: 12,
+      notForMeCount: 0,
+      notForMeMaxId: 0,
       model: "gemini-model-v1",
     });
 
@@ -111,10 +115,12 @@ describe("Preference Profiles DB Layer", () => {
   it("2. JSON round-trip includes nested arrays", async () => {
     await savePreferenceProfile({
       analysis: sampleAnalysis,
-      promptSection: "section roundtrip",
-      favoriteCount: 2,
-      favoriteMaxId: 5,
-      model: "model",
+      promptSection: "prompt",
+      favoriteCount: 1,
+      favoriteMaxId: 1,
+      notForMeCount: 0,
+      notForMeMaxId: 0,
+      model: "test",
     });
 
     const latest = await getLatestPreferenceProfile();

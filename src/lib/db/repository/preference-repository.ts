@@ -7,6 +7,8 @@ export interface SavePreferenceProfileInput {
   promptSection: string;
   favoriteCount: number;
   favoriteMaxId: number;
+  notForMeCount: number;
+  notForMeMaxId: number;
   model: string;
 }
 
@@ -20,6 +22,8 @@ export async function savePreferenceProfile(input: SavePreferenceProfileInput): 
         promptSection: input.promptSection,
         favoriteCount: input.favoriteCount,
         favoriteMaxId: input.favoriteMaxId,
+        notForMeCount: input.notForMeCount,
+        notForMeMaxId: input.notForMeMaxId,
         model: input.model,
       })
       .returning({ id: preferenceProfiles.id });

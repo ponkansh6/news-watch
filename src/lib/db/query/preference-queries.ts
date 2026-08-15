@@ -12,6 +12,8 @@ export interface PreferenceProfile {
   promptSection: string;
   favoriteCount: number;
   favoriteMaxId: number;
+  notForMeCount: number;
+  notForMeMaxId: number;
   model: string;
   createdAt: string;
 }
@@ -49,6 +51,8 @@ export async function getLatestPreferenceProfile(): Promise<PreferenceProfile | 
       promptSection: row.promptSection,
       favoriteCount: row.favoriteCount,
       favoriteMaxId: row.favoriteMaxId,
+      notForMeCount: row.notForMeCount,
+      notForMeMaxId: row.notForMeMaxId,
       model: row.model,
       createdAt: row.createdAt,
     };

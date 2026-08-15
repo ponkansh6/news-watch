@@ -32,6 +32,24 @@ export function sanitizeForPrompt(s: string | null, maxChars: number): string {
 /** Build favorites text block for preference analysis prompt. */
 export function buildFavoritesBlock(items: FavoriteInput[]): string {
   const slice = items.slice(0, PREFERENCE_MAX_FAVORITES_IN_PROMPT);
+  if (slice.length === 0) return "(データなし)";
+  return slice
+    .map((item, i) => {
+      const label = sanitizeForPrompt(item.keywordLabel, 20);
+      const scoreStr =
+        item.score !== null && item.score !== undefined ? item.score.toFixed(1) : "-";
+      const title = sanitizeForPrompt(item.title, PREFERENCE_FAV_TITLE_MAX_CHARS);
+      const summary = sanitizeForPrompt(item.summary, PREFERENCE_FAV_TEXT_MAX_CHARS);
+      const reason = sanitizeForPrompt(item.reason, PREFERENCE_FAV_TEXT_MAX_CHARS);
+      return `${i + 1}. [${label}] score=${scoreStr} | ${title} | ${summary} | ${reason}`;
+    })
+    .join("\n");
+}
+
+/** Build not-for-me text block for preference analysis prompt. */
+export function buildNotForMeBlock(items: FavoriteInput[]): string {
+  const slice = items.slice(0, PREFERENCE_MAX_FAVORITES_IN_PROMPT);
+  if (slice.length === 0) return "(データなし)";
   return slice
     .map((item, i) => {
       const label = sanitizeForPrompt(item.keywordLabel, 20);
@@ -74,12 +92,15 @@ export function isUsablePreferenceAnalysis(a: PreferenceAnalysis): boolean {
 }
 
 /** Analyze user favorite articles to extract preference profile. */
-export async function analyzeFavorites(items: FavoriteInput[]): Promise<PreferenceAnalysis | null> {
+export async function analyzeFavorites(
+  items: FavoriteInput[],
+  notForMeItems: FavoriteInput[] = [],
+): Promise<PreferenceAnalysis | null> {
   if (items.length === 0) return null;
 
-  const prompt = PREFERENCE_ANALYSIS_PROMPT.replace("{{favoriteCount}}", () =>
-    String(items.length),
-  ).replace("{{favorites}}", () => buildFavoritesBlock(items));
+  const prompt = PREFERENCE_ANALYSIS_PROMPT.replace("{{favoriteCount}}", () => String(items.length))
+    .replace("{{favorites}}", () => buildFavoritesBlock(items))
+    .replace("{{notForMe}}", () => buildNotForMeBlock(notForMeItems));
 
   return parseWithRetry(
     () => callGemini(prompt, LLM_PREFERENCE_MAX_TOKENS, LLM_PREFERENCE_TIMEOUT_MS),
