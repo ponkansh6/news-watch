@@ -74,6 +74,12 @@ export const MINUTES_PER_HOUR = 60;
 export const HOURS_PER_DAY = 24;
 
 // ── Preference profile (favorites analysis) ──
+export const FAVORITE_TAP_COUNT = 5;
+export const FAVORITE_TAP_TIMEOUT_MS = 4000;
+export const NFM_SWIPE_COUNT = 5;
+export const NFM_SWIPE_TIMEOUT_MS = 4000;
+export const NFM_SWIPE_THRESHOLD_PX = 40;
+
 export const PREFERENCE_PROFILE_VERSION = 1;
 export const PREFERENCE_MIN_FAVORITES = 5;
 export const PREFERENCE_MAX_FAVORITES_IN_PROMPT = 100;

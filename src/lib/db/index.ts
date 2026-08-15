@@ -31,6 +31,12 @@ import {
 } from "./repository/favorite-repository";
 
 import {
+  toggleNotForMe,
+  getNotForMeArticles,
+  getNotForMeStats,
+} from "./repository/not-for-me-repository";
+
+import {
   savePreferenceProfile,
   type SavePreferenceProfileInput,
 } from "./repository/preference-repository";
@@ -72,6 +78,9 @@ export {
   getFavoriteArticles,
   getFavoriteArticlesCached,
   getFavoriteStats,
+  toggleNotForMe,
+  getNotForMeArticles,
+  getNotForMeStats,
   savePreferenceProfile,
   getLatestPreferenceProfile,
   getLatestPreferenceProfileCached,

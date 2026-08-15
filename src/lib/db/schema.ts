@@ -78,6 +78,27 @@ export const favorites = sqliteTable(
 );
 
 /**
+ * Not For Me (hidden/disliked articles).
+ * - article_id is unique (one not-for-me per article, toggle on/off).
+ * - Trigger: タイトルの5連続横スワイプ
+ */
+export const notForMe = sqliteTable(
+  "not_for_me",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    articleId: integer("article_id")
+      .notNull()
+      .references(() => articles.id, { onDelete: "cascade" }),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => ({
+    uniqueArticle: uniqueIndex("not_for_me_article_id_unique").on(table.articleId),
+  }),
+);
+
+/**
  * User preference profiles extracted from favorites by LLM (append-only history).
  * - active profile = latest by id (created_at is ISO string with second tie).
  * - analysis stores the validated JSON (PreferenceAnalysis); prompt_section is
@@ -90,6 +111,8 @@ export const preferenceProfiles = sqliteTable("preference_profiles", {
   promptSection: text("prompt_section").notNull(),
   favoriteCount: integer("favorite_count").notNull(),
   favoriteMaxId: integer("favorite_max_id").notNull().default(0),
+  notForMeCount: integer("not_for_me_count").notNull().default(0),
+  notForMeMaxId: integer("not_for_me_max_id").notNull().default(0),
   model: text("model").notNull(),
   createdAt: text("created_at")
     .notNull()
