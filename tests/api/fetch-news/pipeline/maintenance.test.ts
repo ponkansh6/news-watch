@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   cleanupOrphaned,
   refreshRecency,
-  cleanupLowScored,
+  gcStaleArticles,
 } from "@/app/api/fetch-news/pipeline/maintenance";
-import { deleteLowScoredArticles, refreshRecencyForSources } from "@/lib/db";
+import { deleteStaleLowScored, refreshRecencyForSources } from "@/lib/db";
 import { type NormalizedArticle } from "@/lib/types";
 
 vi.mock("@/lib/db", () => ({
-  deleteLowScoredArticles: vi.fn(),
+  deleteStaleLowScored: vi.fn(),
   refreshRecencyForSources: vi.fn(),
 }));
 
@@ -39,7 +39,11 @@ describe("pipeline/maintenance", () => {
       ];
       const result = { errors: [] as string[] };
 
-      await refreshRecency("zenn", articles, result);
+      await refreshRecency(
+        "zenn",
+        articles.map((a) => a.url),
+        result,
+      );
 
       expect(refreshRecencyForSources).toHaveBeenCalledTimes(1);
       expect(refreshRecencyForSources).toHaveBeenCalledWith(["zenn"], ["https://example.com/1"]);
@@ -47,10 +51,9 @@ describe("pipeline/maintenance", () => {
     });
 
     it("does not call refreshRecencyForSources when selectedSource is empty", async () => {
-      const articles: NormalizedArticle[] = [];
       const result = { errors: [] as string[] };
 
-      await refreshRecency("", articles, result);
+      await refreshRecency("", [], result);
 
       expect(refreshRecencyForSources).not.toHaveBeenCalled();
       expect(result.errors).toHaveLength(0);
@@ -72,7 +75,11 @@ describe("pipeline/maintenance", () => {
       ];
       const result = { errors: [] as string[] };
 
-      await refreshRecency("zenn", articles, result);
+      await refreshRecency(
+        "zenn",
+        articles.map((a) => a.url),
+        result,
+      );
 
       expect(refreshRecencyForSources).toHaveBeenCalledTimes(1);
       expect(result.errors).toHaveLength(1);
@@ -80,12 +87,10 @@ describe("pipeline/maintenance", () => {
     });
   });
 
-  describe("cleanupLowScored", () => {
-    it("calls deleteLowScoredArticles with threshold 5 and since", async () => {
-      const since = "2026-06-01T00:00:00.000Z";
-      await cleanupLowScored(since);
-      expect(deleteLowScoredArticles).toHaveBeenCalledTimes(1);
-      expect(deleteLowScoredArticles).toHaveBeenCalledWith(5, since);
+  describe("gcStaleArticles", () => {
+    it("calls deleteStaleLowScored", async () => {
+      await gcStaleArticles();
+      expect(deleteStaleLowScored).toHaveBeenCalledTimes(1);
     });
   });
 });

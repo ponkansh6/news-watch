@@ -74,6 +74,7 @@ vi.mock("@/lib/llm", () => ({
     summary: "Test summary",
     reason: "Test reason",
   }),
+  buildPreferencePromptSection: vi.fn().mockReturnValue(""),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -87,6 +88,8 @@ vi.mock("@/lib/db", () => ({
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
   refreshRecencyForSources: vi.fn().mockResolvedValue(undefined),
   getLatestPreferenceProfile: vi.fn().mockResolvedValue(null),
+  getScoringStateByUrls: vi.fn().mockResolvedValue(new Map()),
+  deleteStaleLowScored: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("Qiita Atomフィード記事のスコアリング更新 - 修正後の正常動作検証", () => {

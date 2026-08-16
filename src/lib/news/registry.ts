@@ -13,7 +13,7 @@ export interface SourceAdapter<T> {
   id: string;
   name: string;
   displayName: string;
-  fetch: (limit: number) => Promise<T[]>;
+  fetch: (limit?: number) => Promise<T[]>;
   toArticle: (item: T, sourceId: string) => NormalizedArticle;
 }
 

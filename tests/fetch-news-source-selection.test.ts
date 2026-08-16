@@ -64,6 +64,7 @@ vi.mock("@/lib/llm", () => ({
     summary: "Test summary",
     reason: "Test reason",
   }),
+  buildPreferencePromptSection: vi.fn().mockReturnValue(""),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -76,6 +77,9 @@ vi.mock("@/lib/db", () => ({
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
   refreshRecencyForSources: vi.fn().mockResolvedValue(0),
+  getLatestPreferenceProfile: vi.fn().mockResolvedValue(null),
+  getScoringStateByUrls: vi.fn().mockResolvedValue(new Map()),
+  deleteStaleLowScored: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("fetch-news route source selection", () => {

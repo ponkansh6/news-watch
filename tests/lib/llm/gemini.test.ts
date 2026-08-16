@@ -204,7 +204,7 @@ describe("gemini llm module", () => {
 
       expect(mockGenerateContent).toHaveBeenCalledWith(
         expect.any(String),
-        expect.objectContaining({ timeout: 55_000 }),
+        expect.objectContaining({ timeout: 25_000 }),
       );
     });
 

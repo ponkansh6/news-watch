@@ -44,20 +44,23 @@ vi.mock("@/lib/news/yamadashy", () => ({
 }));
 
 vi.mock("@/lib/llm", () => ({
-  scoreArticles: vi.fn().mockResolvedValue([
-    {
-      ntt_relevance: 8,
-      usefulness: 7,
-      summary: "Test summary",
-      reason: "Test reason",
-    },
-  ]),
+  scoreArticles: vi.fn().mockImplementation((articles: any[]) =>
+    Promise.resolve(
+      articles.map(() => ({
+        ntt_relevance: 8,
+        usefulness: 7,
+        summary: "Test summary",
+        reason: "Test reason",
+      })),
+    ),
+  ),
   scoreArticle: vi.fn().mockResolvedValue({
     ntt_relevance: 8,
     usefulness: 7,
     summary: "Test summary",
     reason: "Test reason",
   }),
+  buildPreferencePromptSection: vi.fn().mockReturnValue(""),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -70,6 +73,9 @@ vi.mock("@/lib/db", () => ({
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
   refreshRecencyForSources: vi.fn().mockResolvedValue(0),
+  getLatestPreferenceProfile: vi.fn().mockResolvedValue(null),
+  getScoringStateByUrls: vi.fn().mockResolvedValue(new Map()),
+  deleteStaleLowScored: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("e2e pipeline (local dev mode)", () => {

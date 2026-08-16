@@ -11,6 +11,8 @@ vi.mock("@/lib/db", () => ({
   ),
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
+  getScoringStateByUrls: vi.fn().mockResolvedValue(new Map()),
+  deleteStaleLowScored: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/llm", () => ({ scoreArticles: vi.fn(), scoreArticle: vi.fn() }));
 vi.mock("@/lib/score-pipeline", () => ({ scoreAndSaveTagged: vi.fn().mockResolvedValue(0) }));

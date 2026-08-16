@@ -9,4 +9,4 @@ export interface ItmediaItem {
   category?: string | string[];
 }
 
-export const searchITmedia = createRss2Source<ItmediaItem>("itmedia", RSS2_FEEDS.itmedia, 50);
+export const searchITmedia = createRss2Source<ItmediaItem>("itmedia", RSS2_FEEDS.itmedia);

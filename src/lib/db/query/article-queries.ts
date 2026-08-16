@@ -1,7 +1,11 @@
 import { db } from "../index";
 import { articles, favorites, notForMe, preferenceProfiles } from "../schema";
-import { desc, asc, isNotNull, inArray, eq, sql, and, type SQL } from "drizzle-orm";
-import { DEFAULT_SCORED_ARTICLES_LIMIT, DEFAULT_ALL_ARTICLES_LIMIT } from "../../constants";
+import { desc, asc, isNotNull, gte, inArray, eq, sql, and, type SQL } from "drizzle-orm";
+import {
+  DEFAULT_SCORED_ARTICLES_LIMIT,
+  DEFAULT_ALL_ARTICLES_LIMIT,
+  DISPLAY_MIN_SCORE,
+} from "../../constants";
 import { getAllowedSortColumns } from "@/app/admin/db/lib/table-config";
 import { unstable_cache } from "next/cache";
 import { resolveKeywordLabel } from "../../config";
@@ -31,7 +35,7 @@ export async function getScoredArticles(
   sourceIds?: string[] | string,
 ) {
   try {
-    const conditions = [isNotNull(articles.score)];
+    const conditions = [isNotNull(articles.score), gte(articles.score, DISPLAY_MIN_SCORE)];
     if (sourceIds) {
       if (Array.isArray(sourceIds) && sourceIds.length > 0) {
         conditions.push(inArray(articles.sourceId, sourceIds));
@@ -59,6 +63,41 @@ export async function getAllArticles(limit = DEFAULT_ALL_ARTICLES_LIMIT) {
   } catch (err) {
     console.warn(`[db] query error:`, err);
     return [];
+  }
+}
+
+export interface ScoringState {
+  url: string;
+  contentHash: string | null;
+  scoringSignature: string | null;
+  scoredAt: string | null;
+  score: number | null;
+}
+
+/** Fetch scoring state for URLs. Chunked in 200 to stay under SQLite bind-var limits. */
+export async function getScoringStateByUrls(urls: string[]): Promise<Map<string, ScoringState>> {
+  const map = new Map<string, ScoringState>();
+  if (urls.length === 0) return map;
+  try {
+    const CHUNK = 200;
+    for (let i = 0; i < urls.length; i += CHUNK) {
+      const chunk = urls.slice(i, i + CHUNK);
+      const rows = await db
+        .select({
+          url: articles.url,
+          contentHash: articles.contentHash,
+          scoringSignature: articles.scoringSignature,
+          scoredAt: articles.scoredAt,
+          score: articles.score,
+        })
+        .from(articles)
+        .where(inArray(articles.url, chunk));
+      for (const row of rows) map.set(row.url, row);
+    }
+    return map;
+  } catch (err) {
+    console.warn(`[db] getScoringStateByUrls error:`, err);
+    return map;
   }
 }
 

@@ -7,6 +7,7 @@ import {
   upsertArticle,
   upsertArticles,
   deleteLowScoredArticles,
+  deleteStaleLowScored,
   refreshRecencyForSources,
   type ArticleInsert,
 } from "./repository/article-repository";
@@ -15,8 +16,10 @@ import {
   getScoredArticles,
   getScoredArticlesCached,
   getAllArticles,
+  getScoringStateByUrls,
   getTablePage,
   getTableCounts,
+  type ScoringState,
   type TableName,
   type TablePageOptions,
 } from "./query/article-queries";
@@ -56,6 +59,7 @@ export const db = drizzle({ client, schema });
 // Re-export all public APIs
 export type {
   ArticleInsert,
+  ScoringState,
   TableName,
   TablePageOptions,
   SavePreferenceProfileInput,
@@ -65,10 +69,12 @@ export {
   upsertArticle,
   upsertArticles,
   deleteLowScoredArticles,
+  deleteStaleLowScored,
   refreshRecencyForSources,
   getScoredArticles,
   getScoredArticlesCached,
   getAllArticles,
+  getScoringStateByUrls,
   getTablePage,
   getTableCounts,
   toggleFavorite,

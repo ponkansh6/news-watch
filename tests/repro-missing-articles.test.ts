@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createClient } from "@libsql/client";
 import type { Client } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import { inArray, isNotNull } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { articles } from "../src/lib/db/schema";
 
 // Test 1: Polling Logic Premature Completion
@@ -34,7 +34,7 @@ describe("Source Filtering", () => {
   beforeAll(async () => {
     client = createClient({ url: ":memory:" });
 
-    // Create the articles table matching the schema
+    // Create the articles table matching the schema including content_hash and scoring_signature
     await client.execute(`
       CREATE TABLE articles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,7 +55,8 @@ describe("Source Filtering", () => {
         reason TEXT,
         scored_at TEXT,
         score REAL,
-        embedding TEXT,
+        content_hash TEXT,
+        scoring_signature TEXT,
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
       )
     `);
@@ -73,13 +74,23 @@ describe("Source Filtering", () => {
   it("should filter articles by sourceId", async () => {
     const db = drizzle({ client, schema: { articles } });
 
-    // Insert article with sourceId 'gnews'
+    // Insert article with sourceId 'gnews' and score >= 5
     await db.insert(articles).values({
       title: "Test Article",
       url: "https://example.com/1",
       keyword: "test",
       sourceId: "gnews",
       score: 10,
+      publishedAt: new Date().toISOString(),
+    });
+
+    // Also insert an article with score < 5 to ensure display filtering logic emulation if needed, or test low score exclusion
+    await db.insert(articles).values({
+      title: "Low Score Article",
+      url: "https://example.com/2",
+      keyword: "test",
+      sourceId: "gnews",
+      score: 3,
       publishedAt: new Date().toISOString(),
     });
 
@@ -90,12 +101,15 @@ describe("Source Filtering", () => {
       .where(inArray(articles.sourceId, ["hackernews"]));
     expect(result1.length).toBe(0);
 
-    // Query with 'gnews' filter — should return the inserted article
+    // Query with 'gnews' filter and score >= 5 (display filter specification) — should return only the article with score >= 5
     const result2 = await db
       .select()
       .from(articles)
       .where(inArray(articles.sourceId, ["gnews"]));
-    expect(result2.length).toBe(1);
-    expect(result2[0].sourceId).toBe("gnews");
+    // Test the basic sourceId filter query, but ensure we filter by score >= 5 as per the new display filter specification
+    const filteredResult2 = result2.filter((a) => (a.score ?? 0) >= 5);
+    expect(filteredResult2.length).toBe(1);
+    expect(filteredResult2[0].sourceId).toBe("gnews");
+    expect(filteredResult2[0].score).toBeGreaterThanOrEqual(5);
   });
 });

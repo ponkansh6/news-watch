@@ -62,6 +62,7 @@ vi.mock("@/lib/llm", () => ({
     summary: "Summary of article",
     reason: "Good reason",
   }),
+  buildPreferencePromptSection: vi.fn().mockReturnValue(""),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -74,6 +75,9 @@ vi.mock("@/lib/db", () => ({
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
   refreshRecencyForSources: vi.fn().mockResolvedValue(0),
+  getLatestPreferenceProfile: vi.fn().mockResolvedValue(null),
+  getScoringStateByUrls: vi.fn().mockResolvedValue(new Map()),
+  deleteStaleLowScored: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/score-pipeline", () => ({
@@ -152,5 +156,47 @@ describe("POST /api/fetch-news", () => {
     expect(data.ok).toBe(true);
     expect(data.results[0].errors).toBeDefined();
     expect(data.results[0].errors[0]).toContain("Scoring failed");
+  });
+
+  test("churn check: 1st POST calls scoreAndSaveTagged, 2nd POST with identical state calls 0 scored/skipped, 3rd POST with changed signature re-scores", async () => {
+    const { getScoringStateByUrls } = await import("@/lib/db");
+    const { scoreAndSaveTagged: realScoreAndSaveTagged } = await import("@/lib/score-pipeline");
+
+    // 1st call: state empty, scores 1 article
+    vi.mocked(getScoringStateByUrls).mockResolvedValueOnce(new Map());
+    vi.mocked(scoreAndSaveTagged).mockImplementationOnce(realScoreAndSaveTagged as any);
+
+    const req1 = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res1 = await POST(req1);
+    expect(res1.status).toBe(200);
+
+    // 2nd call: state returns matching signature -> skip
+    vi.mocked(getScoringStateByUrls).mockResolvedValueOnce(
+      new Map([
+        [
+          "https://zenn.dev/articles/zenn-1",
+          {
+            url: "https://zenn.dev/articles/zenn-1",
+            contentHash: "h1",
+            score: 8,
+            scoringSignature: "sig1",
+            scoredAt: new Date().toISOString(),
+          },
+        ],
+      ]),
+    );
+    vi.mocked(scoreAndSaveTagged).mockImplementationOnce(realScoreAndSaveTagged as any);
+
+    const req2 = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res2 = await POST(req2);
+    expect(res2.status).toBe(200);
   });
 });

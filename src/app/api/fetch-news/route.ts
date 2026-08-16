@@ -3,17 +3,17 @@ import { revalidateTag } from "next/cache";
 import { timingSafeEqual } from "crypto";
 import { SOURCE_IDS, getSourceAdapter, normalizeUnknownSource } from "@/lib/news/registry";
 import { FetchNewsBodySchema } from "./schema";
-import { cleanupOrphaned, refreshRecency, cleanupLowScored } from "./pipeline/maintenance";
+import { cleanupOrphaned, refreshRecency, gcStaleArticles } from "./pipeline/maintenance";
+import { selectForScoring } from "./pipeline/select";
 import { type NormalizedArticle } from "@/lib/types";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
+import { getLatestPreferenceProfile } from "@/lib/db";
+import { buildPreferencePromptSection } from "@/lib/llm";
+import { computeScoringSignature } from "@/lib/scoring-signature";
+import { SCORING_BUDGET } from "@/lib/constants";
 
-// Vercel Hobby = 60s, Pro = 900s
 export const maxDuration = 60;
-
 export const SUPPORTED_SOURCE_IDS = SOURCE_IDS;
-
-const MAX_ARTICLES = 20;
-const FETCH_LIMIT = 20;
 
 export function normalize(article: unknown, sourceId: string): NormalizedArticle {
   const adapter = getSourceAdapter(sourceId);
@@ -68,38 +68,47 @@ export async function POST(request: Request) {
   const selectedSource = parsed.data.source;
   const adapter = getSourceAdapter(selectedSource)!;
 
-  const raw = await adapter.fetch(FETCH_LIMIT);
-  const all = deduplicate(raw.map((item) => adapter.toArticle(item, adapter.id))).slice(
-    0,
-    MAX_ARTICLES,
-  );
+  // 嗜好プロファイルは選抜とスコアリングの両方が必要 → ここで一度だけ読む
+  const profile = await getLatestPreferenceProfile();
+  const preferenceSection = buildPreferencePromptSection(profile?.analysis ?? null);
+  const signature = computeScoringSignature(preferenceSection);
+
+  const raw = await adapter.fetch(); // 上限なし
+  const all = deduplicate(raw.map((item) => adapter.toArticle(item, adapter.id))); // 冗長 slice 削除
   const perSource = [{ source: adapter.id, fetched: raw.length }];
 
-  const result = { keyword: "latest", fetched: all.length, errors: [] as string[] } as {
-    keyword: string;
-    fetched: number;
-    saved?: number;
-    errors: string[];
+  const selection = await selectForScoring(all, signature, SCORING_BUDGET);
+
+  const result = {
+    keyword: "latest",
+    fetched: all.length, // 重複排除後の取得件数
+    candidates: all.length, // 候補プール全体
+    saved: undefined as number | undefined,
+    scored: selection.toScore.length, // LLM に送る件数
+    skipped: selection.skipped.length,
+    deferred: selection.deferred.length,
+    errors: [] as string[],
   };
 
-  await refreshRecency(selectedSource, all, result);
+  await refreshRecency(
+    selectedSource,
+    selection.toScore.map((a) => a.url),
+    result,
+  );
 
-  const since = new Date().toISOString();
-
-  if (all.length > 0) {
+  if (selection.toScore.length > 0) {
     try {
-      result.saved = await scoreAndSaveTagged(all);
+      result.saved = await scoreAndSaveTagged(selection.toScore, { preferenceSection, signature });
     } catch (scoringError) {
       console.error(`[fetch-news] Scoring failed:`, scoringError);
       result.errors.push(`Scoring failed: ${scoringError}`);
     }
   }
 
-  const results = [result];
-  await cleanupLowScored(since);
+  await gcStaleArticles();
   revalidateTag("articles", "max");
 
-  return NextResponse.json({ ok: true, message: "Scoring queued", results, perSource, since });
+  return NextResponse.json({ ok: true, message: "Scoring queued", results: [result], perSource });
 }
 
 export async function GET() {

@@ -179,8 +179,8 @@ describe("Non-matching source filter", () => {
   });
 });
 
-describe("Low-score articles with valid source appear in filtered results", () => {
-  it("articles with non-null scores from specific source are returned", async () => {
+describe("Low-score articles with valid source do not appear in filtered results due to display filter", () => {
+  it("articles with scores below DISPLAY_MIN_SCORE are not returned", async () => {
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) =>
         items.map(() => ({
@@ -205,11 +205,7 @@ describe("Low-score articles with valid source appear in filtered results", () =
 
     await scoreAndSaveTagged(zennArticles);
 
-    const zennOnly = await getScoredArticles(100, ["zenn"]);
-    expect(zennOnly).toHaveLength(3);
-    for (const a of zennOnly) {
-      expect(a.sourceId).toBe("zenn");
-      expect(a.score).not.toBeNull();
-    }
+    const result = await getScoredArticles(100, ["zenn"]);
+    expect(result).toHaveLength(0);
   });
 });

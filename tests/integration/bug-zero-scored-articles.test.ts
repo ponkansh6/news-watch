@@ -18,7 +18,7 @@ vi.mock("@/lib/llm", () => ({
 
 // ── Imports (after mocks) ──────────────────────────────────────────
 import * as dbMod from "@/lib/db";
-import { getScoredArticles, deleteLowScoredArticles } from "@/lib/db";
+import { getScoredArticles, deleteStaleLowScored } from "@/lib/db";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 import type { NormalizedArticle } from "@/lib/types";
 
@@ -43,6 +43,8 @@ const CREATE_SQL = `
     reason TEXT,
     scored_at TEXT,
     score REAL,
+    content_hash TEXT,
+    scoring_signature TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   )
 `;
@@ -124,7 +126,7 @@ describe("Scenario 2: LLM fails (returns null array) → score=null", () => {
 });
 
 describe("Scenario 3: deleteLowScoredArticles interaction", () => {
-  it("articles with score < 5 are protected when scoredAt >= since", async () => {
+  it("low-score articles remain as tombstones but are hidden from display", async () => {
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) =>
         items.map(() => ({
@@ -140,14 +142,18 @@ describe("Scenario 3: deleteLowScoredArticles interaction", () => {
 
     expect(savedCount).toBe(ARTICLE_COUNT);
 
-    const before = await getScoredArticles(100);
-    expect(before.length).toBe(ARTICLE_COUNT);
+    const allRows = await (dbMod as any).__client.execute("SELECT COUNT(*) as cnt FROM articles");
+    expect(allRows.rows[0].cnt).toBe(ARTICLE_COUNT);
 
-    const since = new Date(Date.now() - 60_000).toISOString();
-    await deleteLowScoredArticles(5, since);
+    const scored = await getScoredArticles(100);
+    expect(scored.length).toBe(0);
 
-    const after = await getScoredArticles(100);
-    expect(after.length).toBe(ARTICLE_COUNT);
+    await deleteStaleLowScored(5, 30);
+
+    const allRowsAfter = await (dbMod as any).__client.execute(
+      "SELECT COUNT(*) as cnt FROM articles",
+    );
+    expect(allRowsAfter.rows[0].cnt).toBe(ARTICLE_COUNT);
   });
 
   it("stale articles with score < 5 ARE deleted when scoredAt < since", async () => {
@@ -165,8 +171,7 @@ describe("Scenario 3: deleteLowScoredArticles interaction", () => {
     const articles = makeArticles(ARTICLE_COUNT, oldDate);
     await scoreAndSaveTagged(articles);
 
-    const since = new Date(Date.now() + 60_000).toISOString();
-    await deleteLowScoredArticles(5, since);
+    await deleteStaleLowScored(5, 30);
 
     const after = await getScoredArticles(100);
     expect(after.length).toBe(0);
@@ -241,9 +246,8 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
     );
 
     const all = makeArticles(ARTICLE_COUNT);
-    const since = new Date().toISOString();
     const saved = await scoreAndSaveTagged(all);
-    await deleteLowScoredArticles(5, since);
+    await deleteStaleLowScored(5, 30);
 
     const scored = await getScoredArticles(100, ["gnews"]);
 
@@ -262,9 +266,8 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
     );
 
     const all = makeArticles(ARTICLE_COUNT);
-    const since = new Date().toISOString();
     const saved = await scoreAndSaveTagged(all);
-    await deleteLowScoredArticles(5, since);
+    await deleteStaleLowScored(5, 30);
 
     const scored = await getScoredArticles(100, ["gnews"]);
 
@@ -291,9 +294,8 @@ describe("Scenario 7: '20件スコアリング完了' but 'スコアリング済
     );
 
     const all = makeArticles(ARTICLE_COUNT);
-    const since = new Date().toISOString();
     const saved = await scoreAndSaveTagged(all);
-    await deleteLowScoredArticles(5, since);
+    await deleteStaleLowScored(5, 30);
 
     expect(saved).toBe(ARTICLE_COUNT);
 
@@ -334,22 +336,14 @@ describe("Scenario 7: '20件スコアリング完了' but 'スコアリング済
   });
 });
 
-describe("Scenario 8: scoreArticles throws → exception swallowed", () => {
-  it("when scoreArticles throws, fetch-news catch block prevents scoring", async () => {
+describe("Scenario 8: scoreArticles throws → scoreAndSaveTagged returns 0 and DB stays empty", () => {
+  it("scoreArticles throws → scoreAndSaveTagged returns 0 and DB stays empty", async () => {
     mockScoreArticles.mockRejectedValue(new Error("Gemini API error: 429"));
 
     const all = makeArticles(ARTICLE_COUNT);
 
-    let _saved: number | undefined;
-    let scoringError: any;
-    try {
-      _saved = await scoreAndSaveTagged(all);
-    } catch (err) {
-      scoringError = err;
-    }
-
-    expect(scoringError).toBeDefined();
-    expect(scoringError.message).toContain("Gemini API error: 429");
+    const saved = await scoreAndSaveTagged(all);
+    expect(saved).toBe(0);
 
     const allRows = await (dbMod as any).__client.execute("SELECT COUNT(*) as cnt FROM articles");
     expect(allRows.rows[0].cnt).toBe(0);

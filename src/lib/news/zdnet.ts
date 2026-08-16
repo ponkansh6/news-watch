@@ -7,4 +7,4 @@ export function parseZdnetRss(xml: string): ZdnetItem[] {
   return parseRdf(xml);
 }
 
-export const searchZdnet = createRdfSource("zdnet", RDF_FEEDS.zdnet, 50);
+export const searchZdnet = createRdfSource("zdnet", RDF_FEEDS.zdnet);

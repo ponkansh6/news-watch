@@ -38,7 +38,7 @@ function parseHatenaRss(xml: string): HatenaItem[] {
   }));
 }
 
-export async function searchHatena(limit = 50): Promise<HatenaItem[]> {
+export async function searchHatena(limit?: number): Promise<HatenaItem[]> {
   const rssUrls = [HATENA_HOTENTRY_RSS_URL, HATENA_ENTRYLIST_RSS_URL];
   const results = await Promise.all(
     rssUrls.map(async (url) => {
@@ -50,5 +50,11 @@ export async function searchHatena(limit = 50): Promise<HatenaItem[]> {
       return parseHatenaRss(xml);
     }),
   );
-  return results.flat().slice(0, limit);
+  const seen = new Set<string>();
+  const deduped = results.flat().filter((item) => {
+    if (!item.link || seen.has(item.link)) return false;
+    seen.add(item.link);
+    return true;
+  });
+  return limit === undefined ? deduped : deduped.slice(0, limit);
 }

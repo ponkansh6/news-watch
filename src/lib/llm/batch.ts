@@ -1,5 +1,5 @@
 import { BATCH_SCORING_PROMPT } from "./prompts";
-import { LLM_BATCH_MAX_TOKENS, LLM_BATCH_TIMEOUT_MS } from "../constants";
+import { LLM_BATCH_MAX_TOKENS, LLM_BATCH_TIMEOUT_MS, LLM_BATCH_MAX_RETRIES } from "../constants";
 import { callGemini } from "./client";
 import { LLMBatchResponseSchema, LLMResponse, ArticleInput } from "./schemas";
 import { scoreArticle } from "./single";
@@ -9,6 +9,7 @@ import { parseWithRetry } from "./parser";
 export async function scoreArticles(
   articles: ArticleInput[],
   preferenceSection = "",
+  opts?: { timeoutMs?: number; retries?: number },
 ): Promise<(LLMResponse | null)[]> {
   if (articles.length === 0) return [];
 
@@ -22,8 +23,11 @@ export async function scoreArticles(
     .replace("{{preferenceSection}}", () => preferenceSection)
     .replace("{{articles}}", () => articlesBlock);
 
+  const timeoutMs = opts?.timeoutMs ?? LLM_BATCH_TIMEOUT_MS;
+  const retries = opts?.retries ?? LLM_BATCH_MAX_RETRIES;
+
   const parsedArray = await parseWithRetry(
-    () => callGemini(prompt, LLM_BATCH_MAX_TOKENS, LLM_BATCH_TIMEOUT_MS),
+    () => callGemini(prompt, LLM_BATCH_MAX_TOKENS, timeoutMs, retries),
     LLMBatchResponseSchema,
     "Batch scoring",
     (parsed) => {

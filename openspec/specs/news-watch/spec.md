@@ -379,16 +379,26 @@ Articles are evaluated using LLM-based relevance (NTT Group relevance) and usefu
 
 ### 10.4 Processing Limits & Parallelization
 
-- **Fetch Cap**: The fetch endpoint caps total articles at 20 (latest articles only)
+- **Fetch & Scoring Scope**: Fetches all available articles from RSS/API feeds without arbitrary caps. Scoring and selection are governed by `SCORING_BUDGET` (default 40 articles per request, ordered by `publishedAt` descending, with already-scored and unchanged articles skipped).
 - **LLM Batching**: Articles are scored in batches per LLM request.
   - Default batch size: 20 articles per request.
-  - **Japanese-optimized batching**: When >50% of articles in a batch contain Japanese characters (Hiragana/Katakana/Kanji), batch size is dynamically reduced to 8 to prevent token limit overflow.
+  - **Japanese-optimized batching**: When >50% of articles in a batch contain Japanese characters, batch size is dynamically reduced to 8.
   - `maxOutputTokens`: 500 (single), 16000 (batch).
-  - **Timeout**: 30s (single), 55s (batch) — passed as `RequestOptions.timeout` to the Gemini SDK.
-  - **Parallelization**: Batch calls are parallelized via `p-limit` library with concurrency limit of 3. All batches are constructed first, then executed in parallel via `Promise.all()`. Gemini API rate-limit backoff is handled per-request by `callGemini()`.
-  - **Fallback**: On batch parsing failure (invalid JSON, wrong structure, Zod validation error, or all-null results), the pipeline falls back to individual `scoreArticle()` calls per article.
+  - **Timeout**: 30s (single), 25s (batch).
+  - **Parallelization**: Concurrency **5**, using `Promise.allSettled` and a 45s overall deadline (`SCORING_DEADLINE_MS`).
+  - **Retries**: Batch-specific single retry (`LLM_BATCH_MAX_RETRIES`).
+  - **Fallback**: On batch parsing failure, falls back to individual `scoreArticle()` calls.
 
-### 10.5 Recency Delta Refresh
+### 10.5 Skipping Scored Articles & Tombstone Retention
+
+- **Tombstone Retention**: Physical deletion of low-scored articles is removed from active paths to prevent cascade deletion of favorites/not_for_me rows. Instead, rows act as tombstones. Low-scored articles (`score < DISPLAY_MIN_SCORE`) older than 30 days are pruned by Garbage Collection (`deleteStaleLowScored(5, 30)` / `gcStaleArticles`).
+- **Rescore Conditions**: Re-scoring happens only when article content or preference profile changes, determined by cryptographic hashes in `src/lib/scoring-signature.ts`:
+  - `content_hash`: SHA-256 of `title + description` (first 16 hex chars).
+  - `scoring_signature`: SHA-256 of prompt version, model, and preference section (first 16 hex chars).
+- **Selection Module**: `src/app/api/fetch-news/pipeline/select.ts` (`selectForScoring`) filters out already-scored articles with matching hashes, then selects up to `SCORING_BUDGET` by recency.
+- **Display Filter**: `getScoredArticles` returns only articles where `score IS NOT NULL AND score >= DISPLAY_MIN_SCORE` (5). Favorites and Not-For-Me items bypass this filter.
+
+### 10.6 Recency Delta Refresh
 
 - fetch-news 実行時に、selectedSources に含まれる sourceId の全記事（今回 fetch されたもの＋されなかった既存記事）について recency を再計算し、`score += (newRecency - oldRecency) × 0.3` で差分更新する。
 - relevance / usefulness は再計算せず既存値を維持する。

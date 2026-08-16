@@ -10,8 +10,4 @@ export interface YamadashyItem {
   category?: string | string[];
 }
 
-export const searchYamadashy = createRss2Source<YamadashyItem>(
-  "yamadashy",
-  RSS2_FEEDS.yamadashy,
-  50,
-);
+export const searchYamadashy = createRss2Source<YamadashyItem>("yamadashy", RSS2_FEEDS.yamadashy);

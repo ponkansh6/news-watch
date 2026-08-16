@@ -33,6 +33,8 @@ export const CREATE_ARTICLES_TABLE_SQL = `
     reason TEXT,
     scored_at TEXT,
     score REAL,
+    content_hash TEXT,
+    scoring_signature TEXT,
     embedding TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   )

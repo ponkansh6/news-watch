@@ -8,4 +8,4 @@ export interface CodeZineItem {
   guid?: string;
 }
 
-export const searchCodeZine = createRss2Source<CodeZineItem>("codezine", RSS2_FEEDS.codezine, 50);
+export const searchCodeZine = createRss2Source<CodeZineItem>("codezine", RSS2_FEEDS.codezine);

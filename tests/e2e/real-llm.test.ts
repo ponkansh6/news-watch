@@ -3,7 +3,13 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vite
 // Mock DB before imports
 vi.mock("@/lib/db", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, any>;
-  return { ...actual, __client: (actual as any).db.$client };
+  return {
+    ...actual,
+    __client: (actual as any).db.$client,
+    getLatestPreferenceProfile: vi.fn().mockResolvedValue(null),
+    getScoringStateByUrls: vi.fn().mockResolvedValue(new Map()),
+    deleteStaleLowScored: vi.fn().mockResolvedValue(undefined),
+  };
 });
 
 // Mock LLM - returns deterministic scored results
@@ -24,6 +30,7 @@ vi.mock("@/lib/llm", () => ({
     usefulness: 7,
     reason: "Mocked reason",
   }),
+  buildPreferencePromptSection: vi.fn().mockReturnValue(""),
   LLM_MODEL: "mocked",
 }));
 

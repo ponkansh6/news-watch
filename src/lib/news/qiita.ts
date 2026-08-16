@@ -13,12 +13,12 @@ export interface QiitaFeedItem {
   content: string;
 }
 
-export async function searchQiita(limit = 50): Promise<QiitaFeedItem[]> {
+export async function searchQiita(limit?: number): Promise<QiitaFeedItem[]> {
   const xml = await fetchRssText(FEED_URL, "qiita");
   if (!xml) return [];
   const entries = parseAtomEntries(xml);
 
-  return entries.slice(0, limit).map((e: Record<string, unknown>) => ({
+  const mapped = entries.map((e: Record<string, unknown>) => ({
     id: getText(e.id),
     title: getText(e.title),
     link: e.link as string | { "@_href": string },
@@ -27,4 +27,6 @@ export async function searchQiita(limit = 50): Promise<QiitaFeedItem[]> {
     author: { name: getText((e.author as Record<string, unknown>)?.name) },
     content: getText(e.content),
   }));
+
+  return limit === undefined ? mapped : mapped.slice(0, limit);
 }

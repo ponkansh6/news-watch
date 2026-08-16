@@ -28,6 +28,8 @@ export const articles = sqliteTable(
     reason: text("reason"),
     scoredAt: text("scored_at"),
     score: real("score"),
+    contentHash: text("content_hash"), // 記事の title + description のハッシュ
+    scoringSignature: text("scoring_signature"), // プロンプト版 + モデル + 嗜好セクションのハッシュ
     createdAt: text("created_at")
       .notNull()
       .$defaultFn(() => new Date().toISOString()),

@@ -7,4 +7,4 @@ export function parseXtechRss(xml: string): XtechItem[] {
   return parseRdf(xml);
 }
 
-export const searchXtech = createRdfSource("xtech", RDF_FEEDS.xtech, 20);
+export const searchXtech = createRdfSource("xtech", RDF_FEEDS.xtech);

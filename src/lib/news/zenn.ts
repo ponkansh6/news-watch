@@ -22,7 +22,7 @@ interface ZennApiResponse {
   next_page: number | null;
 }
 
-export async function searchZenn(limit = 20): Promise<ZennArticle[]> {
+export async function searchZenn(limit?: number): Promise<ZennArticle[]> {
   const url = "https://zenn.dev/api/articles?order=latest&page=1";
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DEFAULT_REQUEST_TIMEOUT_MS);
@@ -36,7 +36,7 @@ export async function searchZenn(limit = 20): Promise<ZennArticle[]> {
     const articles = data.articles ?? [];
     // Filter for tech articles only
     const techArticles = articles.filter((a) => a.article_type === "tech");
-    return techArticles.slice(0, limit);
+    return limit === undefined ? techArticles : techArticles.slice(0, limit);
   } catch (err) {
     console.warn(`[zenn] fetch error:`, err);
     return [];

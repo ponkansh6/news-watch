@@ -7,7 +7,9 @@ import { NextRequest } from "next/server";
 const mockScoreArticles = vi.fn();
 const mockUpsertArticle = vi.fn();
 const mockDeleteOrphanedArticles = vi.fn();
-const mockDeleteLowScoredArticles = vi.fn();
+const mockGetLatestPreferenceProfile = vi.fn();
+const mockGetScoringStateByUrls = vi.fn();
+const mockDeleteStaleLowScored = vi.fn();
 
 const MOCK_TOPICS = ["Next.js", "TypeScript", "React", "AI", "database"];
 
@@ -46,7 +48,9 @@ vi.mock("@/lib/llm", async (importOriginal) => {
 vi.mock("@/lib/db", () => ({
   upsertArticles: mockUpsertArticle,
   deleteOrphanedArticles: mockDeleteOrphanedArticles,
-  deleteLowScoredArticles: mockDeleteLowScoredArticles,
+  getLatestPreferenceProfile: mockGetLatestPreferenceProfile,
+  getScoringStateByUrls: mockGetScoringStateByUrls,
+  deleteStaleLowScored: mockDeleteStaleLowScored,
 }));
 
 describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
@@ -63,7 +67,9 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       }),
     );
     mockDeleteOrphanedArticles.mockResolvedValue(undefined);
-    mockDeleteLowScoredArticles.mockResolvedValue(undefined);
+    mockGetLatestPreferenceProfile.mockResolvedValue(null);
+    mockGetScoringStateByUrls.mockResolvedValue(new Map());
+    mockDeleteStaleLowScored.mockResolvedValue(undefined);
   });
 
   test("should report scored=0 when LLM returns null for all articles", async () => {
@@ -135,7 +141,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     mockScoreArticles.mockImplementation(
       (articles: { title: string; description: string | null }[]) => {
         return Promise.resolve(
-          articles.map((_, i) => {
+          articles.map((_, _i) => {
             callCount++;
             return callCount % 3 === 0
               ? null
@@ -200,7 +206,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       expect(result.fetched).toBeGreaterThan(0);
     }
 
-    expect(mockDeleteLowScoredArticles).toHaveBeenCalledWith(5, expect.any(String));
+    expect(mockDeleteStaleLowScored).toHaveBeenCalledWith(5, 30);
   });
 
   test("should normalize Qiita article with description=null", async () => {

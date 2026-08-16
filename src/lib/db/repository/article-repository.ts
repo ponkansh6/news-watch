@@ -22,6 +22,8 @@ export interface ArticleInsert {
   reason: string | null;
   scoredAt: string | null;
   score: number | null;
+  contentHash?: string | null;
+  scoringSignature?: string | null;
 }
 
 /** Insert or update article by URL. On conflict, refresh score/summary/reason. */
@@ -49,6 +51,8 @@ export async function upsertArticle(data: ArticleInsert) {
           reason: data.reason,
           scoredAt: data.scoredAt,
           score: data.score,
+          contentHash: data.contentHash,
+          scoringSignature: data.scoringSignature,
         },
       });
   } catch (err) {
@@ -132,6 +136,24 @@ export async function deleteLowScoredArticles(minScore = DEFAULT_DELETE_LOW_SCOR
     return await db.delete(articles).where(and(...conditions));
   } catch (err) {
     console.warn(`[db] delete low-score error:`, err);
+  }
+}
+
+/** Delete stale low-scored articles older than retentionDays (tombstone GC). */
+export async function deleteStaleLowScored(minScore: number, retentionDays: number): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    await db
+      .delete(articles)
+      .where(
+        and(
+          isNotNull(articles.score),
+          lt(articles.score, minScore),
+          lt(articles.publishedAt, cutoff),
+        ),
+      );
+  } catch (err) {
+    console.warn(`[db] deleteStaleLowScored error:`, err);
   }
 }
 

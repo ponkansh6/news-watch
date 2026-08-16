@@ -2,12 +2,17 @@ import pLimit from "p-limit";
 import { scoreArticles, buildPreferencePromptSection } from "@/lib/llm";
 import { upsertArticles, getLatestPreferenceProfile } from "@/lib/db";
 import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
+import { computeContentHash, computeScoringSignature } from "./scoring-signature";
 import {
   LLM_BATCH_SIZE,
   JAPANESE_RATIO_THRESHOLD,
   JAPANESE_LARGE_BATCH,
   LLM_BATCH_CONCURRENCY,
   NTT_TAG_RELEVANCE_THRESHOLD,
+  LLM_BATCH_MAX_RETRIES,
+  LLM_BATCH_TIMEOUT_MS,
+  SCORING_DEADLINE_MS,
+  SCORING_MIN_SLICE_MS,
 } from "./constants";
 import type { NormalizedArticle } from "@/lib/types";
 
@@ -22,7 +27,7 @@ function getBatchSize(articles: NormalizedArticle[]): number {
 /** Score articles in batches of LLM_BATCH_SIZE via LLM, and save. */
 export async function scoreAndSaveTagged(
   articles: NormalizedArticle[],
-  options?: { preferenceSection?: string },
+  options?: { preferenceSection?: string; signature?: string },
 ): Promise<number> {
   let preferenceSection = "";
   if (options?.preferenceSection !== undefined) {
@@ -36,6 +41,9 @@ export async function scoreAndSaveTagged(
     }
   }
 
+  const signature = options?.signature ?? computeScoringSignature(preferenceSection);
+  const deadline = Date.now() + SCORING_DEADLINE_MS;
+
   const batchSize = getBatchSize(articles);
   const batches: NormalizedArticle[][] = [];
   for (let start = 0; start < articles.length; start += batchSize) {
@@ -43,68 +51,83 @@ export async function scoreAndSaveTagged(
   }
 
   const limit = pLimit(LLM_BATCH_CONCURRENCY);
-  const counts = await Promise.all(
-    batches.map((batch) => limit(() => scoreAndSaveBatch(batch, preferenceSection))),
+  const settled = await Promise.allSettled(
+    batches.map((batch) =>
+      limit(() => scoreAndSaveBatch(batch, preferenceSection, signature, deadline)),
+    ),
   );
 
-  return counts.reduce((sum, c) => sum + c, 0);
+  return settled.reduce((sum, s) => sum + (s.status === "fulfilled" ? s.value : 0), 0);
 }
 
 /** Score a batch of articles via LLM and persist to DB. */
 async function scoreAndSaveBatch(
   batch: NormalizedArticle[],
   preferenceSection: string,
+  signature: string,
+  deadline: number,
 ): Promise<number> {
-  const llmResults = await scoreArticles(
-    batch.map((a) => ({ title: a.title, description: a.description })),
-    preferenceSection,
-  );
+  try {
+    const remaining = deadline - Date.now();
+    if (remaining < SCORING_MIN_SLICE_MS) return 0;
 
-  const upsertList = [];
-  const llmSuccessUrls = new Set<string>();
+    const llmResults = await scoreArticles(
+      batch.map((a) => ({ title: a.title, description: a.description })),
+      preferenceSection,
+      { timeoutMs: Math.min(LLM_BATCH_TIMEOUT_MS, remaining), retries: LLM_BATCH_MAX_RETRIES },
+    );
 
-  for (let i = 0; i < batch.length; i++) {
-    const article = batch[i];
-    const llmResult = llmResults[i] ?? null;
-    const usefulness = llmResult?.usefulness ?? null;
-    const relevance = llmResult?.ntt_relevance ?? 0;
-    const recency = calcRecencyScore(article.publishedAt);
-    const composite = calcCompositeScore(relevance, usefulness, recency);
+    const upsertList = [];
+    const llmSuccessUrls = new Set<string>();
 
-    upsertList.push({
-      title: article.title,
-      description: article.description,
-      url: article.url,
-      urlToImage: article.urlToImage,
-      publishedAt: article.publishedAt,
-      sourceName: article.sourceName,
-      sourceId: article.sourceId,
-      author: article.author,
-      keyword: relevance >= NTT_TAG_RELEVANCE_THRESHOLD ? "NTT" : null,
-      summary: llmResult?.summary ?? null,
-      relevance,
-      usefulness,
-      recency,
-      score: composite,
-      reason: llmResult?.reason ?? null,
-      scoredAt: new Date().toISOString(),
-      recencyRefreshedAt: new Date().toISOString(),
-    });
+    for (let i = 0; i < batch.length; i++) {
+      const article = batch[i];
+      const llmResult = llmResults[i] ?? null;
+      const usefulness = llmResult?.usefulness ?? null;
+      const relevance = llmResult?.ntt_relevance ?? 0;
+      const recency = calcRecencyScore(article.publishedAt);
+      const composite = calcCompositeScore(relevance, usefulness, recency);
 
-    if (llmResult) llmSuccessUrls.add(article.url);
+      upsertList.push({
+        title: article.title,
+        description: article.description,
+        url: article.url,
+        urlToImage: article.urlToImage,
+        publishedAt: article.publishedAt,
+        sourceName: article.sourceName,
+        sourceId: article.sourceId,
+        author: article.author,
+        keyword: relevance >= NTT_TAG_RELEVANCE_THRESHOLD ? "NTT" : null,
+        summary: llmResult?.summary ?? null,
+        relevance,
+        usefulness,
+        recency,
+        score: composite,
+        reason: llmResult?.reason ?? null,
+        scoredAt: new Date().toISOString(),
+        recencyRefreshedAt: new Date().toISOString(),
+        contentHash: computeContentHash(article.title, article.description),
+        scoringSignature: signature,
+      });
+
+      if (llmResult) llmSuccessUrls.add(article.url);
+    }
+
+    const result = await upsertArticles(upsertList);
+
+    let savedCount = 0;
+    for (const url of result.succeeded) {
+      if (llmSuccessUrls.has(url)) savedCount++;
+    }
+
+    for (const url of result.failed) {
+      const article = batch.find((a) => a.url === url);
+      if (article) console.error(`[pipeline] Failed to save article "${article.title}"`);
+    }
+
+    return savedCount;
+  } catch (err) {
+    console.error(`[pipeline] Batch scoring/saving failed:`, err);
+    return 0;
   }
-
-  const result = await upsertArticles(upsertList);
-
-  let savedCount = 0;
-  for (const url of result.succeeded) {
-    if (llmSuccessUrls.has(url)) savedCount++;
-  }
-
-  for (const url of result.failed) {
-    const article = batch.find((a) => a.url === url);
-    if (article) console.error(`[pipeline] Failed to save article "${article.title}"`);
-  }
-
-  return savedCount;
 }
