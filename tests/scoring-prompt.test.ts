@@ -11,8 +11,11 @@ describe("スコアリングプロンプト: usefulness はエンジニア/テ�
       expect(prompt).toContain("技術者・テックリーダー");
     });
     test(`${name}: 一般的な有用性を除外していること`, () => {
-      // 「一般的な有用性」という語を含み、一般向け評価を除外していることを検証
       expect(prompt).toContain("一般的な有用性");
+    });
+    test(`${name}: ntt_relevance と topic を要求していること`, () => {
+      expect(prompt).toContain("ntt_relevance");
+      expect(prompt).toContain("topic");
     });
   }
 

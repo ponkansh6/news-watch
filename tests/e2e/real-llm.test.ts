@@ -6,12 +6,6 @@ vi.mock("@/lib/db", async (importOriginal) => {
   return { ...actual, __client: (actual as any).db.$client };
 });
 
-// Mock embeddings
-vi.mock("@/lib/embeddings", async () => {
-  const { createEmbeddingsMock } = await import("../helpers/embeddings-mock");
-  return createEmbeddingsMock();
-});
-
 // Mock LLM - returns deterministic scored results
 vi.mock("@/lib/llm", () => ({
   scoreArticles: vi

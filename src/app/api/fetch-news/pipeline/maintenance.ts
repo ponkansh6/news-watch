@@ -1,13 +1,8 @@
-import {
-  deleteOrphanedArticles,
-  deleteLowScoredArticles,
-  refreshRecencyForSources,
-} from "@/lib/db";
-import { KEYWORDS } from "@/lib/config";
+import { deleteLowScoredArticles, refreshRecencyForSources } from "@/lib/db";
 import { type NormalizedArticle } from "@/lib/types";
 
 export async function cleanupOrphaned() {
-  await deleteOrphanedArticles([...KEYWORDS]);
+  // no longer needed — keyword is LLM-generated
 }
 
 export async function refreshRecency(

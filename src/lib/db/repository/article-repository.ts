@@ -1,14 +1,8 @@
 import { db } from "../index";
 import { articles } from "../schema";
-import { and, lt, inArray, eq, notInArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, lt, inArray, eq, notInArray, isNotNull } from "drizzle-orm";
 import { calcRecencyScore } from "../../scoring";
-import {
-  DEFAULT_SCORED_ARTICLES_LIMIT,
-  DEFAULT_DELETE_LOW_SCORE,
-  DEFAULT_ALL_ARTICLES_LIMIT,
-  WEIGHT_RECENCY,
-  SOFTMAX_SCALE,
-} from "../../constants";
+import { DEFAULT_DELETE_LOW_SCORE, WEIGHT_RECENCY, SOFTMAX_SCALE } from "../../constants";
 
 export interface ArticleInsert {
   title: string;
@@ -28,7 +22,6 @@ export interface ArticleInsert {
   reason: string | null;
   scoredAt: string | null;
   score: number | null;
-  embedding: string | null;
 }
 
 /** Insert or update article by URL. On conflict, refresh score/summary/reason. */
@@ -56,7 +49,6 @@ export async function upsertArticle(data: ArticleInsert) {
           reason: data.reason,
           scoredAt: data.scoredAt,
           score: data.score,
-          embedding: data.embedding,
         },
       });
   } catch (err) {
@@ -97,7 +89,6 @@ export async function upsertArticles(
               reason: data.reason,
               scoredAt: data.scoredAt,
               score: data.score,
-              embedding: data.embedding,
             },
           }),
       );
@@ -130,19 +121,6 @@ export async function upsertArticles(
       succeeded: [],
       failed: dataList.map((d) => d.url),
     };
-  }
-}
-
-/** Delete articles whose keyword is not in the active set, or has no keyword
- *  (below TAGGING_THRESHOLD, stale from a prior fetch cycle). */
-export async function deleteOrphanedArticles(activeKeywords: string[]) {
-  try {
-    const result = await db
-      .delete(articles)
-      .where(or(isNull(articles.keyword), notInArray(articles.keyword, activeKeywords)));
-    return result;
-  } catch (err) {
-    console.warn(`[db] delete error:`, err);
   }
 }
 

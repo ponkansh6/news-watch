@@ -1,12 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeAll, beforeEach, afterEach, describe, it, expect, vi } from "vitest";
-import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
 
-// --- Mock the DB with an isolated in-memory client + schema -------------
-// Mirrors tests/db/actions.test.ts: the app's `db` module points at a
-// fresh :memory: client so the test never touches Turso, and we create the
-// `articles` table explicitly.
 vi.mock("@/lib/db", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, any>;
   const { createClient } = await import("@libsql/client");
@@ -20,27 +14,13 @@ vi.mock("@/lib/db", async (importOriginal) => {
 import * as dbMod from "@/lib/db";
 import { getScoredArticles } from "@/lib/db";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
-import { tagArticlesByKeyword } from "@/lib/vector-filter";
-import { KEYWORDS } from "@/lib/config";
 import type { NormalizedArticle } from "@/lib/types";
 import { screen, render } from "../lib/test-utils";
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { ArticleList } from "@/components/article/article-list";
 
-// --- Mock embeddings so tagArticlesByKeyword needs no real API ----------
-vi.mock("@/lib/embeddings", () => ({
-  embedArticle: vi.fn(async () => new Array(768).fill(0.1)),
-  embedQuery: vi.fn(async () => new Array(768).fill(0.1)),
-  batchEmbed: vi.fn(async () => new Array(1).fill(new Array(768).fill(0.1))),
-  cosineSimilarity: vi.fn(() => 0.9),
-}));
-
-vi.mock("@/lib/vector-math", () => ({
-  cosineSimilarity: vi.fn(() => 0.9),
-}));
-
-// --- Mock LLM scoring so scoreAndSaveTagged needs no real API ----------
+// --- Mock LLM scoring ---
 const { mockGenerateContent } = vi.hoisted(() => ({
   mockGenerateContent: vi.fn(),
 }));
@@ -65,7 +45,9 @@ beforeEach(() => {
         JSON.stringify(
           Array.from({ length: ARTICLE_COUNT }).map((_, i) => ({
             summary: `要約: ${i}`,
-            usefulness: 6 + (i % 4),
+            usefulness: 6,
+            ntt_relevance: 8,
+            topic: "NTT",
             reason: `関連`,
           })),
         ),
@@ -84,7 +66,7 @@ const CREATE_SQL = `
     source_name TEXT,
     source_id TEXT,
     author TEXT,
-    keyword TEXT NOT NULL,
+    keyword TEXT,
     summary TEXT,
     relevance REAL,
     usefulness REAL,
@@ -93,7 +75,6 @@ const CREATE_SQL = `
     reason TEXT,
     scored_at TEXT,
     score REAL,
-    embedding TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   )
 `;
@@ -114,12 +95,10 @@ afterEach(async () => {
 
 describe("Display after scoring (scored articles appear in the view)", () => {
   it("shows every fetched+scored article in the scored-articles list once scoring completes", async () => {
-    // Before scoring, the scored-articles view is empty.
     expect(await getScoredArticles()).toHaveLength(0);
 
-    // 1) Simulate fetched articles (the "取得記事").
     const fetched: NormalizedArticle[] = Array.from({ length: ARTICLE_COUNT }).map((_, i) => ({
-      title: `取得記事 ${i}: ${KEYWORDS[i % KEYWORDS.length]} に関する解説`,
+      title: `取得記事 ${i}: に関する解説`,
       description: `これは記事 ${i} の説明です。AI と半導体について扱っています。`,
       url: `http://test.com/display/${i}`,
       urlToImage: null,
@@ -129,15 +108,9 @@ describe("Display after scoring (scored articles appear in the view)", () => {
       author: "Test Author",
     }));
 
-    // 2) Run the exact inline pipeline fetch-news uses: tag -> score -> save.
-    const tagged = await tagArticlesByKeyword(fetched, KEYWORDS);
-    const savedCount = await scoreAndSaveTagged(tagged);
-
-    // 3) The page reads scored articles via getScoredArticles — the same call
-    //    page.tsx makes to populate the "スコアリング済み記事" section.
+    const savedCount = await scoreAndSaveTagged(fetched);
     const scored = await getScoredArticles(100);
 
-    // 4) Assert the data feeding the view contains every fetched article.
     expect(savedCount).toBe(ARTICLE_COUNT);
     expect(scored).toHaveLength(ARTICLE_COUNT);
     for (const a of scored) {
@@ -146,10 +119,6 @@ describe("Display after scoring (scored articles appear in the view)", () => {
       expect(a.usefulness).not.toBeNull();
     }
 
-    // 5) Assert the view actually renders them. ArticleList is the component
-    //    page.tsx passes the scored articles to, so this verifies the
-    //    "scored articles are displayed" contract end-to-end (data -> UI).
-    // Mock fetch for the hidden favorites feature (ArticleList calls /api/favorites on mount)
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({ ids: [] }),
@@ -158,17 +127,14 @@ describe("Display after scoring (scored articles appear in the view)", () => {
     for (const a of fetched) {
       expect(screen.getByText(a.title)).toBeInTheDocument();
     }
-    // Each ScoreBadge renders the numeric composite score (multiple articles may share the same score).
     for (const a of scored) {
       const scoreElements = screen.getAllByText(String(a.score));
       expect(scoreElements.length).toBeGreaterThan(0);
-      // Summary is in Japanese
       if (a.summary) {
         expect(a.summary).toMatch(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u);
       }
     }
 
-    // Verify articles without scores are not displayed in scored list (filter out nulls or verify none are null)
     const unscoredList = scored.filter((a) => a.score === null);
     expect(unscoredList).toHaveLength(0);
   }, 30000);

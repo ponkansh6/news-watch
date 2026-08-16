@@ -7,11 +7,7 @@ export const dynamic = "force-dynamic";
 const TABLE_DESCRIPTIONS: Record<string, { name: string; desc: string }> = {
   articles: {
     name: "Articles",
-    desc: "Fetched news articles, scoring details, summaries, and embeddings.",
-  },
-  keyword_embeddings: {
-    name: "Keyword Embeddings",
-    desc: "Precomputed vector embeddings for keywords used in similarity search.",
+    desc: "Fetched news articles, scoring details, summaries, and evaluation reasons.",
   },
   favorites: {
     name: "Favorites",

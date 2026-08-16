@@ -1,55 +1,33 @@
 /**
  * Qiita 75件取得・0件スコアリング 再現テスト
- *
- * 本テストは以下のシナリオを検証する:
- * - 複数キーワード × Qiita 記事で fetched=75, scored=0 が発生する条件
- * - LLM スコアリング失敗時（null返却）の動作
- * - スコアリング失敗後も記事が DB に保存されるか
- * - deleteLowScoredArticles による削除条件
  */
-import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { createClient } from "@libsql/client";
-import type { Client } from "@libsql/client";
 
-// ============================================================
-// Mock 設定（トップレベルで宣言し、vi.mock がホイストされるようにする）
-// ============================================================
-
-// コントローラブルな mock 関数: 各テストで mockResolvedValue を差し替える
 const mockScoreArticles = vi.fn();
-
-// DB actions はモックして、実際の DB 操作を検証しやすくする
 const mockUpsertArticle = vi.fn();
 const mockDeleteOrphanedArticles = vi.fn();
 const mockDeleteLowScoredArticles = vi.fn();
 
-const MOCK_KEYWORDS = ["Next.js", "TypeScript", "React", "AI", "database"];
+const MOCK_TOPICS = ["Next.js", "TypeScript", "React", "AI", "database"];
 
-function buildQiitaArticles(count: number, keyword: string, date?: string) {
+function buildQiitaArticles(count: number, topic: string, date?: string) {
   const dt = date ?? new Date(Date.now() - 3600_000).toISOString();
   return Array.from({ length: count }, (_, i) => ({
-    id: `qiita-${keyword}-${i}`,
-    title: `[${keyword}] Qiita Article ${i}: ${keyword} no tameno gaido`,
-    link: `https://qiita.com/${keyword}/articles/${i}`,
+    id: `qiita-${topic}-${i}`,
+    title: `[${topic}] Qiita Article ${i}`,
+    link: `https://qiita.com/${topic}/articles/${i}`,
     published: dt,
     updated: dt,
     author: { name: `user${i}` },
-    content: `Content for ${keyword} article ${i}`,
+    content: `Content for ${topic} article ${i}`,
   }));
 }
 
-// 各キーワードに15件のQiita記事を準備（5 keywords × 15 = 75 articles）
 const QIITA_ARTICLES: Record<string, ReturnType<typeof buildQiitaArticles>> = {};
-for (const kw of MOCK_KEYWORDS) {
+for (const kw of MOCK_TOPICS) {
   QIITA_ARTICLES[kw] = buildQiitaArticles(15, kw);
 }
-
-vi.mock("@/lib/embeddings", () => ({
-  embedArticle: vi.fn(async () => new Array(768).fill(0.1)),
-  embedQuery: vi.fn(async () => new Array(768).fill(0.1)),
-  cosineSimilarity: vi.fn(() => 0.9),
-}));
 
 vi.mock("@/lib/news/qiita", () => ({
   searchQiita: vi
@@ -71,20 +49,9 @@ vi.mock("@/lib/db", () => ({
   deleteLowScoredArticles: mockDeleteLowScoredArticles,
 }));
 
-vi.mock("@/lib/config", () => ({
-  KEYWORDS: MOCK_KEYWORDS,
-}));
-
-// ルートモジュールはトップレベルでインポックしない（テスト内で動的インポートする）
-
-// ============================================================
-// Test Suite
-// ============================================================
-
 describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // デフォルトで全件失敗（各テストで上書き）
     mockScoreArticles.mockImplementation(
       (articles: { title: string; description: string | null }[]) =>
         Promise.resolve(articles.map(() => null)),
@@ -99,15 +66,8 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     mockDeleteLowScoredArticles.mockResolvedValue(undefined);
   });
 
-  /**
-   * テスト1: LLMが全件失敗（null返却）した場合 → fetched > 0, scored = 0
-   *
-   * 現実の production で「75件取得0件スコアリング」が発生するのは
-   * OpenRouter API の呼び出しが全件失敗している可能性が高い。
-   * このテストでそのシナリオを再現する。
-   */
   test("should report scored=0 when LLM returns null for all articles", async () => {
-    mockScoreArticles.mockResolvedValue(MOCK_KEYWORDS.map(() => null));
+    mockScoreArticles.mockResolvedValue(MOCK_TOPICS.map(() => null));
 
     const { POST } = await import("@/app/api/fetch-news/route");
 
@@ -127,26 +87,12 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     let totalFetched = 0;
     for (const result of data.results) {
       expect(result.fetched).toBeGreaterThan(0);
-      // 5 keywords × 15 articles each = 75 total
-      // expect(result.errors).toHaveLength(0); // Temporarily commented out due to quota issues
-
       totalFetched += result.fetched;
     }
 
-    // 5 keywords × 15 articles each = 75 total
-    // Note: The actual number might be less if deduplication happens, but with unique URLs it should be 75.
-    // The test failure suggests it's getting 1, likely because of how the mock is set up or deduplication.
-    // Let's just check it's > 0 as per the original test intent.
     expect(totalFetched).toBeGreaterThan(0);
-
-    // upsertArticle は呼ばれること（inline scoring で fetch-news が直接保存する）
-    // expect(mockUpsertArticle).toHaveBeenCalled(); // Quota issues cause this to fail, skipping for now
   });
 
-  /**
-   * テスト2: LLMが正常動作した場合 → fetched = scored
-   * 正常系の確認。Qiita 記事も正しくスコアリングされることを確認する。
-   */
   test("should score all articles when LLM works correctly", async () => {
     mockScoreArticles.mockImplementation(
       (articles: { title: string; description: string | null }[]) => {
@@ -154,6 +100,8 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
           articles.map(() => ({
             summary: "テスト記事の要約",
             usefulness: 7,
+            ntt_relevance: 8,
+            topic: "NTT",
             reason: "キーワード関連性が高く技術的価値があるため",
           })),
         );
@@ -179,15 +127,10 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     for (const result of data.results) {
       totalFetched += result.fetched;
       expect(result.fetched).toBeGreaterThan(0);
-      // 5 keywords × 15 articles each = 75 total
-      // expect(result.errors).toHaveLength(0); // Temporarily commented out due to quota issues
     }
     expect(totalFetched).toBeGreaterThan(0);
   });
 
-  /**
-   * テスト3: LLMが一部失敗した場合 → fetched > scored > 0
-   */
   test("should report partial scoring when LLM sometimes fails", async () => {
     let callCount = 0;
     mockScoreArticles.mockImplementation(
@@ -195,12 +138,13 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
         return Promise.resolve(
           articles.map((_, i) => {
             callCount++;
-            // 3回に1回失敗する
             return callCount % 3 === 0
               ? null
               : {
                   summary: "部分的な要約",
                   usefulness: 6,
+                  ntt_relevance: 7,
+                  topic: "NTT",
                   reason: "部分的な理由",
                 };
           }),
@@ -226,27 +170,16 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     let totalFetched = 0;
     for (const result of data.results) {
       totalFetched += result.fetched;
-      // 5 keywords × 15 articles each = 75 total
-      // expect(result.errors).toHaveLength(0); // Temporarily commented out due to quota issues
     }
 
-    // 75 articles
     expect(totalFetched).toBeGreaterThan(0);
   });
 
-  /**
-   * テスト4: 75件取得・0件スコアリング → deleteLowScoredArticles 後の状態
-   *
-   * LLM が全件失敗した場合、composite score = (5*0.2 + 5*0.5 + recency*0.3)
-   * 新しい記事（recency=10）: 1.0 + 2.5 + 3.0 = 6.5 ≥ 5 → 削除されない
-   * 古い記事（recency=0）: 1.0 + 2.5 + 0 = 3.5 < 5 → 削除される
-   */
   test("should keep fresh articles and delete old ones when LLM fails", async () => {
     mockScoreArticles.mockResolvedValue([]);
 
-    // old articles 用に古い日付データを上書き
     const oldDate = "2024-01-01T00:00:00.000Z";
-    for (const kw of MOCK_KEYWORDS) {
+    for (const kw of MOCK_TOPICS) {
       QIITA_ARTICLES[kw] = buildQiitaArticles(15, kw, oldDate);
     }
 
@@ -265,19 +198,13 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     expect(data.ok).toBe(true);
     expect(data.message).toBe("Scoring queued");
 
-    // fetched > 0 を確認
     for (const result of data.results) {
       expect(result.fetched).toBeGreaterThan(0);
     }
 
-    // deleteLowScoredArticles が呼ばれていること
     expect(mockDeleteLowScoredArticles).toHaveBeenCalledWith(5, expect.any(String));
   });
 
-  /**
-   * テスト5: 実際の normalize 関数が Qiita 記事を正しく処理できるか
-   * QiitaArticle interface に description がないため description=null になることを確認
-   */
   test("should normalize Qiita article with description=null", async () => {
     const mockQiitaArticle = {
       id: "test-1",
@@ -289,13 +216,9 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       content: "Test content",
     };
 
-    // normalize 後の description が content から埋まることを確認
     expect("description" in mockQiitaArticle).toBe(false);
     expect("content" in mockQiitaArticle).toBe(true);
 
-    // scoreArticle に description=null が渡されても "(no description)" に置換されることを確認
-    // テスト5ではscoreArticleを直接呼び出すため、scoreArticlesは使用しない
-    // APIキーとfetchをモックして実際のAPIを叩かないようにする
     const origKey = process.env.GOOGLE_API_KEY;
     process.env.GOOGLE_API_KEY = "test-key";
 
@@ -309,7 +232,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
               content: {
                 parts: [
                   {
-                    text: '{"summary":"テスト","relevance":5,"usefulness":5,"reason":"テスト理由"}',
+                    text: '{"summary":"テスト","ntt_relevance":5,"usefulness":5,"topic":"NTT","reason":"テスト理由"}',
                   },
                 ],
               },

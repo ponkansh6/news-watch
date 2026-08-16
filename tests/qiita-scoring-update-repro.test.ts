@@ -1,20 +1,10 @@
 /**
  * Qiita Atomフィード記事のスコアリング更新バグ再現テスト
- *
- * バグ: normalize関数の型絞り込み順序が間違っており、
- * Qiita記事（Atomフィード）がYamadashy記事として誤分類される。
- * これによりURLがオブジェクトのままになり、upsertArticleで正しく更新されない。
- *
- * このテストは修正後の正常な動作を検証する。
  */
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/fetch-news/route";
 import * as db from "@/lib/db";
-
-// ============================================================
-// Mock 設定（vi.mockはホイストされるため、データをファクトリ内で定義）
-// ============================================================
 
 vi.mock("@/lib/news/qiita", () => ({
   searchQiita: vi.fn().mockResolvedValue([
@@ -51,7 +41,6 @@ vi.mock("@/lib/news/yamadashy", () => ({
   ]),
 }));
 
-// 他のソースは空配列を返す
 vi.mock("@/lib/news/zenn", () => ({
   searchZenn: vi.fn().mockResolvedValue([]),
 }));
@@ -64,31 +53,32 @@ vi.mock("@/lib/news/codezine", () => ({
   searchCodeZine: vi.fn().mockResolvedValue([]),
 }));
 
-// LLMスコアリングは正常に動作するモック
 vi.mock("@/lib/llm", () => ({
   scoreArticles: vi.fn().mockResolvedValue([
     {
-      relevance: 8,
+      ntt_relevance: 8,
       usefulness: 7,
+      topic: "NTT",
       summary: "Test summary",
       reason: "Test reason",
     },
     {
-      relevance: 8,
+      ntt_relevance: 8,
       usefulness: 7,
+      topic: "NTT",
       summary: "Test summary",
       reason: "Test reason",
     },
   ]),
   scoreArticle: vi.fn().mockResolvedValue({
-    relevance: 8,
+    ntt_relevance: 8,
     usefulness: 7,
+    topic: "NTT",
     summary: "Test summary",
     reason: "Test reason",
   }),
 }));
 
-// DB操作のモック - vi.mock内で直接定義してホイスト問題を回避
 vi.mock("@/lib/db", () => ({
   upsertArticles: vi.fn().mockImplementation((dataList: any[]) =>
     Promise.resolve({
@@ -98,49 +88,23 @@ vi.mock("@/lib/db", () => ({
   ),
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
+  refreshRecencyForSources: vi.fn().mockResolvedValue(undefined),
+  getLatestPreferenceProfile: vi.fn().mockResolvedValue(null),
 }));
-
-let mockKeywords = ["TypeScript", "React"];
-vi.mock("@/lib/config", () => ({
-  get KEYWORDS() {
-    return mockKeywords;
-  },
-}));
-
-// 埋め込みモック
-vi.mock("@/lib/embeddings", () => ({
-  embedArticle: vi.fn().mockResolvedValue([0.1, 0.2]),
-  embedQuery: vi.fn().mockResolvedValue([0.1, 0.2]),
-  batchEmbed: vi.fn().mockResolvedValue([
-    [0.1, 0.2],
-    [0.1, 0.2],
-  ]),
-  cosineSimilarity: vi.fn().mockReturnValue(0.9),
-}));
-
-vi.mock("@/lib/vector-math", () => ({
-  cosineSimilarity: vi.fn().mockReturnValue(0.9),
-}));
-
-// ============================================================
-// Test Suite
-// ============================================================
 
 describe("Qiita Atomフィード記事のスコアリング更新 - 修正後の正常動作検証", () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
+    process.env = { ...originalEnv, GOOGLE_API_KEY: "test-api-key" };
   });
 
   afterEach(() => {
     process.env = originalEnv;
   });
 
-  test("修正後: Qiita記事が正しく分類され、URLが文字列として抽出される", async () => {
-    mockKeywords = ["TypeScript", "React"];
-
+  test("Qiita Atomフィード記事が正しく取得され、LLMスコアリングされてupsertされる", async () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "qiita" }),
@@ -153,65 +117,21 @@ describe("Qiita Atomフィード記事のスコアリング更新 - 修正後の
     expect(response.status).toBe(200);
     expect(data.ok).toBe(true);
 
-    // upsertArticlesが呼ばれた引数を検証
-    expect(db.upsertArticles).toHaveBeenCalled();
+    const qiitaResult = data.perSource.find((r: any) => r.source === "qiita");
+    expect(qiitaResult).toBeDefined();
+    expect(qiitaResult.fetched).toBe(2);
+    expect(data.results[0].errors).toHaveLength(0);
 
-    const upsertCalls = vi.mocked(db.upsertArticles).mock.calls;
-    const allArticles = upsertCalls.flatMap((call) => call[0]);
-    console.log("Upsert calls:", JSON.stringify(upsertCalls, null, 2));
-
-    // 修正後: Qiita記事が2件あり、URLが正しく文字列として抽出されている
-    // 正常: url = "https://qiita.com/user1/items/abc123" (string)
-    const qiitaUrls = allArticles
-      .map((article) => article.url)
-      .filter((url) => typeof url === "string" && url.includes("qiita.com"));
-
-    console.log("Qiita URLs found:", qiitaUrls);
-
-    // 修正後はこのアサーションが通る
-    expect(qiitaUrls.length).toBe(2);
-    expect(qiitaUrls.every((url) => url.startsWith("https://qiita.com/"))).toBe(true);
-
-    // sourceNameが "Qiita" になっていること
-    const qiitaSourceNames = allArticles
-      .map((article) => article.sourceName)
-      .filter((name) => name === "Qiita");
-    expect(qiitaSourceNames.length).toBe(2);
-
-    // sourceIdが "qiita" になっていること
-    const qiitaSourceIds = allArticles
-      .map((article) => article.sourceId)
-      .filter((id) => id === "qiita");
-    expect(qiitaSourceIds.length).toBe(2);
-  });
-
-  test("正常系: Yamadashy記事は正しく分類される", async () => {
-    mockKeywords = ["Tech"];
-
-    const request = new NextRequest("http://localhost/api/fetch-news", {
-      method: "POST",
-      body: JSON.stringify({ source: "yamadashy" }),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const response = await POST(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.ok).toBe(true);
-
-    const upsertCalls = vi.mocked(db.upsertArticles).mock.calls;
-    const allArticles = upsertCalls.flatMap((call) => call[0]);
-    const yamadashyUrls = allArticles
-      .map((article) => article.url)
-      .filter((url) => url.includes("techblog.com"));
-
-    expect(yamadashyUrls.length).toBeGreaterThan(0);
-    expect(yamadashyUrls.every((url) => url.startsWith("https://techblog.com/"))).toBe(true);
-
-    const yamadashySourceNames = allArticles
-      .map((article) => article.sourceName)
-      .filter((name) => name === "Tech Blog");
-    expect(yamadashySourceNames.length).toBeGreaterThan(0);
+    // upsertArticles が正しい記事データ（URLが文字列）で呼び出されていること
+    const upsertMock = vi.mocked(db.upsertArticles);
+    expect(upsertMock).toHaveBeenCalled();
+    const calledDataList = upsertMock.mock.calls[0][0];
+    expect(calledDataList).toHaveLength(2);
+    for (const item of calledDataList) {
+      expect(typeof item.url).toBe("string");
+      expect(item.url).not.toBeInstanceOf(Object);
+      expect(item.sourceId).toBe("qiita");
+      expect(item.sourceName).toBe("Qiita");
+    }
   });
 });

@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
-import { EMBEDDING_DIMENSIONS, PREFERENCE_PROFILE_VERSION } from "../constants";
+import { PREFERENCE_PROFILE_VERSION } from "../constants";
 
 /**
  * Scored news articles.
@@ -28,7 +28,6 @@ export const articles = sqliteTable(
     reason: text("reason"),
     scoredAt: text("scored_at"),
     score: real("score"),
-    embedding: text("embedding"),
     createdAt: text("created_at")
       .notNull()
       .$defaultFn(() => new Date().toISOString()),
@@ -43,17 +42,6 @@ export const articles = sqliteTable(
     createdAtIdx: index("idx_created_at").on(table.createdAt),
   }),
 );
-
-export const keywordEmbeddings = sqliteTable("keyword_embeddings", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  keyword: text("keyword").notNull().unique(),
-  embedding: text("embedding").notNull(),
-  model: text("model").notNull().default("gemini-embedding-2"),
-  dimensions: integer("dimensions").notNull().default(EMBEDDING_DIMENSIONS),
-  createdAt: text("created_at")
-    .notNull()
-    .$defaultFn(() => new Date().toISOString()),
-});
 
 /**
  * Hidden favorites (unofficial feature).

@@ -1,6 +1,6 @@
-// ── Scoring weights (composite score = similarity*WEIGHT_SIMILARITY + usefulness*WEIGHT_USEFULNESS + recency*WEIGHT_RECENCY) ──
-export const WEIGHT_SIMILARITY = 0.2;
-export const WEIGHT_USEFULNESS = 0.5;
+// ── Scoring weights (composite score = relevance*WEIGHT_SIMILARITY + usefulness*WEIGHT_USEFULNESS + recency*WEIGHT_RECENCY) ──
+export const WEIGHT_SIMILARITY = 0.1;
+export const WEIGHT_USEFULNESS = 0.6;
 export const WEIGHT_RECENCY = 0.3;
 
 // ── Recency thresholds: [maxDays, score] pairs ──
@@ -16,22 +16,11 @@ export const RECENCY_TIERS: readonly { days: number; score: number }[] = [
 // ── Softmax scaling ──
 export const SOFTMAX_SCALE = 10;
 
-// ── Tagging ──
-export const TAGGING_THRESHOLD = 6.0;
-
 // ── Pipeline ──
 export const LLM_BATCH_SIZE = 20;
 export const JAPANESE_RATIO_THRESHOLD = 0.5;
 export const JAPANESE_LARGE_BATCH = 8;
 export const LLM_BATCH_CONCURRENCY = 3;
-
-// ── Embeddings ──
-export const EMBEDDING_MODEL_VERSION = "gemini-embedding-2";
-export const EMBEDDING_DIMENSIONS = 768;
-export const MAX_CONCURRENT_EMBEDDINGS = 5;
-export const EMBED_MAX_RETRIES = 3;
-export const EMBED_BACKOFF_MS = 400;
-export const EMBED_BATCH_SIZE = 100;
 
 // ── API defaults ──
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
@@ -47,6 +36,8 @@ export const DEFAULT_ALL_ARTICLES_LIMIT = 10;
 // ── LLM (Gemini) ──
 export const LLM_RESPONSE_SUMMARY_MAX = 100;
 export const LLM_RESPONSE_USEFULNESS_MAX = 10;
+export const LLM_RESPONSE_RELEVANCE_MAX = 10;
+export const LLM_RESPONSE_TOPIC_MAX = 20;
 export const LLM_RESPONSE_REASON_MAX = 200;
 export const LLM_SINGLE_MAX_TOKENS = 500;
 export const LLM_SINGLE_TIMEOUT_MS = 30_000;

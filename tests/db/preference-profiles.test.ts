@@ -34,7 +34,6 @@ const CREATE_ARTICLES_SQL = `
     reason TEXT,
     scored_at TEXT,
     score REAL,
-    embedding TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   )
 `;
@@ -191,7 +190,6 @@ describe("Preference Profiles DB Layer", () => {
       reason: null,
       scoredAt: "2026-01-01T00:00:00Z",
       score: 9,
-      embedding: null,
     });
     await dbMod.upsertArticle({
       title: "Art 2",
@@ -210,7 +208,6 @@ describe("Preference Profiles DB Layer", () => {
       reason: null,
       scoredAt: "2026-01-01T00:00:00Z",
       score: 9,
-      embedding: null,
     });
 
     const articlesList = await dbMod.db.select().from(schemaMod.articles);

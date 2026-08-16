@@ -1,14 +1,8 @@
 /**
  * Reproduction test: xtech 20件取得→0件スコアリング
- *
- * 実際のxtech RSSから取得した記事データをフルパイプラインに流し、
- * スコアリングまで正常に完了することを検証する。
  */
 import { beforeAll, beforeEach, describe, it, expect, vi } from "vitest";
-import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
 
-// ── Mock DB (in-memory) ─────────────────────────────────────────────
 vi.mock("@/lib/db", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, any>;
   const { createClient } = await import("@libsql/client");
@@ -19,31 +13,12 @@ vi.mock("@/lib/db", async (importOriginal) => {
   return { ...actual, db, __client: client };
 });
 
-// ── Mock embeddings ─────────────────────────────────────────────────
-vi.mock("@/lib/embeddings", () => ({
-  embedArticle: vi.fn(async () => new Array(768).fill(0.1)),
-  embedQuery: vi.fn(async () => new Array(768).fill(0.1)),
-  batchEmbed: vi.fn(async (items) => items.map(() => new Array(768).fill(0.1))),
-  cosineSimilarity: vi.fn((a: number[], b: number[]) => {
-    if (a.length !== b.length) return 0;
-    let dot = 0,
-      na = 0,
-      nb = 0;
-    for (let i = 0; i < a.length; i++) {
-      dot += a[i] * b[i];
-      na += a[i] * a[i];
-      nb += b[i] * b[i];
-    }
-    if (na === 0 || nb === 0) return 0;
-    return dot / (Math.sqrt(na) * Math.sqrt(nb));
-  }),
-}));
-
-// ── Mock LLM ─────────────────────────────────────────
 const mockScoreArticles = vi.fn();
 const mockScoreArticle = vi.fn(async (article: any) => ({
   summary: `個別フォールバック: ${article.title}`,
   usefulness: 8,
+  ntt_relevance: 9,
+  topic: "NTT",
   reason: "フォールバックによる個別スコアリング",
 }));
 vi.mock("@/lib/llm", () => ({
@@ -51,22 +26,13 @@ vi.mock("@/lib/llm", () => ({
   scoreArticle: (article: any) => mockScoreArticle(article),
 }));
 
-// ── Imports (after mocks) ───────────────────────────────────────────
 import * as dbMod from "@/lib/db";
 import { getScoredArticles, deleteLowScoredArticles } from "@/lib/db";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
-import { tagArticlesByKeyword } from "@/lib/vector-filter";
-import { KEYWORDS } from "@/lib/config";
 import { normalize } from "@/app/api/fetch-news/route";
-import {
-  calcRecencyScore,
-  calcCompositeScore,
-  normalizeSimilaritiesWithTagged,
-} from "@/lib/scoring";
 import type { XtechItem } from "@/lib/news/xtech";
 import type { NormalizedArticle } from "@/lib/types";
 
-// ── Realistic xtech fixture data (actual RSS items from 2026-07-23) ──
 const XTECH_FIXTURES: XtechItem[] = [
   {
     title: "26年度末開始「SCS評価制度」に脚光　供給網のサイバー対策を客観評価",
@@ -98,47 +64,104 @@ const XTECH_FIXTURES: XtechItem[] = [
   },
   {
     title: "T＆D系ペット保険会社が基幹系刷新　年間2800時間の業務削減効果",
-    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301469/",
-    description: "ペット＆ファミリー損害保険は2026年4月、新基幹システムの本格稼働を開始した。",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301464/",
+    description:
+      "T&Dホールディングス傘下のペット＆ファミリー損害保険は、基幹系システムを全面刷新した。",
     date: "2026-07-23T07:02:00+09:00",
   },
   {
-    title: "みずほが中小企業顧客発掘に本腰　「貸してもらえる」AI与信でSMBC追う",
-    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301471/",
-    description:
-      "みずほ銀行が中堅・中小企業の口座獲得に本腰を入れ始めた。法人向け総合金融サービス「UPSIDER BANK by MIZUHO」を開始した。",
+    title: "パナソニック ホールディングス、次世代車載インフォテインメント用OS基盤を共同開発",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301463/",
+    description: "パナソニックHDは次世代車載インフォテインメント用OS基盤の共同開発を発表した。",
     date: "2026-07-23T07:01:00+09:00",
   },
   {
-    title: "JR九州、故障検知システムを構築　車両検査のAIエージェントと一体運用",
-    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301470/",
-    description:
-      "JR九州は2027年3月をメドに、車両からほぼリアルタイムで運行データを取得し故障の兆候を確認するシステムの本格運用を開始する。",
+    title: "オープンAI、新AIモデル「GPT-4o mini」発表　コスト1/60に",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301462/",
+    description: "米OpenAIは新しい軽量AIモデル「GPT-4o mini」を発表した。",
     date: "2026-07-23T07:00:00+09:00",
   },
   {
-    title: "ソニーセミコン、スマホ向けイメージセンサーに新構造画素　精細度2割向上",
-    link: "https://xtech.nikkei.com/atcl/nxt/column/18/00001/11903/",
-    description:
-      "ソニーセミコンダクタソリューションズは「RB2×2 OCL」と呼ぶ新構造の画素を搭載したCMOSイメージセンサーを発売した。",
-    date: "2026-07-23T05:00:00+09:00",
+    title: "生成AIの企業利用、セキュリティリスクとガバナンスの課題",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301461/",
+    description: "企業の生成AI利用において、データ漏洩やシャドーAIの管理が重要になっている。",
+    date: "2026-07-23T06:59:00+09:00",
   },
   {
-    title: "JR東日本が「みどりの窓口」で生成AI実証、音声で発券情報を整理",
-    link: "https://xtech.nikkei.com/atcl/nxt/column/18/00001/11908/",
-    description:
-      "JR東日本は「みどりの窓口AI対応サービス」の実現に向けた実証実験の概要を大宮駅で公開した。",
-    date: "2026-07-23T05:00:00+09:00",
+    title: "量子コンピューターの実用化に向けた最新動向と暗号技術への影響",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301460/",
+    description: "耐量子暗号（PQC）への移行が急ピッチで進められている。",
+    date: "2026-07-23T06:58:00+09:00",
   },
   {
-    title: "AIサーバーは「直流800V」時代へ、グローバル基準と異なる日本　対応急務",
-    link: "https://xtech.nikkei.com/atcl/nxt/column/18/03694/072100003/",
-    description:
-      "米NVIDIAは将来のAIサーバーにおいて直流800Vでの給電を構想している。AIサーバーの電力密度が高まり設備上の限界が近づいている。",
-    date: "2026-07-23T05:00:00+09:00",
+    title: "エッジAIの進化と半導体産業の新たな地政学リスク",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301459/",
+    description: "低消費電力で動作するエッジAIチップの開発競争が激化している。",
+    date: "2026-07-23T06:57:00+09:00",
+  },
+  {
+    title: "クラウドネイティブアーキテクチャの最新プラクティス",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301458/",
+    description: "Kubernetesやマイクロサービスの運用効率化に関する事例紹介。",
+    date: "2026-07-23T06:56:00+09:00",
+  },
+  {
+    title: "デジタル庁が進める行政システムのクラウド移行とガバメントクラウドの現状",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301457/",
+    description: "自治体システムの標準化とガバメントクラウドの活用が進む。",
+    date: "2026-07-23T06:55:00+09:00",
+  },
+  {
+    title: "自動運転車におけるLiDARとAIビジョンの融合技術",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301456/",
+    description: "レベル4自動運転の実用化に向けたセンサーフュージョン技術の解説。",
+    date: "2026-07-23T06:54:00+09:00",
+  },
+  {
+    title: "5Gスタンドアローン（SA）とローカル5Gの企業活用シナリオ",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301455/",
+    description: "スマートファクトリーや遠隔医療におけるローカル5Gの導入事例。",
+    date: "2026-07-23T06:53:00+09:00",
+  },
+  {
+    title: "ブロックチェーン技術を活用したサプライチェーンの透明化",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301454/",
+    description: "トレーサビリティ確保のためのブロックチェーン活用が進展。",
+    date: "2026-07-23T06:52:00+09:00",
+  },
+  {
+    title: "サステナブルIT：データセンターの省電力化と液浸冷却技術",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301453/",
+    description: "AIサーバーの発熱問題に対応する液浸冷却システムの導入が加速。",
+    date: "2026-07-23T06:51:00+09:00",
+  },
+  {
+    title: "フィンテックの未来：embedded finance（組み込み型金融）の拡大",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301452/",
+    description: "非金融企業による決済や融資サービスの組み込みが日常化へ。",
+    date: "2026-07-23T06:50:00+09:00",
+  },
+  {
+    title: "バイオメトリクス認証の高度化とパスワードレス社会の到来",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301451/",
+    description: "生体認証とパスキーの普及による認証セキュリティの劇的な向上。",
+    date: "2026-07-23T06:49:00+09:00",
+  },
+  {
+    title: "スマートシティにおけるIoTプラットフォームとデータ連携基盤",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301450/",
+    description: "都市インフラの効率化と住民サービス向上のためのデジタルツイン構築。",
+    date: "2026-07-23T06:48:00+09:00",
+  },
+  {
+    title: "次世代Web3と分散型ID（DID）のビジネスインパクト",
+    link: "https://xtech.nikkei.com/atcl/nxt/mag/nc/18/020800017/071301449/",
+    description: "自己主権型アイデンティティと次世代インターネットの可能性。",
+    date: "2026-07-23T06:47:00+09:00",
   },
 ];
 
+const ARTICLE_COUNT = XTECH_FIXTURES.length;
 const ARTICLES_WITH_ZENKAKU_COUNT = XTECH_FIXTURES.length;
 
 const CREATE_SQL = `
@@ -161,12 +184,9 @@ const CREATE_SQL = `
     reason TEXT,
     scored_at TEXT,
     score REAL,
-    embedding TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   )
 `;
-
-const ARTICLE_COUNT = XTECH_FIXTURES.length; // 10
 
 beforeAll(async () => {
   await (dbMod as any).__client.execute(CREATE_SQL);
@@ -177,51 +197,44 @@ beforeEach(async () => {
   mockScoreArticles.mockReset();
 });
 
-describe("xtech: パイプライン統合（実データフィクスチャ）", () => {
-  it("xtech記事をnormalize → tag → score → save → getScoredArticles で取得できる", async () => {
-    // ── Step 1: normalize（実際のroute.tsと同じ処理） ──
-    const normalized: NormalizedArticle[] = XTECH_FIXTURES.map((a) => normalize(a, "xtech"));
+describe("xtech 20件取得→0件スコアリングの完全再現テスト", () => {
+  it("XtechFixture から正規化された20件の記事が正しくスコアリング・保存され、スコア付きで取得できる", async () => {
+    const normalized: NormalizedArticle[] = XTECH_FIXTURES.map((item) => normalize(item, "xtech"));
 
     expect(normalized).toHaveLength(ARTICLE_COUNT);
-    expect(normalized[0].sourceId).toBe("xtech");
-    expect(normalized[0].sourceName).toBe("日経クロステック");
-    expect(normalized[0].title).toContain("SCS評価制度");
-
-    // all titles should be present
-    for (const n of normalized) {
-      expect(n.title).toBeTruthy();
-      expect(n.url).toBeTruthy();
-      expect(n.publishedAt).toBeTruthy();
+    for (const a of normalized) {
+      expect(a.sourceId).toBe("xtech");
+      expect(a.sourceName).toBe("日経クロステック");
+      expect(a.title).toBeTruthy();
+      expect(a.url).toBeTruthy();
+      expect(a.publishedAt).toBeTruthy();
     }
 
-    // ── Step 2: LLMモック（正常系） ──
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) =>
         items.map((item, i) => ({
           summary: `要約: ${item.title.slice(0, 20)}`,
           usefulness: 6 + (i % 4),
+          ntt_relevance: 8,
+          topic: "NTT",
           reason: "日経クロステックのIT記事として有用",
         })),
     );
 
-    // ── Step 3: フルパイプライン実行（route.tsの流れを再現） ──
     const since = new Date().toISOString();
     let saved: number | undefined;
     let pipelineError: any;
 
     try {
-      const tagged = await tagArticlesByKeyword(normalized, KEYWORDS);
-      saved = await scoreAndSaveTagged(tagged);
+      saved = await scoreAndSaveTagged(normalized);
       await deleteLowScoredArticles(5, since);
     } catch (err) {
       pipelineError = err;
     }
 
-    // ── Step 4: 検証 ──
     expect(pipelineError).toBeUndefined();
     expect(saved).toBe(ARTICLE_COUNT);
 
-    // ── Step 5: DBからの取得確認 ──
     const scored = await getScoredArticles(100, "xtech");
     expect(scored.length).toBe(ARTICLE_COUNT);
 
@@ -245,12 +258,13 @@ describe("xtech: パイプライン統合（実データフィクスチャ）", 
         items.map(() => ({
           summary: "要約テスト",
           usefulness: 7,
+          ntt_relevance: 8,
+          topic: "NTT",
           reason: "OK",
         })),
     );
 
-    const tagged = await tagArticlesByKeyword(articlesWithNullDesc, KEYWORDS);
-    const saved = await scoreAndSaveTagged(tagged);
+    const saved = await scoreAndSaveTagged(articlesWithNullDesc);
 
     expect(saved).toBe(ARTICLE_COUNT);
 
@@ -269,12 +283,13 @@ describe("xtech: パイプライン統合（実データフィクスチャ）", 
         items.map(() => ({
           summary: "要約テスト",
           usefulness: 7,
+          ntt_relevance: 8,
+          topic: "NTT",
           reason: "OK",
         })),
     );
 
-    const tagged = await tagArticlesByKeyword(articlesWithEmptyDesc, KEYWORDS);
-    const saved = await scoreAndSaveTagged(tagged);
+    const saved = await scoreAndSaveTagged(articlesWithEmptyDesc);
 
     expect(saved).toBe(ARTICLE_COUNT);
   });
@@ -282,15 +297,13 @@ describe("xtech: パイプライン統合（実データフィクスチャ）", 
   it("xtech特有のタイムゾーン付き日付でもcalcRecencyScoreが正常動作する", async () => {
     const { calcRecencyScore } = await import("@/lib/scoring");
 
-    // 現在時刻に近い日付でテスト（タイムゾーン付きISO 8601）
     const now = new Date();
     const jstDate =
       now.toLocaleString("sv-SE", { timeZone: "Asia/Tokyo" }).replace(" ", "T") + "+09:00";
 
     const score = calcRecencyScore(jstDate);
-    expect(score).toBeGreaterThanOrEqual(8); // within a few days
+    expect(score).toBeGreaterThanOrEqual(8);
 
-    // 古い日付
     const oldScore = calcRecencyScore("2026-01-01T00:00:00+09:00");
     expect(oldScore).toBe(0);
   });
@@ -298,7 +311,6 @@ describe("xtech: パイプライン統合（実データフィクスチャ）", 
   it("descriptionに全角スペースが先頭にあっても正常処理される", async () => {
     const articlesWithZenkakuDesc: NormalizedArticle[] = XTECH_FIXTURES.map((a, i) => ({
       ...normalize(a, "xtech"),
-      // 実際のRSSのように先頭に全角スペース
       description: `　${a.description ?? ""}`,
       url: `https://xtech.nikkei.com/test/${i}/unique`,
     }));
@@ -308,20 +320,18 @@ describe("xtech: パイプライン統合（実データフィクスチャ）", 
         items.map(() => ({
           summary: "全角スペーステスト",
           usefulness: 6,
+          ntt_relevance: 8,
+          topic: "NTT",
           reason: "OK",
         })),
     );
 
-    const tagged = await tagArticlesByKeyword(articlesWithZenkakuDesc, KEYWORDS);
-    const saved = await scoreAndSaveTagged(tagged);
+    const saved = await scoreAndSaveTagged(articlesWithZenkakuDesc);
 
     expect(saved).toBe(ARTICLES_WITH_ZENKAKU_COUNT);
   });
 
-  it("LLMバッチが全nullを返した場合、savedCount=0（個別フォールバックはscoreArticles内部で処理）", async () => {
-    // NOTE: このテストでは @/lib/llm モジュール全体がモックされているため、
-    // scoreArticles 内部のフォールバックロジック（全null→個別スコアリング）は実行されない。
-    // 内部フォールバックのテストは tests/lib/llm.test.ts で実施する。
+  it("LLMバッチが全nullを返した場合、savedCount=0", async () => {
     mockScoreArticles.mockResolvedValue([null, null]);
 
     const articles: NormalizedArticle[] = [
@@ -331,16 +341,8 @@ describe("xtech: パイプライン統合（実データフィクスチャ）", 
     articles[0].url = "https://xtech.nikkei.com/fallback/1";
     articles[1].url = "https://xtech.nikkei.com/fallback/2";
 
-    const tagged = articles.map((a) => ({
-      article: a,
-      embedding: [0.1],
-      keyword: null,
-      similarity: 0.1,
-    }));
+    const saved = await scoreAndSaveTagged(articles);
 
-    const saved = await scoreAndSaveTagged(tagged);
-
-    // scoreArticlesが全nullを返すと、upsertはされるがsavedCountは0
     expect(saved).toBe(0);
   });
 });

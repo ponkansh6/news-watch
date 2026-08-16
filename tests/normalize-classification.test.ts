@@ -1,12 +1,5 @@
 /**
  * 各データソースの normalize 誤判定（misclassification）検知テスト
- *
- * 過去のバグ:
- * - CodeZine が ITmedia と同じ `guid` を持つため ITmedia として誤判定されていた
- * - ZDNet Japan が `guid` を持たず `link` のみのため Yamadashy(Tech Blog) として誤判定されていた
- *
- * これらのフィクスチャは意図的に重複プロパティ（guid / link）を持つよう作られており、
- * normalize が sourceId ではなくプロパティ判定に戻った場合に失敗する。
  */
 import { describe, expect, test, vi } from "vitest";
 import { normalize } from "@/app/api/fetch-news/route";
@@ -17,8 +10,6 @@ import type { ItmediaItem } from "@/lib/news/itmedia";
 import type { CodeZineItem } from "@/lib/news/codezine";
 import type { ZdnetItem } from "@/lib/news/zdnet";
 
-// route.ts がトップレベルで import する副作用のあるモジュールをモックして、
-// テスト環境で route モジュールを安全にロードする（normalize 自体は純粋関数）。
 vi.mock("@/lib/config", () => ({
   get KEYWORDS() {
     return ["TypeScript"];
@@ -35,14 +26,7 @@ vi.mock("@/lib/db", () => ({
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/llm", () => ({ scoreArticles: vi.fn(), scoreArticle: vi.fn() }));
-vi.mock("@/lib/embeddings", () => ({
-  embedArticle: vi.fn(),
-  embedQuery: vi.fn(),
-  batchEmbed: vi.fn(),
-  cosineSimilarity: vi.fn(),
-}));
 vi.mock("@/lib/score-pipeline", () => ({ scoreAndSaveTagged: vi.fn().mockResolvedValue(0) }));
-vi.mock("@/lib/vector-filter", () => ({ tagArticlesByKeyword: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/scoring", () => ({ calcRecencyScore: vi.fn(), calcCompositeScore: vi.fn() }));
 
 describe("normalize: 各データソースの誤判定検知", () => {

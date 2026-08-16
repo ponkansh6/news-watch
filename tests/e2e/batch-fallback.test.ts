@@ -38,6 +38,8 @@ describe("batch-fallback e2e/integration test", () => {
               summary: "個別スコアリングのサマリーです (20文字以上)",
               usefulness: 8,
               reason: "個別成功",
+              ntt_relevance: 8,
+              topic: "NTT",
             }),
         },
       })
@@ -49,6 +51,8 @@ describe("batch-fallback e2e/integration test", () => {
               summary: "個別スコアリングのサマリーです2 (20文字以上)",
               usefulness: 9,
               reason: "個別成功2",
+              ntt_relevance: 9,
+              topic: "NTT",
             }),
         },
       });
@@ -63,11 +67,15 @@ describe("batch-fallback e2e/integration test", () => {
       summary: "個別スコアリングのサマリーです (20文字以上)",
       usefulness: 8,
       reason: "個別成功",
+      ntt_relevance: 8,
+      topic: "NTT",
     });
     expect(results[1]).toEqual({
       summary: "個別スコアリングのサマリーです2 (20文字以上)",
       usefulness: 9,
       reason: "個別成功2",
+      ntt_relevance: 9,
+      topic: "NTT",
     });
   });
 

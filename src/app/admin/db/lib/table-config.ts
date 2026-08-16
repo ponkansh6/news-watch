@@ -41,22 +41,6 @@ export const TABLE_CONFIG: Record<string, { columns: ColumnDef[] }> = {
       { key: "summary", label: "Summary", sortable: false, hidden: true },
       { key: "reason", label: "Reason", sortable: false, hidden: true },
       { key: "url", label: "URL", sortable: false, hidden: true },
-      { key: "embedding", label: "Embedding", sortable: false, hidden: true },
-    ],
-  },
-  keyword_embeddings: {
-    columns: [
-      { key: "id", label: "ID", sortable: true, align: "right" },
-      { key: "keyword", label: "Keyword", sortable: true },
-      { key: "model", label: "Model", sortable: true },
-      { key: "dimensions", label: "Dim", sortable: true, align: "right" },
-      {
-        key: "createdAt",
-        label: "Created",
-        sortable: true,
-        format: (v) => (typeof v === "string" && v ? new Date(v).toLocaleDateString("ja-JP") : "—"),
-      },
-      { key: "embedding", label: "Embedding", sortable: false, hidden: true },
     ],
   },
   favorites: {

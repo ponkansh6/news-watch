@@ -35,7 +35,6 @@ const CREATE_ARTICLES_SQL = `
     reason TEXT,
     scored_at TEXT,
     score REAL,
-    embedding TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   )
 `;
@@ -78,7 +77,6 @@ describe("Favorites database actions", () => {
       reason: "Great reasoning",
       scoredAt: "2026-01-01T00:00:00Z",
       score: 9,
-      embedding: null,
     });
 
     // Get the inserted article ID
@@ -118,7 +116,6 @@ describe("Favorites database actions", () => {
       reason: "Great reasoning",
       scoredAt: "2026-01-01T00:00:00Z",
       score: 9,
-      embedding: null,
     });
 
     const all = await dbMod.db.select().from(schemaMod.articles);

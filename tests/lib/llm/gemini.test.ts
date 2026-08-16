@@ -49,13 +49,21 @@ describe("gemini llm module", () => {
             JSON.stringify({
               summary: "test",
               usefulness: 5,
+              ntt_relevance: 8,
+              topic: "NTT",
               reason: "test",
             }),
         },
       });
 
       const result = await scoreArticle({ title: "test", description: "test" });
-      expect(result).toEqual({ summary: "test", usefulness: 5, reason: "test" });
+      expect(result).toEqual({
+        summary: "test",
+        usefulness: 5,
+        ntt_relevance: 8,
+        topic: "NTT",
+        reason: "test",
+      });
       expect(mockGenerateContent).toHaveBeenCalled();
     });
 
@@ -82,18 +90,25 @@ describe("gemini llm module", () => {
             JSON.stringify({
               summary: "test",
               usefulness: 5,
+              ntt_relevance: 8,
+              topic: "NTT",
               reason: "test",
             }),
         },
       };
-      // Simulate 429 error (SDK throws error with status 429)
       const rateLimitError = new Error("Rate limit exceeded");
       (rateLimitError as any).status = 429;
 
       mockGenerateContent.mockRejectedValueOnce(rateLimitError).mockResolvedValueOnce(okResponse);
 
       const result = await scoreArticle({ title: "test", description: "test" });
-      expect(result).toEqual({ summary: "test", usefulness: 5, reason: "test" });
+      expect(result).toEqual({
+        summary: "test",
+        usefulness: 5,
+        ntt_relevance: 8,
+        topic: "NTT",
+        reason: "test",
+      });
       expect(mockGenerateContent).toHaveBeenCalledTimes(2);
     });
   });
@@ -110,8 +125,8 @@ describe("gemini llm module", () => {
         response: {
           text: () =>
             JSON.stringify([
-              { summary: "s1", usefulness: 1, reason: "r1" },
-              { summary: "s2", usefulness: 2, reason: "r2" },
+              { summary: "s1", usefulness: 1, ntt_relevance: 5, topic: "t1", reason: "r1" },
+              { summary: "s2", usefulness: 2, ntt_relevance: 6, topic: "t2", reason: "r2" },
             ]),
         },
       });
@@ -121,14 +136,29 @@ describe("gemini llm module", () => {
         { title: "t2", description: "d2" },
       ]);
       expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({ summary: "s1", usefulness: 1, reason: "r1" });
-      expect(result[1]).toEqual({ summary: "s2", usefulness: 2, reason: "r2" });
+      expect(result[0]).toEqual({
+        summary: "s1",
+        usefulness: 1,
+        ntt_relevance: 5,
+        topic: "t1",
+        reason: "r1",
+      });
+      expect(result[1]).toEqual({
+        summary: "s2",
+        usefulness: 2,
+        ntt_relevance: 6,
+        topic: "t2",
+        reason: "r2",
+      });
     });
 
     it("pads with null if results are missing", async () => {
       mockGenerateContent.mockResolvedValue({
         response: {
-          text: () => JSON.stringify([{ summary: "s1", usefulness: 1, reason: "r1" }]),
+          text: () =>
+            JSON.stringify([
+              { summary: "s1", usefulness: 1, ntt_relevance: 5, topic: "t1", reason: "r1" },
+            ]),
         },
       });
 
@@ -137,20 +167,32 @@ describe("gemini llm module", () => {
         { title: "t2", description: "d2" },
       ]);
       expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({ summary: "s1", usefulness: 1, reason: "r1" });
+      expect(result[0]).toEqual({
+        summary: "s1",
+        usefulness: 1,
+        ntt_relevance: 5,
+        topic: "t1",
+        reason: "r1",
+      });
       expect(result[1]).toBeNull();
     });
 
     it("passes timeout to SDK", async () => {
       mockGenerateContent.mockResolvedValue({
         response: {
-          text: () => JSON.stringify({ summary: "s1", usefulness: 1, reason: "r1" }),
+          text: () =>
+            JSON.stringify({
+              summary: "s1",
+              usefulness: 1,
+              ntt_relevance: 5,
+              topic: "t1",
+              reason: "r1",
+            }),
         },
       });
 
       await scoreArticle({ title: "t1", description: "d1" });
 
-      // Second argument should be { timeout: 30000 } for single scoring
       expect(mockGenerateContent).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({ timeout: 30_000 }),
@@ -160,7 +202,10 @@ describe("gemini llm module", () => {
     it("passes batch timeout to SDK", async () => {
       mockGenerateContent.mockResolvedValue({
         response: {
-          text: () => JSON.stringify([{ summary: "s1", usefulness: 1, reason: "r1" }]),
+          text: () =>
+            JSON.stringify([
+              { summary: "s1", usefulness: 1, ntt_relevance: 5, topic: "t1", reason: "r1" },
+            ]),
         },
       });
 
@@ -169,7 +214,6 @@ describe("gemini llm module", () => {
         { title: "t2", description: "d2" },
       ]);
 
-      // Batch uses 55_000ms timeout
       expect(mockGenerateContent).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({ timeout: 55_000 }),
@@ -177,8 +221,6 @@ describe("gemini llm module", () => {
     });
 
     it("falls back to individual scoring when batch returns empty array", async () => {
-      // First call (batch): empty array → all nulls → fallback
-      // Subsequent calls (individual): each returns a valid result
       mockGenerateContent
         .mockResolvedValueOnce({
           response: {
@@ -187,12 +229,26 @@ describe("gemini llm module", () => {
         })
         .mockResolvedValueOnce({
           response: {
-            text: () => JSON.stringify({ summary: "fallback1", usefulness: 6, reason: "r1" }),
+            text: () =>
+              JSON.stringify({
+                summary: "fallback1",
+                usefulness: 6,
+                ntt_relevance: 5,
+                topic: "t1",
+                reason: "r1",
+              }),
           },
         })
         .mockResolvedValueOnce({
           response: {
-            text: () => JSON.stringify({ summary: "fallback2", usefulness: 7, reason: "r2" }),
+            text: () =>
+              JSON.stringify({
+                summary: "fallback2",
+                usefulness: 7,
+                ntt_relevance: 6,
+                topic: "t2",
+                reason: "r2",
+              }),
           },
         });
 
@@ -201,12 +257,22 @@ describe("gemini llm module", () => {
         { title: "t2", description: "d2" },
       ]);
 
-      // Should have 2 results from fallback
       expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({ summary: "fallback1", usefulness: 6, reason: "r1" });
-      expect(result[1]).toEqual({ summary: "fallback2", usefulness: 7, reason: "r2" });
+      expect(result[0]).toEqual({
+        summary: "fallback1",
+        usefulness: 6,
+        ntt_relevance: 5,
+        topic: "t1",
+        reason: "r1",
+      });
+      expect(result[1]).toEqual({
+        summary: "fallback2",
+        usefulness: 7,
+        ntt_relevance: 6,
+        topic: "t2",
+        reason: "r2",
+      });
 
-      // Batch call + 2 individual calls = 3 total
       expect(mockGenerateContent).toHaveBeenCalledTimes(3);
     });
 
@@ -217,27 +283,38 @@ describe("gemini llm module", () => {
             text: () => "not json",
           },
         })
-        // Retry 1: still invalid
         .mockResolvedValueOnce({
           response: {
             text: () => "still not json",
           },
         })
-        // Retry 2: still invalid (last retry) → fallback
         .mockResolvedValueOnce({
           response: {
             text: () => "still not json",
           },
         })
-        // Individual fallback calls
         .mockResolvedValueOnce({
           response: {
-            text: () => JSON.stringify({ summary: "f1", usefulness: 5, reason: "r1" }),
+            text: () =>
+              JSON.stringify({
+                summary: "f1",
+                usefulness: 5,
+                ntt_relevance: 5,
+                topic: "t1",
+                reason: "r1",
+              }),
           },
         })
         .mockResolvedValueOnce({
           response: {
-            text: () => JSON.stringify({ summary: "f2", usefulness: 6, reason: "r2" }),
+            text: () =>
+              JSON.stringify({
+                summary: "f2",
+                usefulness: 6,
+                ntt_relevance: 6,
+                topic: "t2",
+                reason: "r2",
+              }),
           },
         });
 
@@ -250,7 +327,6 @@ describe("gemini llm module", () => {
       expect(result[0]).not.toBeNull();
       expect(result[1]).not.toBeNull();
 
-      // 3 batch attempts + 2 individual = 5 total calls
       expect(mockGenerateContent).toHaveBeenCalledTimes(5);
     });
 
@@ -261,6 +337,8 @@ describe("gemini llm module", () => {
             JSON.stringify({
               summary: "test",
               usefulness: 5,
+              ntt_relevance: 8,
+              topic: "NTT",
               reason: "test",
             }),
         },
@@ -270,7 +348,13 @@ describe("gemini llm module", () => {
       mockGenerateContent.mockRejectedValueOnce(transientError).mockResolvedValueOnce(okResponse);
 
       const result = await scoreArticle({ title: "test", description: "test" });
-      expect(result).toEqual({ summary: "test", usefulness: 5, reason: "test" });
+      expect(result).toEqual({
+        summary: "test",
+        usefulness: 5,
+        ntt_relevance: 8,
+        topic: "NTT",
+        reason: "test",
+      });
       expect(mockGenerateContent).toHaveBeenCalledTimes(2);
     });
 
@@ -279,14 +363,22 @@ describe("gemini llm module", () => {
         response: {
           text: () =>
             JSON.stringify({
-              results: [{ summary: "r1", usefulness: 8, reason: "why1" }],
+              results: [
+                { summary: "r1", usefulness: 8, ntt_relevance: 9, topic: "r", reason: "why1" },
+              ],
             }),
         },
       });
 
       const result = await scoreArticles([{ title: "t1", description: "d1" }]);
       expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({ summary: "r1", usefulness: 8, reason: "why1" });
+      expect(result[0]).toEqual({
+        summary: "r1",
+        usefulness: 8,
+        ntt_relevance: 9,
+        topic: "r",
+        reason: "why1",
+      });
     });
   });
 });

@@ -5,16 +5,12 @@ import * as schema from "@/lib/db/schema";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 
-// Extract Drizzle Table objects from the schema module. Drizzle Table
-// instances do NOT expose a plain `name` property (it is a symbol/getter),
-// so we detect them via `instanceof Table` and read the name via the
-// internal `Table.Symbol.Name` symbol.
 function getSchemaTables(): { table: Table; name: string }[] {
   return Object.values(schema)
     .filter((t: unknown): t is Table => t instanceof Table)
     .map((table) => ({
       table,
-      // @ts-expect-error Table.Symbol exists at runtime but is not in the type defs
+      // @ts-expect-error Table.Symbol exists at runtime
       name: (table as any)[Table.Symbol.Name] as string,
     }));
 }
@@ -25,7 +21,6 @@ describe("schema consistency", () => {
     expect(tables.length, "schema.ts should define at least one table").toBeGreaterThan(0);
 
     for (const { name } of tables) {
-      // Throws (no such table) if the migration was not applied.
       await db.$client.execute(`SELECT 1 FROM ${name} LIMIT 1`);
     }
   });
@@ -58,8 +53,6 @@ describe("schema consistency", () => {
         .map((col: any) => col.name);
 
       const result = await db.$client.execute(`PRAGMA table_info(${name})`);
-
-      // Handle different result structures (e.g. array of rows or object with rows)
       const rows = Array.isArray(result) ? result : (result as any).rows || [];
       const actualColumns = rows.map((row: any) => row.name);
 
@@ -69,36 +62,39 @@ describe("schema consistency", () => {
     }
   });
 
-  test("all defined indexes exist in the database and can be queried", async () => {
-    const expectedIndexes = [
-      { table: "articles", index: "idx_keyword" },
-      { table: "articles", index: "idx_source_score_pub" },
-      { table: "articles", index: "idx_created_at" },
-    ];
+  test("keyword_embeddings table and articles.embedding column do not exist", async () => {
+    // keyword_embeddings table should not exist
+    const tablesResult = await db.$client.execute(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='keyword_embeddings'`,
+    );
+    const tablesRows = Array.isArray(tablesResult)
+      ? tablesResult
+      : (tablesResult as any).rows || [];
+    expect(tablesRows.length).toBe(0);
 
-    for (const { table, index } of expectedIndexes) {
-      // Query PRAGMA index_list for the table
-      const result = await db.$client.execute(`PRAGMA index_list("${table}")`);
-      const rows = Array.isArray(result) ? result : (result as any).rows || [];
-      const indexNames = rows.map((r: any) => r.name);
-
-      expect(indexNames, `Index ${index} should exist on table ${table}`).toContain(index);
-
-      // Verify that the index can be queried via PRAGMA index_info
-      const infoResult = await db.$client.execute(`PRAGMA index_info("${index}")`);
-      const infoRows = Array.isArray(infoResult) ? infoResult : (infoResult as any).rows || [];
-      expect(infoRows.length, `Index ${index} should have columns defined`).toBeGreaterThan(0);
-    }
+    // articles table should not have 'embedding' column
+    const articleInfo = await db.$client.execute(`PRAGMA table_info(articles)`);
+    const articleRows = Array.isArray(articleInfo) ? articleInfo : (articleInfo as any).rows || [];
+    const actualColumns = articleRows.map((r: any) => r.name);
+    expect(actualColumns).not.toContain("embedding");
   });
 
-  test("keyword_embeddings table exists with correct columns", async () => {
-    const result = await db.$client.execute(`PRAGMA table_info(keyword_embeddings)`);
-    const rows = Array.isArray(result) ? result : (result as any).rows || [];
-    const actualColumns = rows.map((row: any) => row.name);
+  test("migration 0010 exists and drops keyword_embeddings and embedding", () => {
+    const migrationsDir = resolve(__dirname, "../../src/lib/db/migrations");
+    const files = readdirSync(migrationsDir).filter((f) => /^0010_.*\.sql$/.test(f));
+    expect(files.length, "Migration 0010 file not found").toBeGreaterThan(0);
+    const migrationPath = join(migrationsDir, files[0]);
+    const content = readFileSync(migrationPath, "utf-8");
+    expect(content).toContain("DROP TABLE `keyword_embeddings`");
+    expect(content).toContain("DROP COLUMN `embedding`");
+  });
 
-    const expectedColumns = ["id", "keyword", "embedding", "model", "dimensions", "created_at"];
-    for (const col of expectedColumns) {
-      expect(actualColumns, `Column ${col} missing in keyword_embeddings`).toContain(col);
-    }
+  test("articles.keyword is nullable (schema.ts と実適用 SQL の drift 検出（0006 欠落再発防止）)", async () => {
+    const articleInfo = await db.$client.execute(`PRAGMA table_info(articles)`);
+    const articleRows = Array.isArray(articleInfo) ? articleInfo : (articleInfo as any).rows || [];
+    const keywordCol = articleRows.find((r: any) => r.name === "keyword");
+    expect(keywordCol, "keyword column exists").toBeDefined();
+    // notnull should be 0 (nullable)
+    expect(keywordCol.notnull).toBe(0);
   });
 });

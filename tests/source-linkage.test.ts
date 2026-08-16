@@ -2,11 +2,6 @@ import { describe, expect, test, vi } from "vitest";
 import { SOURCES, SOURCE_IDS } from "@/lib/sources";
 import { SUPPORTED_SOURCE_IDS } from "@/app/api/fetch-news/route";
 
-vi.mock("@/lib/config", () => ({
-  get KEYWORDS() {
-    return ["TypeScript"];
-  },
-}));
 vi.mock("@/lib/db", () => ({
   upsertArticles: vi.fn().mockImplementation((dataList: any[]) =>
     Promise.resolve({
@@ -18,14 +13,7 @@ vi.mock("@/lib/db", () => ({
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/llm", () => ({ scoreArticles: vi.fn(), scoreArticle: vi.fn() }));
-vi.mock("@/lib/embeddings", () => ({
-  embedArticle: vi.fn(),
-  embedQuery: vi.fn(),
-  batchEmbed: vi.fn(),
-  cosineSimilarity: vi.fn(),
-}));
 vi.mock("@/lib/score-pipeline", () => ({ scoreAndSaveTagged: vi.fn().mockResolvedValue(0) }));
-vi.mock("@/lib/vector-filter", () => ({ tagArticlesByKeyword: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/scoring", () => ({ calcRecencyScore: vi.fn(), calcCompositeScore: vi.fn() }));
 
 describe("取得ソースとUIのリンク検証", () => {

@@ -1,4 +1,3 @@
-import type { ArticleWithTag } from "@/lib/types";
 import {
   RECENCY_TIERS,
   SOFTMAX_SCALE,
@@ -27,51 +26,22 @@ export function calcRecencyScore(publishedAt: string): number {
 }
 
 /**
- * Composite score: similarity (20%) + usefulness (50%) + recency (30%).
+ * Composite score: relevance (10%) + usefulness (60%) + recency (30%).
  * Returns null if usefulness is missing.
  */
 export function calcCompositeScore(
-  similarity: number,
+  relevance: number,
   usefulness: number | null,
   recency: number,
 ): number | null {
   if (usefulness === null) return null;
-  // similarity is already normalized to 0-10 by normalizeSimilaritiesWithTagged
-  const normalizedSimilarity = Math.max(0, Math.min(SOFTMAX_SCALE, similarity));
+  const normalizedRelevance = Math.max(0, Math.min(SOFTMAX_SCALE, relevance));
   return (
     Math.round(
-      (normalizedSimilarity * WEIGHT_SIMILARITY +
+      (normalizedRelevance * WEIGHT_SIMILARITY +
         usefulness * WEIGHT_USEFULNESS +
         recency * WEIGHT_RECENCY) *
         SOFTMAX_SCALE,
     ) / SOFTMAX_SCALE
-  );
-}
-
-export function softmax(values: number[], temperature = 1.0): number[] {
-  const max = Math.max(...values);
-  const exponents = values.map((v) => Math.exp((v - max) / temperature));
-  const sum = exponents.reduce((a, b) => a + b, 0);
-  return exponents.map((e) => e / sum);
-}
-
-export function normalizeSimilaritiesWithTagged(tagged: ArticleWithTag[]): ArticleWithTag[] {
-  const byKeyword = new Map<string, ArticleWithTag[]>();
-  for (const t of tagged) {
-    if (t.keyword === null) continue; // Skip untagged articles
-    const list = byKeyword.get(t.keyword) || [];
-    list.push(t);
-    byKeyword.set(t.keyword, list);
-  }
-
-  const normalizedByRef = new Map<ArticleWithTag, number>();
-  for (const [, group] of byKeyword) {
-    const similarities = group.map((t) => t.similarity);
-    const normalized = softmax(similarities);
-    group.forEach((t, i) => normalizedByRef.set(t, normalized[i] * SOFTMAX_SCALE));
-  }
-
-  return tagged.map((t) =>
-    normalizedByRef.has(t) ? { ...t, similarity: normalizedByRef.get(t)! } : t,
   );
 }

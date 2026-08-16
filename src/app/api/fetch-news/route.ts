@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { timingSafeEqual } from "crypto";
-import { KEYWORDS } from "@/lib/config";
 import { SOURCE_IDS, getSourceAdapter, normalizeUnknownSource } from "@/lib/news/registry";
 import { FetchNewsBodySchema } from "./schema";
 import { cleanupOrphaned, refreshRecency, cleanupLowScored } from "./pipeline/maintenance";
 import { type NormalizedArticle } from "@/lib/types";
-import { tagArticlesByKeyword } from "@/lib/vector-filter";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 
 // Vercel Hobby = 60s, Pro = 900s
@@ -90,8 +88,7 @@ export async function POST(request: Request) {
 
   if (all.length > 0) {
     try {
-      const tagged = await tagArticlesByKeyword(all, KEYWORDS);
-      result.saved = await scoreAndSaveTagged(tagged);
+      result.saved = await scoreAndSaveTagged(all);
     } catch (scoringError) {
       console.error(`[fetch-news] Scoring failed:`, scoringError);
       result.errors.push(`Scoring failed: ${scoringError}`);

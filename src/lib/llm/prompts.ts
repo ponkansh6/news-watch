@@ -12,12 +12,23 @@ usefulness (技術者・テックリーダー視点の有用性): この記事�
   - 1-3: 技術的・戦略的深度の薄い一般的なテックニュース、運用上の細部、マーケティング色の強い記事
   - 0: エンジニアやテックリーダーにとって価値がない（消費者/ライフスタイル向け、または技術的・戦略的示唆のない一般ニュース）
 
+ntt_relevance (NTT グループとの関連性): NTT グループ（NTT持株会社、ドコモ、NTTデータ、NTT東日本、NTT西日本、IOWN、光電融合技術など）と直接・間接的に関連する記事度合いを0-10で評価します。
+  - 10: NTT グループの経営戦略、技術開発、サービス/製品発表、業績・財務、規制対応等の直接的な発表・報道
+  - 7-9: NTT グループとの重要な提携・連携、NTT 系企業の技術・サービス、グループに直結する業界動向
+  - 4-6: NTT グループに関連する競合企業・産業動向、通信・データセンター・AI・量子等グループが参入する領域の一般的なニュース
+  - 1-3: NTT グループへの間接的な影響可能性がある業界一般ニュース、関連会社名が言及される程度
+  - 0: NTT グループとの関連性がない、または消費者向けニュース
+
+topic (トピック): 記事の内容を表す短い日本語ラベル（10文字以内）。例: 「ドコモ5G」「データ基盤」「量子技術」。自由形式。
+
 {{preferenceSection}}
 
 Output format (no markdown, no extra text):
 {
   "summary": "Japanese 20-40 chars concise summary of the article's core content/value (keyword-independent)",
   "usefulness": <0-10>,
+  "ntt_relevance": <0-10>,
+  "topic": "...",
   "reason": "Brief reason in Japanese explaining the usefulness score"
 }
 `;
@@ -26,7 +37,7 @@ export const BATCH_SCORING_PROMPT = `Score {{articleCount}} articles.
 Output ONLY valid JSON (a JSON object). Use exactly this structure:
 {
   "results": [
-    {"summary":"Japanese 20-40 chars","usefulness":0-10,"reason":"Brief Japanese reason"}
+    {"summary":"Japanese 20-40 chars","usefulness":0-10,"ntt_relevance":0-10,"topic":"...","reason":"Brief Japanese reason"}
   ]
 }
 One entry per article, in the same order. No markdown, no extra text.
@@ -37,6 +48,15 @@ Usefulness criteria (技術者・テックリーダー視点の有用性): こ�
   - 4-6: 明確な技術・競合文脈を伴う製品/機能発表、関連性のある段階的アップデート
   - 1-3: 技術的・戦略的深度の薄い一般的なテックニュース、運用上の細部、マーケティング色の強い記事
   - 0: エンジニアやテックリーダーにとって価値がない（消費者/ライフスタイル向け、または技術的・戦略的示唆のない一般ニュース）
+
+ntt_relevance (NTT グループとの関連性): NTT グループ（NTT持株会社、ドコモ、NTTデータ、NTT東日本、NTT西日本、IOWN、光電融合技術など）と直接・間接的に関連する記事度合いを0-10で評価します。
+  - 10: NTT グループの経営戦略、技術開発、サービス/製品発表、業績・財務、規制対応等の直接的な発表・報道
+  - 7-9: NTT グループとの重要な提携・連携、NTT 系企業の技術・サービス、グループに直結する業界動向
+  - 4-6: NTT グループに関連する競合企業・産業動向、通信・データセンター・AI・量子等グループが参入する領域の一般的なニュース
+  - 1-3: NTT グループへの間接的な影響可能性がある業界一般ニュース、関連会社名が言及される程度
+  - 0: NTT グループとの関連性がない、または消費者向けニュース
+
+topic (トピック): 記事の内容を表す短い日本語ラベル（10文字以内）。例: 「ドコモ5G」「データ基盤」「量子技術」。自由形式。
 
 {{preferenceSection}}
 

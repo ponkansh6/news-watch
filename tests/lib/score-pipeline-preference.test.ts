@@ -2,8 +2,8 @@ import { describe, expect, test, vi, beforeEach } from "vitest";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 import * as dbMod from "@/lib/db";
 import * as llmMod from "@/lib/llm";
+import type { NormalizedArticle } from "@/lib/types";
 
-// Mock dependencies
 vi.mock("@/lib/db", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, any>;
   return {
@@ -22,85 +22,53 @@ vi.mock("@/lib/llm", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, any>;
   return {
     ...actual,
-    scoreArticles: vi
-      .fn()
-      .mockResolvedValue([{ summary: "Test summary", usefulness: 8, reason: "Good" }]),
+    scoreArticles: vi.fn().mockResolvedValue([
+      { summary: "Test summary", usefulness: 8, ntt_relevance: 9, topic: "NTT", reason: "Good" },
+      { summary: "Test summary", usefulness: 8, ntt_relevance: 9, topic: "NTT", reason: "Good" },
+    ]),
     buildPreferencePromptSection: vi.fn().mockImplementation((analysis) => {
       return analysis ? "section:" + JSON.stringify(analysis) : "";
     }),
   };
 });
 
-vi.mock("@/lib/scoring", () => ({
-  normalizeSimilaritiesWithTagged: vi.fn().mockImplementation((t) => t),
-  calcRecencyScore: vi.fn().mockReturnValue(5),
-  calcCompositeScore: vi.fn().mockReturnValue(7),
-}));
-
 describe("scoreAndSaveTagged with preference profiles", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  const sampleArticles = [
+  const sampleArticles: NormalizedArticle[] = [
     {
-      article: {
-        title: "Article 1",
-        description: "Desc 1",
-        url: "https://example.com/1",
-        urlToImage: null,
-        publishedAt: "2026-01-01T00:00:00Z",
-        sourceName: "Zenn",
-        sourceId: "zenn",
-        author: null,
-        keyword: "tech",
-        summary: null,
-        relevance: null,
-        usefulness: null,
-        recency: null,
-        score: null,
-        reason: null,
-        createdAt: "2026-01-01T00:00:00Z",
-      },
-      embedding: [0.1, 0.2],
-      similarity: 0.8,
-      keyword: "tech",
+      title: "日本語記事 1",
+      description: "Desc 1",
+      url: "https://example.com/1",
+      urlToImage: null,
+      publishedAt: "2026-01-01T00:00:00Z",
+      sourceName: "Zenn",
+      sourceId: "zenn",
+      author: null,
     },
     {
-      article: {
-        title: "Article 2",
-        description: "Desc 2",
-        url: "https://example.com/2",
-        urlToImage: null,
-        publishedAt: "2026-01-01T00:00:00Z",
-        sourceName: "Zenn",
-        sourceId: "zenn",
-        author: null,
-        keyword: null, // untagged
-        summary: null,
-        relevance: null,
-        usefulness: null,
-        recency: null,
-        score: null,
-        reason: null,
-        createdAt: "2026-01-01T00:00:00Z",
-      },
-      embedding: [0.3, 0.4],
-      similarity: 0.4,
-      keyword: null,
+      title: "日本語記事 2",
+      description: "Desc 2",
+      url: "https://example.com/2",
+      urlToImage: null,
+      publishedAt: "2026-01-01T00:00:00Z",
+      sourceName: "Zenn",
+      sourceId: "zenn",
+      author: null,
     },
   ];
 
   test("Test 1: no profile -> default empty section", async () => {
     vi.mocked(dbMod.getLatestPreferenceProfile).mockResolvedValueOnce(null);
 
-    const count = await scoreAndSaveTagged(sampleArticles as any);
+    const count = await scoreAndSaveTagged(sampleArticles);
     expect(count).toBe(2);
 
     expect(dbMod.getLatestPreferenceProfile).toHaveBeenCalledTimes(1);
     expect(llmMod.buildPreferencePromptSection).toHaveBeenCalledWith(null);
 
-    // Verify scoreArticles received "" as the second argument for batches
     const scoreArticlesMock = vi.mocked(llmMod.scoreArticles);
     expect(scoreArticlesMock).toHaveBeenCalled();
     for (const call of scoreArticlesMock.mock.calls) {
@@ -129,7 +97,7 @@ describe("scoreAndSaveTagged with preference profiles", () => {
     };
     vi.mocked(dbMod.getLatestPreferenceProfile).mockResolvedValueOnce(mockProfile);
 
-    const count = await scoreAndSaveTagged(sampleArticles as any);
+    const count = await scoreAndSaveTagged(sampleArticles);
     expect(count).toBe(2);
 
     expect(dbMod.getLatestPreferenceProfile).toHaveBeenCalledTimes(1);
@@ -148,7 +116,7 @@ describe("scoreAndSaveTagged with preference profiles", () => {
     );
     const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const count = await scoreAndSaveTagged(sampleArticles as any);
+    const count = await scoreAndSaveTagged(sampleArticles);
     expect(count).toBe(2);
 
     expect(consoleSpy).toHaveBeenCalledWith(
@@ -166,7 +134,7 @@ describe("scoreAndSaveTagged with preference profiles", () => {
   });
 
   test("Test 4: explicit options.preferenceSection wins (getLatestPreferenceProfile NOT called)", async () => {
-    const count = await scoreAndSaveTagged(sampleArticles as any, {
+    const count = await scoreAndSaveTagged(sampleArticles, {
       preferenceSection: "custom-section",
     });
     expect(count).toBe(2);

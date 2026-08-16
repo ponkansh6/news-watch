@@ -6,7 +6,6 @@ import * as schema from "./schema";
 import {
   upsertArticle,
   upsertArticles,
-  deleteOrphanedArticles,
   deleteLowScoredArticles,
   refreshRecencyForSources,
   type ArticleInsert,
@@ -65,7 +64,6 @@ export type {
 export {
   upsertArticle,
   upsertArticles,
-  deleteOrphanedArticles,
   deleteLowScoredArticles,
   refreshRecencyForSources,
   getScoredArticles,

@@ -1,5 +1,5 @@
 import { db } from "../index";
-import { articles, keywordEmbeddings, favorites, notForMe, preferenceProfiles } from "../schema";
+import { articles, favorites, notForMe, preferenceProfiles } from "../schema";
 import { desc, asc, isNotNull, inArray, eq, sql, and, type SQL } from "drizzle-orm";
 import { DEFAULT_SCORED_ARTICLES_LIMIT, DEFAULT_ALL_ARTICLES_LIMIT } from "../../constants";
 import { getAllowedSortColumns } from "@/app/admin/db/lib/table-config";
@@ -62,22 +62,15 @@ export async function getAllArticles(limit = DEFAULT_ALL_ARTICLES_LIMIT) {
   }
 }
 
-export type TableName =
-  | "articles"
-  | "keyword_embeddings"
-  | "favorites"
-  | "not_for_me"
-  | "preference_profiles";
+export type TableName = "articles" | "favorites" | "not_for_me" | "preference_profiles";
 
 export type ArticleRow = typeof articles.$inferSelect;
-export type KeywordEmbeddingRow = typeof keywordEmbeddings.$inferSelect;
 export type FavoriteRow = typeof favorites.$inferSelect;
 export type NotForMeRow = typeof notForMe.$inferSelect;
 export type PreferenceProfileRow = typeof preferenceProfiles.$inferSelect;
 
 export type TableRowMap = {
   articles: ArticleRow;
-  keyword_embeddings: KeywordEmbeddingRow;
   favorites: FavoriteRow;
   not_for_me: NotForMeRow;
   preference_profiles: PreferenceProfileRow;
@@ -92,7 +85,6 @@ export interface TablePageOptions {
 
 const tableMap = {
   articles,
-  keyword_embeddings: keywordEmbeddings,
   favorites,
   not_for_me: notForMe,
   preference_profiles: preferenceProfiles,
@@ -143,18 +135,12 @@ async function countRows(tableObj: (typeof tableMap)[TableName]): Promise<number
 }
 
 export async function getTableCounts(): Promise<Record<TableName, number>> {
-  const [articlesCount, embeddingsCount, favoritesCount, notForMeCount, preferenceProfilesCount] =
-    await Promise.all([
-      countRows(articles),
-      countRows(keywordEmbeddings),
-      countRows(favorites),
-      countRows(notForMe),
-      countRows(preferenceProfiles),
-    ]);
+  const [articlesCount, favoritesCount, notForMeCount, preferenceProfilesCount] = await Promise.all(
+    [countRows(articles), countRows(favorites), countRows(notForMe), countRows(preferenceProfiles)],
+  );
 
   return {
     articles: articlesCount,
-    keyword_embeddings: embeddingsCount,
     favorites: favoritesCount,
     not_for_me: notForMeCount,
     preference_profiles: preferenceProfilesCount,

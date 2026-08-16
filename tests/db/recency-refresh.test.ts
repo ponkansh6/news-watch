@@ -48,7 +48,6 @@ const CREATE_SQL = `
     reason TEXT,
     scored_at TEXT,
     score REAL,
-    embedding TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   )
 `;
@@ -73,7 +72,6 @@ async function insertRawArticle(overrides: Record<string, any> = {}) {
     reason: "test reason",
     scored_at: "2026-07-27T00:00:00Z",
     score: 8.0,
-    embedding: null,
     created_at: "2026-07-27T00:00:00Z",
   };
   const values = { ...defaults, ...overrides };

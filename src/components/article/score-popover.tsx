@@ -30,15 +30,15 @@ export function ScoreBreakdown({ score, relevance, usefulness, recency }: ScoreP
       }
     >
       <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-x-2 text-xs">
-        <span className="text-muted-foreground">関連性</span>
+        <span className="text-muted-foreground">関連性 (NTT との関連度)</span>
         <span className="font-mono text-muted-foreground">{formatBar(relevance)}</span>
         <span className="font-mono text-right">{formatValue(relevance)}</span>
-        <span className="text-muted-foreground text-right">× 20%</span>
+        <span className="text-muted-foreground text-right">× 10%</span>
 
         <span className="text-muted-foreground">有用性</span>
         <span className="font-mono text-muted-foreground">{formatBar(usefulness)}</span>
         <span className="font-mono text-right">{formatValue(usefulness)}</span>
-        <span className="text-muted-foreground text-right">× 50%</span>
+        <span className="text-muted-foreground text-right">× 60%</span>
 
         <span className="text-muted-foreground">新しさ</span>
         <span className="font-mono text-muted-foreground">{formatBar(recency)}</span>

@@ -35,7 +35,6 @@ const CREATE_ARTICLES_SQL = `
     reason TEXT,
     scored_at TEXT,
     score REAL,
-    embedding TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   )
 `;
@@ -77,7 +76,6 @@ describe("Not For Me database actions", () => {
       reason: "Not for me",
       scoredAt: "2026-01-01T00:00:00Z",
       score: 5,
-      embedding: null,
     });
 
     const all = await dbMod.db.select().from(schemaMod.articles);
@@ -120,7 +118,6 @@ describe("Not For Me database actions", () => {
       reason: "Not for me",
       scoredAt: "2026-01-01T00:00:00Z",
       score: 5,
-      embedding: null,
     });
 
     const all = await dbMod.db.select().from(schemaMod.articles);

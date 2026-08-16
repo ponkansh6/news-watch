@@ -12,7 +12,6 @@ import type { ArticleInsert } from "../../src/lib/db";
 import {
   upsertArticle,
   getScoredArticles,
-  deleteOrphanedArticles,
   deleteLowScoredArticles,
   getAllArticles,
   getTablePage,
@@ -40,7 +39,6 @@ const CREATE_ARTICLES_SQL = `
     reason TEXT,
     scored_at TEXT,
     score REAL,
-    embedding TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
   )
 `;
@@ -82,7 +80,6 @@ describe("Database actions tests", () => {
       reason: "Test reason",
       scoredAt: "2024-01-01T00:00:00Z",
       score: 7.5,
-      embedding: "test-embedding",
     };
 
     await upsertArticle(articleData);
@@ -112,7 +109,6 @@ describe("Database actions tests", () => {
       reason: "Original reason",
       scoredAt: "2024-01-01T00:00:00Z",
       score: 7.5,
-      embedding: "test-embedding-1",
     };
 
     await upsertArticle(articleData1);
@@ -121,7 +117,6 @@ describe("Database actions tests", () => {
       ...articleData1,
       title: "Updated Title",
       score: 9.0,
-      embedding: "test-embedding-2",
     };
 
     await upsertArticle(articleData2);
@@ -130,14 +125,6 @@ describe("Database actions tests", () => {
     expect(scoredArticles).toHaveLength(1);
     expect(scoredArticles[0].title).toBe("Updated Title");
     expect(scoredArticles[0].score).toBe(9.0);
-
-    // Verify embedding persistence via getTablePage (admin table view)
-    const tablePageResult = await getTablePage("articles", {
-      offset: 0,
-      limit: 10,
-    });
-    expect(tablePageResult.rows).toHaveLength(1);
-    expect(tablePageResult.rows[0].embedding).toBe("test-embedding-2");
   });
 
   it("should retrieve only scored articles", async () => {
@@ -158,7 +145,6 @@ describe("Database actions tests", () => {
       reason: "Scored reason",
       scoredAt: "2024-01-01T00:00:00Z",
       score: 7.5,
-      embedding: "test-embedding",
     };
 
     const unscoredArticle = {
@@ -178,7 +164,6 @@ describe("Database actions tests", () => {
       reason: "Unscored reason",
       scoredAt: null,
       score: null,
-      embedding: "test-embedding",
     };
 
     await upsertArticle(scoredArticle);
@@ -208,7 +193,6 @@ describe("Database actions tests", () => {
       reason: "GNews reason",
       scoredAt: "2024-01-01T00:00:00Z",
       score: 7.5,
-      embedding: "test-embedding",
     };
 
     const githubArticle = {
@@ -229,7 +213,6 @@ describe("Database actions tests", () => {
       reason: "GitHub reason",
       scoredAt: "2024-01-01T00:00:00Z",
       score: 8.5,
-      embedding: "test-embedding",
     };
 
     const qiitaArticle = {
@@ -249,7 +232,6 @@ describe("Database actions tests", () => {
       reason: "Qiita reason",
       scoredAt: "2024-01-01T00:00:00Z",
       score: 6.5,
-      embedding: "test-embedding",
     };
 
     await upsertArticle(gnewsArticle);
@@ -270,58 +252,6 @@ describe("Database actions tests", () => {
     expect(bothArticles.map((a) => a.sourceId)).toContain("github");
   });
 
-  it("should delete orphaned articles", async () => {
-    const aiArticle = {
-      title: "AI Article",
-      description: "AI description",
-      url: "https://example.com/ai",
-      urlToImage: "https://example.com/image.jpg",
-      publishedAt: "2024-01-01T00:00:00Z",
-      sourceName: "Test Source",
-      sourceId: "test",
-      author: "Test Author",
-      keyword: "ai",
-      summary: "AI summary",
-      relevance: 8.0,
-      usefulness: 7.0,
-      recency: 6.0,
-      reason: "AI reason",
-      scoredAt: "2024-01-01T00:00:00Z",
-      score: 7.5,
-      embedding: "test-embedding",
-    };
-
-    const webArticle = {
-      title: "Web Article",
-      description: "Web description",
-      url: "https://example.com/web",
-      urlToImage: "https://example.com/image.jpg",
-      publishedAt: "2024-01-01T00:00:00Z",
-      sourceName: "Test Source",
-      sourceId: "test",
-      author: "Test Author",
-      keyword: "web",
-      summary: "Web summary",
-      relevance: 5.0,
-      usefulness: 4.0,
-      recency: 3.0,
-      reason: "Web reason",
-      scoredAt: "2024-01-01T00:00:00Z",
-      score: 4.5,
-      embedding: "test-embedding",
-    };
-
-    await upsertArticle(aiArticle);
-    await upsertArticle(webArticle);
-
-    await deleteOrphanedArticles(["ai"]);
-
-    const remainingArticles = await getAllArticles();
-    expect(remainingArticles).toHaveLength(1);
-    expect(remainingArticles[0].keyword).toBe("ai");
-    expect(remainingArticles[0].url).toBe("https://example.com/ai");
-  });
-
   it("should delete low scored articles", async () => {
     const highScoreArticle = {
       title: "High Score Article",
@@ -340,7 +270,6 @@ describe("Database actions tests", () => {
       reason: "High score reason",
       scoredAt: "2024-01-01T00:00:00Z",
       score: 8.0,
-      embedding: "test-embedding",
     };
 
     const lowScoreArticle = {
@@ -360,7 +289,6 @@ describe("Database actions tests", () => {
       reason: "Low score reason",
       scoredAt: "2024-01-01T00:00:00Z",
       score: 3.0,
-      embedding: "test-embedding",
     };
 
     const unscoredArticle = {
@@ -380,7 +308,6 @@ describe("Database actions tests", () => {
       reason: "Unscored reason",
       scoredAt: null,
       score: null,
-      embedding: "test-embedding",
     };
 
     await upsertArticle(highScoreArticle);
@@ -414,7 +341,6 @@ describe("Database actions tests", () => {
       reason: "Reason 1",
       scoredAt: "2024-01-01T00:00:00Z",
       score: 7.5,
-      embedding: "test-embedding",
     };
 
     const article2 = {
@@ -434,7 +360,6 @@ describe("Database actions tests", () => {
       reason: "Reason 2",
       scoredAt: "2024-01-02T00:00:00Z",
       score: 6.5,
-      embedding: "test-embedding",
     };
 
     const article3 = {
@@ -454,7 +379,6 @@ describe("Database actions tests", () => {
       reason: "Reason 3",
       scoredAt: "2024-01-03T00:00:00Z",
       score: 5.5,
-      embedding: "test-embedding",
     };
 
     await upsertArticle(article1);
@@ -498,7 +422,6 @@ describe("Database actions tests", () => {
       reason: null,
       scoredAt: null,
       score: overrides.score ?? null,
-      embedding: null,
     };
   }
 
@@ -576,15 +499,6 @@ describe("Database actions tests", () => {
       expect(Array.isArray(result.rows)).toBe(true);
     });
 
-    it("works for keyword_embeddings table", async () => {
-      const result = await getTablePage("keyword_embeddings", {
-        offset: 0,
-        limit: 5,
-      });
-      expect(result.rows).toBeDefined();
-      expect(typeof result.total).toBe("number");
-    });
-
     it("works for favorites table", async () => {
       const result = await getTablePage("favorites", {
         offset: 0,
@@ -630,10 +544,8 @@ describe("Database actions tests", () => {
 
       const counts = await getTableCounts();
       expect(counts).toHaveProperty("articles");
-      expect(counts).toHaveProperty("keyword_embeddings");
       expect(counts).toHaveProperty("favorites");
       expect(typeof counts.articles).toBe("number");
-      expect(typeof counts.keyword_embeddings).toBe("number");
       expect(typeof counts.favorites).toBe("number");
       expect(counts.articles).toBeGreaterThan(0);
     });

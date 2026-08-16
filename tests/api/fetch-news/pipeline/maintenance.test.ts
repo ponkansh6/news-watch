@@ -4,22 +4,12 @@ import {
   refreshRecency,
   cleanupLowScored,
 } from "@/app/api/fetch-news/pipeline/maintenance";
-import {
-  deleteOrphanedArticles,
-  deleteLowScoredArticles,
-  refreshRecencyForSources,
-} from "@/lib/db";
-import { KEYWORDS } from "@/lib/config";
+import { deleteLowScoredArticles, refreshRecencyForSources } from "@/lib/db";
 import { type NormalizedArticle } from "@/lib/types";
 
 vi.mock("@/lib/db", () => ({
-  deleteOrphanedArticles: vi.fn(),
   deleteLowScoredArticles: vi.fn(),
   refreshRecencyForSources: vi.fn(),
-}));
-
-vi.mock("@/lib/config", () => ({
-  KEYWORDS: ["TypeScript", "Next.js"],
 }));
 
 describe("pipeline/maintenance", () => {
@@ -28,10 +18,8 @@ describe("pipeline/maintenance", () => {
   });
 
   describe("cleanupOrphaned", () => {
-    it("calls deleteOrphanedArticles with KEYWORDS copy", async () => {
-      await cleanupOrphaned();
-      expect(deleteOrphanedArticles).toHaveBeenCalledTimes(1);
-      expect(deleteOrphanedArticles).toHaveBeenCalledWith(["TypeScript", "Next.js"]);
+    it("is a NO-OP", async () => {
+      await expect(cleanupOrphaned()).resolves.toBeUndefined();
     });
   });
 

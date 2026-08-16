@@ -57,6 +57,13 @@
       "when": 1786803765406,
       "tag": "0009_smooth_sentry",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1786869268962,
+      "tag": "0010_remove_embeddings",
+      "breakpoints": true
     }
   ]
 }

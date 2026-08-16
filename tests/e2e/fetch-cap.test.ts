@@ -37,17 +37,6 @@ vi.mock("@/lib/db", () => ({
   refreshRecencyForSources: vi.fn().mockResolvedValue(0),
 }));
 
-vi.mock("@/lib/config", () => ({
-  KEYWORDS: ["test-keyword"],
-}));
-
-vi.mock("@/lib/embeddings", () => ({
-  embedArticle: vi.fn().mockResolvedValue([0.1, 0.2]),
-  embedQuery: vi.fn().mockResolvedValue([0.1, 0.2]),
-  batchEmbed: vi.fn().mockResolvedValue([[0.1, 0.2]]),
-  cosineSimilarity: vi.fn().mockReturnValue(1.0),
-}));
-
 describe("fetch cap (MAX_ARTICLES = 20)", () => {
   beforeEach(() => {
     vi.resetModules();

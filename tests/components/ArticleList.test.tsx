@@ -84,7 +84,7 @@ describe("ArticleList", () => {
     expect(scoreButton).toBeInTheDocument();
 
     fireEvent.click(scoreButton);
-    expect(await screen.findByText("関連性")).toBeInTheDocument();
+    expect(await screen.findByText("関連性 (NTT との関連度)")).toBeInTheDocument();
     expect(screen.getByText(/有用性/)).toBeInTheDocument();
     expect(screen.getByText(/新しさ/)).toBeInTheDocument();
   });

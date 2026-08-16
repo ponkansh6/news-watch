@@ -8,7 +8,7 @@ CREATE TABLE `articles` (
 	`source_name` text,
 	`source_id` text,
 	`author` text,
-	`keyword` text NOT NULL,
+	`keyword` text,
 	`summary` text,
 	`relevance` real,
 	`usefulness` real,

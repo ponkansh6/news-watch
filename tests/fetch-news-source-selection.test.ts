@@ -2,7 +2,6 @@ import { describe, expect, test, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/fetch-news/route";
 
-// Mock all external dependencies
 vi.mock("@/lib/news/zenn", () => ({
   searchZenn: vi.fn().mockResolvedValue([
     {
@@ -52,16 +51,18 @@ vi.mock("@/lib/llm", () => ({
     .mockImplementation((articles: { title: string; description: string | null }[]) =>
       Promise.resolve(
         articles.map(() => ({
-          relevance: 8,
+          ntt_relevance: 8,
           usefulness: 7,
+          topic: "NTT",
           summary: "Test summary",
           reason: "Test reason",
         })),
       ),
     ),
   scoreArticle: vi.fn().mockResolvedValue({
-    relevance: 8,
+    ntt_relevance: 8,
     usefulness: 7,
+    topic: "NTT",
     summary: "Test summary",
     reason: "Test reason",
   }),
@@ -77,23 +78,6 @@ vi.mock("@/lib/db", () => ({
   deleteOrphanedArticles: vi.fn().mockResolvedValue(undefined),
   deleteLowScoredArticles: vi.fn().mockResolvedValue(undefined),
   refreshRecencyForSources: vi.fn().mockResolvedValue(0),
-}));
-
-vi.mock("@/lib/config", () => ({
-  KEYWORDS: ["test-keyword"],
-}));
-
-// Mock embeddings so the local dev scoring path does not
-// depend on network access to the Google API.
-vi.mock("@/lib/embeddings", () => ({
-  embedArticle: vi.fn().mockResolvedValue([0.1, 0.2]),
-  embedQuery: vi.fn().mockResolvedValue([0.1, 0.2]),
-  batchEmbed: vi.fn().mockResolvedValue([[0.1, 0.2]]),
-  cosineSimilarity: vi.fn().mockReturnValue(1.0),
-}));
-
-vi.mock("@/lib/vector-math", () => ({
-  cosineSimilarity: vi.fn().mockReturnValue(1.0),
 }));
 
 describe("fetch-news route source selection", () => {
