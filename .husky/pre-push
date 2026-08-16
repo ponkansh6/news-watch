@@ -1,5 +1,35 @@
 #!/bin/sh
 
+# --- Uncommitted change guard ---
+# push 内容と作業ツリーがズレていると「直したつもりの変更が本番に出ない」。
+# 実際に not_for_me の管理画面配線が未コミットのまま残り、NFM 登録は成功して
+# いるのに admin 画面だけ 0 件、という状態が本番で発生した。
+# 重い検査（eslint / smoke / coverage）より前に置いて即座に落とす。
+if git rev-parse --verify HEAD >/dev/null 2>&1; then
+  DIRTY=$(git diff --name-only HEAD)
+  if [ -n "$DIRTY" ]; then
+    echo ""
+    echo "❌ 未コミットの変更があります。push を中止しました。"
+    echo "$DIRTY" | sed 's/^/   - /'
+    echo ""
+    echo "   コミットするか退避してから push してください:"
+    echo "     git add -A && git commit"
+    echo "     git stash -u"
+    echo "   意図的に無視する場合: git push --no-verify"
+    echo ""
+    exit 1
+  fi
+
+  # 未追跡は src/ tests/ のみ警告（log/ shared_plan/ 等のローカル作業物は対象外）
+  UNTRACKED=$(git ls-files --others --exclude-standard -- src tests)
+  if [ -n "$UNTRACKED" ]; then
+    echo ""
+    echo "⚠️  Warning: src/ tests/ に未追跡ファイルがあります (git add 忘れ?)"
+    echo "$UNTRACKED" | sed 's/^/   - /'
+    echo ""
+  fi
+fi
+
 MERGE_BASE=$(git merge-base --fork-point origin/master HEAD 2>/dev/null || git rev-parse HEAD)
 PUSH_FILES=$(git diff --name-only "$MERGE_BASE"...HEAD 2>/dev/null || true)
 
