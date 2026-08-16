@@ -54,7 +54,12 @@ async function main() {
   }
 
   // ----- Step 2: Check column drift for articles table -----
-  const match = schemaContent.match(/export const articles = sqliteTable\s*\(\s*\"articles\"\s*,\s*\{([^}]+)\}/s);
+  // NOTE: must lazily match up to '},' immediately followed by '(table)' —
+  // a naive [^}]+ stops at the FIRST '}', which is the one inside
+  // id: integer(\"id\").primaryKey({ autoIncrement: true }), truncating the
+  // block to just the 'id' field. That made this check a silent no-op from
+  // the day it was introduced (id always exists, so it always \"passed\").
+  const match = schemaContent.match(/export const articles = sqliteTable\(\s*\"articles\"\s*,\s*\{([\s\S]*?)\},\s*\(table\)/);
   if (match) {
     const colBlock = match[1];
 
