@@ -7,6 +7,7 @@ import {
   JAPANESE_RATIO_THRESHOLD,
   JAPANESE_LARGE_BATCH,
   LLM_BATCH_CONCURRENCY,
+  NTT_TAG_RELEVANCE_THRESHOLD,
 } from "./constants";
 import type { NormalizedArticle } from "@/lib/types";
 
@@ -79,7 +80,7 @@ async function scoreAndSaveBatch(
       sourceName: article.sourceName,
       sourceId: article.sourceId,
       author: article.author,
-      keyword: llmResult?.topic ?? null,
+      keyword: relevance >= NTT_TAG_RELEVANCE_THRESHOLD ? "NTT" : null,
       summary: llmResult?.summary ?? null,
       relevance,
       usefulness,

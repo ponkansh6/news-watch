@@ -19,8 +19,6 @@ ntt_relevance (NTT グループとの関連性): NTT グループ（NTT持株会
   - 1-3: NTT グループへの間接的な影響可能性がある業界一般ニュース、関連会社名が言及される程度
   - 0: NTT グループとの関連性がない、または消費者向けニュース
 
-topic (トピック): 記事の内容を表す短い日本語ラベル（10文字以内）。例: 「ドコモ5G」「データ基盤」「量子技術」。自由形式。
-
 {{preferenceSection}}
 
 Output format (no markdown, no extra text):
@@ -28,7 +26,6 @@ Output format (no markdown, no extra text):
   "summary": "Japanese 20-40 chars concise summary of the article's core content/value (keyword-independent)",
   "usefulness": <0-10>,
   "ntt_relevance": <0-10>,
-  "topic": "...",
   "reason": "Brief reason in Japanese explaining the usefulness score"
 }
 `;
@@ -37,7 +34,7 @@ export const BATCH_SCORING_PROMPT = `Score {{articleCount}} articles.
 Output ONLY valid JSON (a JSON object). Use exactly this structure:
 {
   "results": [
-    {"summary":"Japanese 20-40 chars","usefulness":0-10,"ntt_relevance":0-10,"topic":"...","reason":"Brief Japanese reason"}
+    {"summary":"Japanese 20-40 chars","usefulness":0-10,"ntt_relevance":0-10,"reason":"Brief Japanese reason"}
   ]
 }
 One entry per article, in the same order. No markdown, no extra text.
@@ -55,8 +52,6 @@ ntt_relevance (NTT グループとの関連性): NTT グループ（NTT持株会
   - 4-6: NTT グループに関連する競合企業・産業動向、通信・データセンター・AI・量子等グループが参入する領域の一般的なニュース
   - 1-3: NTT グループへの間接的な影響可能性がある業界一般ニュース、関連会社名が言及される程度
   - 0: NTT グループとの関連性がない、または消費者向けニュース
-
-topic (トピック): 記事の内容を表す短い日本語ラベル（10文字以内）。例: 「ドコモ5G」「データ基盤」「量子技術」。自由形式。
 
 {{preferenceSection}}
 

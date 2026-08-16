@@ -48,7 +48,6 @@ vi.mock("@/lib/llm", () => ({
     {
       ntt_relevance: 8,
       usefulness: 7,
-      topic: "NTT",
       summary: "Test summary",
       reason: "Test reason",
     },
@@ -56,7 +55,6 @@ vi.mock("@/lib/llm", () => ({
   scoreArticle: vi.fn().mockResolvedValue({
     ntt_relevance: 8,
     usefulness: 7,
-    topic: "NTT",
     summary: "Test summary",
     reason: "Test reason",
   }),

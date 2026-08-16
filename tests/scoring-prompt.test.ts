@@ -13,9 +13,11 @@ describe("スコアリングプロンプト: usefulness はエンジニア/テ�
     test(`${name}: 一般的な有用性を除外していること`, () => {
       expect(prompt).toContain("一般的な有用性");
     });
-    test(`${name}: ntt_relevance と topic を要求していること`, () => {
+    test(`${name}: ntt_relevance を要求していること`, () => {
       expect(prompt).toContain("ntt_relevance");
-      expect(prompt).toContain("topic");
+    });
+    test(`${name}: topic を要求していないこと（NTTタグは ntt_relevance の閾値判定で付与する）`, () => {
+      expect(prompt).not.toContain("topic");
     });
   }
 

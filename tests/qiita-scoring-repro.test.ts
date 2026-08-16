@@ -101,7 +101,6 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
             summary: "テスト記事の要約",
             usefulness: 7,
             ntt_relevance: 8,
-            topic: "NTT",
             reason: "キーワード関連性が高く技術的価値があるため",
           })),
         );
@@ -144,7 +143,6 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
                   summary: "部分的な要約",
                   usefulness: 6,
                   ntt_relevance: 7,
-                  topic: "NTT",
                   reason: "部分的な理由",
                 };
           }),
@@ -232,7 +230,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
               content: {
                 parts: [
                   {
-                    text: '{"summary":"テスト","ntt_relevance":5,"usefulness":5,"topic":"NTT","reason":"テスト理由"}',
+                    text: '{"summary":"テスト","ntt_relevance":5,"usefulness":5,"reason":"テスト理由"}',
                   },
                 ],
               },

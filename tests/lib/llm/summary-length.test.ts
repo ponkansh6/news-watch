@@ -21,7 +21,6 @@ describe("Summary length and prompt constraints (20-40 characters)", () => {
       usefulness: 8,
       reason: "有用な技術記事です",
       ntt_relevance: 8,
-      topic: "NTT",
     };
     const parsed = LLMResponseSchema.parse(valid);
     expect(parsed.summary).toBe(valid.summary);
@@ -33,7 +32,6 @@ describe("Summary length and prompt constraints (20-40 characters)", () => {
       usefulness: 8,
       reason: "理由",
       ntt_relevance: 8,
-      topic: "NTT",
     };
     expect(() => LLMResponseSchema.parse(tooLong)).toThrow();
   });

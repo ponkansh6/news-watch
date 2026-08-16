@@ -3,6 +3,9 @@ export const WEIGHT_SIMILARITY = 0.1;
 export const WEIGHT_USEFULNESS = 0.6;
 export const WEIGHT_RECENCY = 0.3;
 
+// ── NTT tag: only shown when LLM-scored ntt_relevance meets this bar ──
+export const NTT_TAG_RELEVANCE_THRESHOLD = 8;
+
 // ── Recency thresholds: [maxDays, score] pairs ──
 // Articles newer than RECENCY_TIERS[0].days get RECENCY_TIERS[0].score, etc.
 export const RECENCY_TIERS: readonly { days: number; score: number }[] = [
@@ -37,7 +40,6 @@ export const DEFAULT_ALL_ARTICLES_LIMIT = 10;
 export const LLM_RESPONSE_SUMMARY_MAX = 100;
 export const LLM_RESPONSE_USEFULNESS_MAX = 10;
 export const LLM_RESPONSE_RELEVANCE_MAX = 10;
-export const LLM_RESPONSE_TOPIC_MAX = 20;
 export const LLM_RESPONSE_REASON_MAX = 200;
 export const LLM_SINGLE_MAX_TOKENS = 500;
 export const LLM_SINGLE_TIMEOUT_MS = 30_000;

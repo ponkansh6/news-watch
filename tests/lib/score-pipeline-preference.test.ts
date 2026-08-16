@@ -23,8 +23,8 @@ vi.mock("@/lib/llm", async (importOriginal) => {
   return {
     ...actual,
     scoreArticles: vi.fn().mockResolvedValue([
-      { summary: "Test summary", usefulness: 8, ntt_relevance: 9, topic: "NTT", reason: "Good" },
-      { summary: "Test summary", usefulness: 8, ntt_relevance: 9, topic: "NTT", reason: "Good" },
+      { summary: "Test summary", usefulness: 8, ntt_relevance: 9, reason: "Good" },
+      { summary: "Test summary", usefulness: 8, ntt_relevance: 9, reason: "Good" },
     ]),
     buildPreferencePromptSection: vi.fn().mockImplementation((analysis) => {
       return analysis ? "section:" + JSON.stringify(analysis) : "";

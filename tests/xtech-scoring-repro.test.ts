@@ -18,7 +18,6 @@ const mockScoreArticle = vi.fn(async (article: any) => ({
   summary: `個別フォールバック: ${article.title}`,
   usefulness: 8,
   ntt_relevance: 9,
-  topic: "NTT",
   reason: "フォールバックによる個別スコアリング",
 }));
 vi.mock("@/lib/llm", () => ({
@@ -216,7 +215,6 @@ describe("xtech 20件取得→0件スコアリングの完全再現テスト", (
           summary: `要約: ${item.title.slice(0, 20)}`,
           usefulness: 6 + (i % 4),
           ntt_relevance: 8,
-          topic: "NTT",
           reason: "日経クロステックのIT記事として有用",
         })),
     );
@@ -259,7 +257,6 @@ describe("xtech 20件取得→0件スコアリングの完全再現テスト", (
           summary: "要約テスト",
           usefulness: 7,
           ntt_relevance: 8,
-          topic: "NTT",
           reason: "OK",
         })),
     );
@@ -284,7 +281,6 @@ describe("xtech 20件取得→0件スコアリングの完全再現テスト", (
           summary: "要約テスト",
           usefulness: 7,
           ntt_relevance: 8,
-          topic: "NTT",
           reason: "OK",
         })),
     );
@@ -321,7 +317,6 @@ describe("xtech 20件取得→0件スコアリングの完全再現テスト", (
           summary: "全角スペーステスト",
           usefulness: 6,
           ntt_relevance: 8,
-          topic: "NTT",
           reason: "OK",
         })),
     );

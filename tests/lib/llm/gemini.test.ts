@@ -50,7 +50,6 @@ describe("gemini llm module", () => {
               summary: "test",
               usefulness: 5,
               ntt_relevance: 8,
-              topic: "NTT",
               reason: "test",
             }),
         },
@@ -61,7 +60,6 @@ describe("gemini llm module", () => {
         summary: "test",
         usefulness: 5,
         ntt_relevance: 8,
-        topic: "NTT",
         reason: "test",
       });
       expect(mockGenerateContent).toHaveBeenCalled();
@@ -91,7 +89,6 @@ describe("gemini llm module", () => {
               summary: "test",
               usefulness: 5,
               ntt_relevance: 8,
-              topic: "NTT",
               reason: "test",
             }),
         },
@@ -106,7 +103,6 @@ describe("gemini llm module", () => {
         summary: "test",
         usefulness: 5,
         ntt_relevance: 8,
-        topic: "NTT",
         reason: "test",
       });
       expect(mockGenerateContent).toHaveBeenCalledTimes(2);
@@ -125,8 +121,8 @@ describe("gemini llm module", () => {
         response: {
           text: () =>
             JSON.stringify([
-              { summary: "s1", usefulness: 1, ntt_relevance: 5, topic: "t1", reason: "r1" },
-              { summary: "s2", usefulness: 2, ntt_relevance: 6, topic: "t2", reason: "r2" },
+              { summary: "s1", usefulness: 1, ntt_relevance: 5, reason: "r1" },
+              { summary: "s2", usefulness: 2, ntt_relevance: 6, reason: "r2" },
             ]),
         },
       });
@@ -140,14 +136,12 @@ describe("gemini llm module", () => {
         summary: "s1",
         usefulness: 1,
         ntt_relevance: 5,
-        topic: "t1",
         reason: "r1",
       });
       expect(result[1]).toEqual({
         summary: "s2",
         usefulness: 2,
         ntt_relevance: 6,
-        topic: "t2",
         reason: "r2",
       });
     });
@@ -156,9 +150,7 @@ describe("gemini llm module", () => {
       mockGenerateContent.mockResolvedValue({
         response: {
           text: () =>
-            JSON.stringify([
-              { summary: "s1", usefulness: 1, ntt_relevance: 5, topic: "t1", reason: "r1" },
-            ]),
+            JSON.stringify([{ summary: "s1", usefulness: 1, ntt_relevance: 5, reason: "r1" }]),
         },
       });
 
@@ -171,7 +163,6 @@ describe("gemini llm module", () => {
         summary: "s1",
         usefulness: 1,
         ntt_relevance: 5,
-        topic: "t1",
         reason: "r1",
       });
       expect(result[1]).toBeNull();
@@ -185,7 +176,6 @@ describe("gemini llm module", () => {
               summary: "s1",
               usefulness: 1,
               ntt_relevance: 5,
-              topic: "t1",
               reason: "r1",
             }),
         },
@@ -203,9 +193,7 @@ describe("gemini llm module", () => {
       mockGenerateContent.mockResolvedValue({
         response: {
           text: () =>
-            JSON.stringify([
-              { summary: "s1", usefulness: 1, ntt_relevance: 5, topic: "t1", reason: "r1" },
-            ]),
+            JSON.stringify([{ summary: "s1", usefulness: 1, ntt_relevance: 5, reason: "r1" }]),
         },
       });
 
@@ -234,7 +222,6 @@ describe("gemini llm module", () => {
                 summary: "fallback1",
                 usefulness: 6,
                 ntt_relevance: 5,
-                topic: "t1",
                 reason: "r1",
               }),
           },
@@ -246,7 +233,6 @@ describe("gemini llm module", () => {
                 summary: "fallback2",
                 usefulness: 7,
                 ntt_relevance: 6,
-                topic: "t2",
                 reason: "r2",
               }),
           },
@@ -262,14 +248,12 @@ describe("gemini llm module", () => {
         summary: "fallback1",
         usefulness: 6,
         ntt_relevance: 5,
-        topic: "t1",
         reason: "r1",
       });
       expect(result[1]).toEqual({
         summary: "fallback2",
         usefulness: 7,
         ntt_relevance: 6,
-        topic: "t2",
         reason: "r2",
       });
 
@@ -300,7 +284,6 @@ describe("gemini llm module", () => {
                 summary: "f1",
                 usefulness: 5,
                 ntt_relevance: 5,
-                topic: "t1",
                 reason: "r1",
               }),
           },
@@ -312,7 +295,6 @@ describe("gemini llm module", () => {
                 summary: "f2",
                 usefulness: 6,
                 ntt_relevance: 6,
-                topic: "t2",
                 reason: "r2",
               }),
           },
@@ -338,7 +320,6 @@ describe("gemini llm module", () => {
               summary: "test",
               usefulness: 5,
               ntt_relevance: 8,
-              topic: "NTT",
               reason: "test",
             }),
         },
@@ -352,7 +333,6 @@ describe("gemini llm module", () => {
         summary: "test",
         usefulness: 5,
         ntt_relevance: 8,
-        topic: "NTT",
         reason: "test",
       });
       expect(mockGenerateContent).toHaveBeenCalledTimes(2);
@@ -363,9 +343,7 @@ describe("gemini llm module", () => {
         response: {
           text: () =>
             JSON.stringify({
-              results: [
-                { summary: "r1", usefulness: 8, ntt_relevance: 9, topic: "r", reason: "why1" },
-              ],
+              results: [{ summary: "r1", usefulness: 8, ntt_relevance: 9, reason: "why1" }],
             }),
         },
       });
@@ -376,7 +354,6 @@ describe("gemini llm module", () => {
         summary: "r1",
         usefulness: 8,
         ntt_relevance: 9,
-        topic: "r",
         reason: "why1",
       });
     });

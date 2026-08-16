@@ -76,7 +76,6 @@ function mockLlmSuccess() {
         summary: `要約: ${item.title}`,
         usefulness: 6 + (i % 4),
         ntt_relevance: 8,
-        topic: "NTT",
         reason: "関連",
       })),
   );
@@ -188,7 +187,6 @@ describe("Low-score articles with valid source appear in filtered results", () =
           summary: "極低",
           usefulness: 0,
           ntt_relevance: 1,
-          topic: "NTT",
           reason: "低い",
         })),
     );

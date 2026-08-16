@@ -47,7 +47,6 @@ beforeEach(() => {
             summary: `要約: ${i}`,
             usefulness: 6,
             ntt_relevance: 8,
-            topic: "NTT",
             reason: `関連`,
           })),
         ),

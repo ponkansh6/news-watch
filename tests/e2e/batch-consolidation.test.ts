@@ -40,7 +40,6 @@ describe("e2e: batch consolidation", () => {
             summary: "s",
             usefulness: 7,
             ntt_relevance: 8,
-            topic: "Anthropic",
             reason: "r",
           })),
         ),

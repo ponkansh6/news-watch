@@ -3,7 +3,6 @@ import {
   LLM_RESPONSE_SUMMARY_MAX,
   LLM_RESPONSE_USEFULNESS_MAX,
   LLM_RESPONSE_RELEVANCE_MAX,
-  LLM_RESPONSE_TOPIC_MAX,
   LLM_RESPONSE_REASON_MAX,
   PREFERENCE_LIST_MAX_ITEMS,
   PREFERENCE_ITEM_MAX_CHARS,
@@ -15,7 +14,6 @@ export const LLMResponseSchema = z.object({
   summary: z.string().min(1).max(LLM_RESPONSE_SUMMARY_MAX),
   usefulness: z.number().min(0).max(LLM_RESPONSE_USEFULNESS_MAX),
   ntt_relevance: z.number().min(0).max(LLM_RESPONSE_RELEVANCE_MAX),
-  topic: z.string().min(1).max(LLM_RESPONSE_TOPIC_MAX),
   reason: z.string().min(1).max(LLM_RESPONSE_REASON_MAX),
 });
 
@@ -25,7 +23,6 @@ export const LLMBatchItemSchema = z.object({
   summary: z.string().max(LLM_RESPONSE_SUMMARY_MAX),
   usefulness: z.number().min(0).max(LLM_RESPONSE_USEFULNESS_MAX),
   ntt_relevance: z.number().min(0).max(LLM_RESPONSE_RELEVANCE_MAX),
-  topic: z.string().max(LLM_RESPONSE_TOPIC_MAX),
   reason: z.string().max(LLM_RESPONSE_REASON_MAX),
 });
 

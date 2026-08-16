@@ -51,7 +51,6 @@ export async function scoreArticles(
       summary: (typeof r.summary === "string" && r.summary) || "(no summary)",
       usefulness: typeof r.usefulness === "number" ? r.usefulness : 0,
       ntt_relevance: typeof r.ntt_relevance === "number" ? r.ntt_relevance : 0,
-      topic: (typeof r.topic === "string" && r.topic) || "(no topic)",
       reason: (typeof r.reason === "string" && r.reason) || "(no reason)",
     };
   });

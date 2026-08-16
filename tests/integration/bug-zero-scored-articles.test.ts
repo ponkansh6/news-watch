@@ -80,7 +80,6 @@ describe("Scenario 1: LLM returns valid scores (happy path)", () => {
           summary: `要約: ${item.title}`,
           usefulness: 6 + (i % 4),
           ntt_relevance: 8,
-          topic: "NTT",
           reason: `関連`,
         })),
     );
@@ -132,7 +131,6 @@ describe("Scenario 3: deleteLowScoredArticles interaction", () => {
           summary: "低スコア",
           usefulness: 2,
           ntt_relevance: 5,
-          topic: "NTT",
           reason: "低い",
         })),
     );
@@ -159,7 +157,6 @@ describe("Scenario 3: deleteLowScoredArticles interaction", () => {
           summary: "低スコア",
           usefulness: 0,
           ntt_relevance: 0,
-          topic: "NTT",
           reason: "低い",
         })),
     );
@@ -188,7 +185,6 @@ describe("Scenario 4: LLM returns partial results", () => {
               summary: `要約: ${item.title}`,
               usefulness: 7,
               ntt_relevance: 8,
-              topic: "NTT",
               reason: "有効",
             };
           }
@@ -217,7 +213,6 @@ describe("Scenario 5: sourceIds filter mismatch", () => {
           summary: `要約: ${item.title}`,
           usefulness: 6,
           ntt_relevance: 5,
-          topic: "NTT",
           reason: "有効",
         })),
     );
@@ -241,7 +236,6 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
           summary: `要約: ${item.title}`,
           usefulness: 6 + (i % 4),
           ntt_relevance: 8,
-          topic: "NTT",
           reason: `関連`,
         })),
     );
@@ -292,7 +286,6 @@ describe("Scenario 7: '20件スコアリング完了' but 'スコアリング済
           summary: `要約: ${item.title}`,
           usefulness: 6 + (i % 4),
           ntt_relevance: 8,
-          topic: "NTT",
           reason: `関連`,
         })),
     );
@@ -315,7 +308,6 @@ describe("Scenario 7: '20件スコアリング完了' but 'スコアリング済
           summary: `要約: ${item.title}`,
           usefulness: 7,
           ntt_relevance: 8,
-          topic: "NTT",
           reason: "有効",
         })),
     );
@@ -375,7 +367,6 @@ describe("Scenario 9: getScoredArticles DB query error → returns empty", () =>
           summary: `要約: ${item.title}`,
           usefulness: 6,
           ntt_relevance: 8,
-          topic: "NTT",
           reason: "有効",
         })),
     );
