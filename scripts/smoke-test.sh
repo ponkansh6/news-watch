@@ -7,13 +7,20 @@ set -euo pipefail
 PORT="${SMOKE_PORT:-3100}"
 LOG_FILE="$(mktemp)"
 
+# 1. Port occupancy pre-check before building
+if ss -tlnp 2>/dev/null | grep -q ":${PORT} "; then
+  echo "❌ [smoke] port ${PORT} is already in use (leftover server from a previous run?)"
+  echo "   Tip: try running 'lsof -i :${PORT}' or 'pkill -f next-server' to clean up."
+  exit 1
+fi
+
 echo "[smoke] Building..."
 pnpm build > /dev/null 2>&1 || { echo "❌ [smoke] build failed"; exit 1; }
 
 echo "[smoke] Starting server on :${PORT} (in-memory DB)..."
-TURSO_DATABASE_URL=":memory:" TURSO_AUTH_TOKEN="" PORT="$PORT" pnpm start > "$LOG_FILE" 2>&1 &
+TURSO_DATABASE_URL=":memory:" TURSO_AUTH_TOKEN="" PORT="$PORT" setsid pnpm start > "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
-trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+trap 'kill -- "-$SERVER_PID" 2>/dev/null || true' EXIT
 
 # Wait for the server to accept connections (max 30s)
 READY=0

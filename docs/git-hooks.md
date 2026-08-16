@@ -25,6 +25,7 @@ AGENTS.md の「Git Hooks の対処ルール」の詳細版。コミット / pus
    - 対処: エラーを修正するか、意図的な場合は eslint-disable コメントに理由を添える。
 5. **`bash scripts/smoke-test.sh`**（`src/` 変更時のみ・約30秒）— `pnpm build && pnpm start` 後に `/` を curl し、本文に RSC エラーダイジェスト（`E{"digest"`）や `Cookies can only be modified` が無いことを検証。HTTP 200 は成功判定に使わない（壊れた状態でも 200 が返るため）。
    - 対処: ビルドエラーや RSC レンダリングエラーを修正する。
+   - 注意: `port ... already in use` で失敗した場合は、前回実行から孤児化した `next-server` が `SMOKE_PORT`（既定 3100）を占有している。`lsof -i :3100` で確認し `pkill -f next-server` で掃除してから再実行する（詳細は `docs/tooling.md` のスモークテスト節を参照）。
 6. **本番スキーマ drift 検出**（`.env.local` に Turso 認証情報がある場合のみ実行）— `scripts/check-prod-schema.sh` が本番 Turso DB と `src/lib/db/schema.ts` のスキーマを比較し、未適用のマイグレーションを検出する。
    - 対処: `pnpm exec drizzle-kit push` で本番スキーマを最新化する。
 

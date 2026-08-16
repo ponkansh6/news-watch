@@ -30,6 +30,8 @@ AGENTS.md の「ツール使用に関するガイドライン」の詳細版。
 - `pnpm build && pnpm start` 後に `/` を curl し、RSC レンダリングエラー（cookie 書き込み等）を検出する。
 - 実行: `bash scripts/smoke-test.sh`（pre-push で `src/` 変更時に自動実行）
 - 判定は HTTP 200 ではなく、本文に `E{"digest"` が無いこと・ログに `Cookies can only be modified` が無いこと・`News Watch` 見出しが描画されること。
+- ポート占有の事前チェック: 起動前に `ss -tlnp` で `SMOKE_PORT`（既定 3100）の LISTEN を検出したら即座に失敗する。`pnpm start` は `next-server` を子プロセスとして生成するため、過去の実行で孤児化したサーバーが残っていると**古いビルドに対して検証して偽の失敗**（`page did not render`）が出る。`lsof -i :3100` で確認し、`pkill -f next-server` で掃除すること。
+- 孤児プロセスの防止: サーバーは `setsid` で新規プロセスグループとして起動し、終了時（trap）にプロセスグループ単位（`kill -- -$PID`）で kill する。`next-server` が孤児として残りポートを占有することを防ぐ。
 
 ## CI（.github/workflows/ci.yml）
 
