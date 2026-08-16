@@ -20,11 +20,11 @@ if git rev-parse --verify HEAD >/dev/null 2>&1; then
     exit 1
   fi
 
-  # 未追跡は src/ tests/ のみ警告（log/ shared_plan/ 等のローカル作業物は対象外）
-  UNTRACKED=$(git ls-files --others --exclude-standard -- src tests)
+  # 未追跡ファイルの警告。ローカル作業物（log/ shared_plan/ 等）は .gitignore 済み。
+  UNTRACKED=$(git ls-files --others --exclude-standard)
   if [ -n "$UNTRACKED" ]; then
     echo ""
-    echo "⚠️  Warning: src/ tests/ に未追跡ファイルがあります (git add 忘れ?)"
+    echo "⚠️  Warning: 未追跡ファイルがあります (git add 忘れ?)"
     echo "$UNTRACKED" | sed 's/^/   - /'
     echo ""
   fi
