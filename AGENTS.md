@@ -8,6 +8,11 @@ Husky + lint-staged により pre-commit / pre-push フックが強制実行さ�
 
 **フックの bypass は禁止**: `git --no-verify` / `git commit -n` / `HUSKY=0` / `git -c core.hooksPath=...` / `GIT_CONFIG_PARAMETERS`・`GIT_CONFIG_KEY_N` 経由の hooksPath 注入はすべて禁止。技術的にも `~/.local/bin/git` ラッパーによりブロックされている。詳細な対処手順は `docs/git-hooks.md` を参照。
 
+### 権限昇格
+
+- ユーザーが依頼・許可した操作が sandbox の権限制限で失敗した場合、その操作だけを `sandbox_permissions=require_escalated` で再実行する。昇格範囲は必要最小限にし、sandbox や承認の永続設定は変更しない。
+- 依頼に通常の `git push` が含まれる場合は `git push` を最初から `require_escalated` で実行する。`--force` / `--force-with-lease` や ref 削除は別途明示指示が必要。
+
 ### pre-push のブロックチェック
 
 1. **`scripts/check-spec-refs.sh`** — spec.md 内の `src/` / `tests/` ファイル参照の実在検証。腐敗した参照があると失敗 → spec.md の参照と実パスを同期する。
