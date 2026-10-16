@@ -67,7 +67,10 @@ describe("fetch cap (MAX_ARTICLES = 40)", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "zenn" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const response = await POST(request);

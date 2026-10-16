@@ -32,7 +32,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid body" }, { status: 400 });
     }
 
-    const force = parsed.data?.force ?? false;
     const { count, maxId } = await getFavoriteStats();
     const nfmStats = await getNotForMeStats();
 
@@ -50,7 +49,6 @@ export async function POST(request: Request) {
     const latest = await getLatestPreferenceProfile();
 
     if (
-      !force &&
       latest &&
       Date.now() - new Date(latest.createdAt).getTime() < PREFERENCE_ANALYSIS_COOLDOWN_MS
     ) {

@@ -31,7 +31,7 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
   const [apiInFlight, setApiInFlight] = useState(false);
   const [results, setResults] = useState<FetchResultData[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const { isRefreshing, setRefreshing } = useRefresh();
   const refreshFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();

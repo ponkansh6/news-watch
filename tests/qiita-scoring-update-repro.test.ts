@@ -108,7 +108,10 @@ describe("Qiita Atomフィード記事のスコアリング更新 - 修正後の
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "qiita" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const response = await POST(request);

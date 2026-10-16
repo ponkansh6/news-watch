@@ -101,10 +101,14 @@ describe("POST /api/fetch-news", () => {
   });
 
   test("POST request triggers the pipeline and returns 200 with status info", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
     const req = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "zenn" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const res = await POST(req);
@@ -141,13 +145,71 @@ describe("POST /api/fetch-news", () => {
     expect(res.status).toBe(401);
   });
 
+  test("CRON_SECRET unset fails closed", async () => {
+    vi.stubEnv("CRON_SECRET", undefined);
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect((await POST(req)).status).toBe(401);
+  });
+
+  test("empty CRON_SECRET fails closed", async () => {
+    vi.stubEnv("CRON_SECRET", "");
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect((await POST(req)).status).toBe(401);
+  });
+
+  test("browser Basic Auth succeeds without exposing CRON_SECRET", async () => {
+    vi.stubEnv("ADMIN_BASIC_AUTH_USER", "admin");
+    vi.stubEnv("ADMIN_BASIC_AUTH_PASSWORD", "password");
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${Buffer.from("admin:password").toString("base64")}`,
+      },
+    });
+
+    expect((await POST(req)).status).toBe(200);
+  });
+
+  test("browser Basic Auth rejects incorrect credentials", async () => {
+    vi.stubEnv("ADMIN_BASIC_AUTH_USER", "admin");
+    vi.stubEnv("ADMIN_BASIC_AUTH_PASSWORD", "password");
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${Buffer.from("admin:wrong").toString("base64")}`,
+      },
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(401);
+    expect(res.headers.get("WWW-Authenticate")).toContain("Basic");
+  });
+
   test("scoreAndSaveTagged throwing error is caught and added to errors array, returns 200", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
     vi.mocked(scoreAndSaveTagged).mockRejectedValueOnce(new Error("boom"));
 
     const req = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "zenn" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const res = await POST(req);
@@ -159,6 +221,7 @@ describe("POST /api/fetch-news", () => {
   });
 
   test("churn check: 1st POST calls scoreAndSaveTagged, 2nd POST with identical state calls 0 scored/skipped, 3rd POST with changed signature re-scores", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
     const { getScoringStateByUrls } = await import("@/lib/db");
     const { scoreAndSaveTagged: realScoreAndSaveTagged } = await import("@/lib/score-pipeline");
 
@@ -169,7 +232,10 @@ describe("POST /api/fetch-news", () => {
     const req1 = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "zenn" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
     const res1 = await POST(req1);
     expect(res1.status).toBe(200);
@@ -194,7 +260,10 @@ describe("POST /api/fetch-news", () => {
     const req2 = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "zenn" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
     const res2 = await POST(req2);
     expect(res2.status).toBe(200);

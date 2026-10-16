@@ -80,7 +80,10 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "qiita" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const response = await POST(request);
@@ -118,7 +121,10 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "qiita" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const response = await POST(request);
@@ -161,7 +167,10 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "qiita" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const response = await POST(request);
@@ -192,7 +201,10 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "qiita" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const response = await POST(request);

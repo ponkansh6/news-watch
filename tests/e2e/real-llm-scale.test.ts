@@ -4,8 +4,7 @@ const RUN_LIVE = process.env.RUN_LIVE_TESTS === "1";
 const describeIfLive = RUN_LIVE ? describe : describe.skip;
 
 // Mock DB before imports
-vi.mock("@/lib/db", async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, any>;
+vi.mock("@/lib/db", async () => {
   const { createInMemoryDb } = await import("../helpers/db-setup");
   return createInMemoryDb();
 });

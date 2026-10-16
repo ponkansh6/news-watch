@@ -20,6 +20,44 @@ export function normalize(article: unknown, sourceId: string): NormalizedArticle
   return adapter ? adapter.toArticle(article, sourceId) : normalizeUnknownSource(article, sourceId);
 }
 
+function isAuthorized(request: Request): boolean {
+  const bearerSecret = process.env.CRON_SECRET;
+  const adminUser = process.env.ADMIN_BASIC_AUTH_USER;
+  const adminPassword = process.env.ADMIN_BASIC_AUTH_PASSWORD;
+  const authorization = request.headers.get("authorization") ?? "";
+
+  if (bearerSecret && authorization.startsWith("Bearer ")) {
+    const token = authorization.slice(7);
+    const expected = Buffer.from(bearerSecret);
+    const actual = Buffer.from(token);
+    return expected.length === actual.length && timingSafeEqual(expected, actual);
+  }
+
+  // Interactive browser requests use HTTP Basic Auth; credentials stay in server env
+  // and are never embedded in client JavaScript.
+  if (adminUser && adminPassword && authorization.startsWith("Basic ")) {
+    try {
+      const decoded = Buffer.from(authorization.slice(6), "base64").toString("utf8");
+      const separator = decoded.indexOf(":");
+      if (separator < 0) return false;
+      const username = Buffer.from(decoded.slice(0, separator));
+      const password = Buffer.from(decoded.slice(separator + 1));
+      const expectedUser = Buffer.from(adminUser);
+      const expectedPassword = Buffer.from(adminPassword);
+      return (
+        username.length === expectedUser.length &&
+        timingSafeEqual(username, expectedUser) &&
+        password.length === expectedPassword.length &&
+        timingSafeEqual(password, expectedPassword)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
 /* ---------- deduplicate by normalised URL ---------- */
 
 function deduplicate(articles: NormalizedArticle[]): NormalizedArticle[] {
@@ -42,18 +80,14 @@ function deduplicate(articles: NormalizedArticle[]): NormalizedArticle[] {
 /* ---------- POST handler ---------- */
 
 export async function POST(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = request.headers.get("authorization");
-    if (!auth?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Missing or invalid authorization" }, { status: 401 });
-    }
-    const token = auth.slice(7);
-    const secretBuf = Buffer.from(cronSecret);
-    const tokenBuf = Buffer.from(token);
-    if (secretBuf.length !== tokenBuf.length || !timingSafeEqual(secretBuf, tokenBuf)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!isAuthorized(request)) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      {
+        status: 401,
+        headers: { "WWW-Authenticate": 'Basic realm="News Watch Fetch"' },
+      },
+    );
   }
   await cleanupOrphaned();
 

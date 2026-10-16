@@ -1,7 +1,7 @@
 /**
  * Reproduction test: xtech 20件取得→0件スコアリング
  */
-import { beforeAll, beforeEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, it, expect, vi } from "vitest";
 
 vi.mock("@/lib/db", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, any>;
@@ -23,6 +23,7 @@ const mockScoreArticle = vi.fn(async (article: any) => ({
 vi.mock("@/lib/llm", () => ({
   scoreArticles: (...args: any[]) => mockScoreArticles(...args),
   scoreArticle: (article: any) => mockScoreArticle(article),
+  buildPreferencePromptSection: () => "",
 }));
 
 import * as dbMod from "@/lib/db";
@@ -192,8 +193,14 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-07-23T08:00:00+09:00"));
   await (dbMod as any).__client.execute("DELETE FROM articles");
   mockScoreArticles.mockReset();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("xtech 20件取得→0件スコアリングの完全再現テスト", () => {

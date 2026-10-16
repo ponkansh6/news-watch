@@ -5,13 +5,13 @@ import path from "node:path";
 /**
  * Edge runtime 互換性の再発防止テスト。
  *
- * 背景: エッジランタイム（Next.js middleware）で Node.js ビルトインモジュール
+ * 背景: エッジランタイムで Node.js ビルトインモジュール
  * （例: `import { timingSafeEqual } from "crypto"`）を import すると、
  * 本番環境（Vercel）で `/admin/*` が 500 になる。
  *   https://nextjs.org/docs/messages/node-module-in-edge-runtime
  *
- * 挙動テスト（tests/middleware.test.ts）は Node 環境で実行されるため
- * この種のバグを検出できない（Node では crypto が import できるため）。
+ * Next.js 16 の proxy convention は Node.js runtime 固定のため、
+ * この検査の対象は proxy ではなく edge runtime のファイルだけとする。
  * そのため、エッジランタイムで実行されるファイルを静的解析し、
  * Node ビルトインモジュールの import と `Buffer` グローバルの使用を禁止する。
  */
@@ -57,10 +57,6 @@ function walk(dir: string): string[] {
 }
 
 function isEdgeRuntimeFile(relPath: string, source: string): boolean {
-  // Next.js middleware は常にエッジランタイムで実行される。
-  if (relPath === "middleware.ts" || relPath === "middleware.tsx") {
-    return true;
-  }
   // Route handler 等は `export const runtime = "edge"` でオプトインする。
   return /\bruntime\s*=\s*["']edge["']/.test(source);
 }
@@ -95,8 +91,8 @@ function collectImportSpecifiers(source: string): string[] {
 describe("edge runtime compatibility", () => {
   const edgeFiles = findEdgeFiles();
 
-  it("エッジランタイム対象ファイルを検出できる（middleware が存在する）", () => {
-    expect(edgeFiles.length).toBeGreaterThan(0);
+  it("明示的な edge runtime ファイルを検出できる", () => {
+    expect(isEdgeRuntimeFile("app/api/route.ts", 'export const runtime = "edge";')).toBe(true);
   });
 
   for (const { relPath, source } of edgeFiles) {

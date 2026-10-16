@@ -46,7 +46,11 @@ export default async function TablePage({
   });
 
   // Strip non-serializable format functions from column definitions
-  const serializableColumns = columns.map(({ format, ...rest }) => rest);
+  const serializableColumns = columns.map((column) => {
+    const serializable = { ...column };
+    delete serializable.format;
+    return serializable;
+  });
 
   return (
     <PageShell width="wide" title={table}>

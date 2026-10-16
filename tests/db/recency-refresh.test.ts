@@ -26,7 +26,7 @@ vi.mock("@/lib/db", async (importOriginal) => {
 import * as dbMod from "@/lib/db";
 const dbClient = (dbMod as any).__client as Awaited<ReturnType<typeof createClient>>;
 
-import { upsertArticle, refreshRecencyForSources } from "../../src/lib/db";
+import { refreshRecencyForSources } from "../../src/lib/db";
 
 const CREATE_SQL = `
   CREATE TABLE IF NOT EXISTS articles (

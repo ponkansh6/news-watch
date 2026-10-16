@@ -40,6 +40,12 @@ try {
   // .env.local missing — tests relying on it will be skipped by their guards.
 }
 
+// Route-level fetch-news tests use a deterministic credential only when the
+// caller and .env.local do not provide one.
+if (!process.env.CRON_SECRET) {
+  process.env.CRON_SECRET = "test-secret";
+}
+
 // Apply all migrations to the in-memory DB BEFORE any test runs.
 // Registered as a global beforeAll so Vitest awaits completion before tests.
 // If a migration is missing (e.g. schema.ts changed but `db:generate` was

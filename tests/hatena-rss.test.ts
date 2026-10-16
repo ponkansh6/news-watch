@@ -77,7 +77,10 @@ describe("Hatena RSS統合テスト", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "hatena" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const response = await POST(request);

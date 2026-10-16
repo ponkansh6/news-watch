@@ -88,6 +88,31 @@ describe("POST /api/favorites/analyze", () => {
     expect(res.headers.get("Retry-After")).toBeDefined();
   });
 
+  it("force is ignored during cooldown", async () => {
+    vi.mocked(getFavoriteStats).mockResolvedValueOnce({ count: 5, maxId: 10 });
+    vi.mocked(getLatestPreferenceProfile).mockResolvedValueOnce({
+      id: 1,
+      version: 1,
+      createdAt: new Date(Date.now() - 60000).toISOString(),
+      favoriteCount: 5,
+      favoriteMaxId: 5,
+      notForMeCount: 0,
+      notForMeMaxId: 0,
+      model: "test-model",
+      analysis: { summary: "test", themes: [], traits: [], dislikes: [], scoringGuidance: [] },
+      promptSection: "test",
+    });
+
+    const req = new Request("http://localhost/api/favorites/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force: true }),
+    });
+
+    expect((await POST(req)).status).toBe(429);
+    expect(analyzeFavorites).not.toHaveBeenCalled();
+  });
+
   it("無変化 → reused:true, LLM未呼び出し", async () => {
     vi.mocked(getFavoriteStats).mockResolvedValueOnce({ count: 5, maxId: 10 });
     vi.mocked(getLatestPreferenceProfile).mockResolvedValueOnce({

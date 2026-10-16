@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "../lib/test-utils";
+import { render, screen, fireEvent } from "../lib/test-utils";
 import { ArticleList, type ArticleListRow as Article } from "@/components/article/article-list";
 import "@testing-library/jest-dom/vitest";
 

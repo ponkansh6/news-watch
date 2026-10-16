@@ -5,6 +5,7 @@ AGENTS.md の「ツール使用に関するガイドライン」の詳細版。
 ## pnpm
 
 - `npx` や `npm` を利用せず、`pnpm exec` や `pnpm` を使用する。
+- `preinstall` の `scripts/only-pnpm.mjs` は `npm_config_user_agent` が `pnpm` と確認できる場合だけ install を許可する。値が欠落・空の場合も判定不能として停止するため、パッケージマネージャ経由で実行する。
 
 ## sudo（非対話環境）
 

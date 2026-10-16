@@ -1,6 +1,5 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
-import { RECENCY_TIERS } from "@/lib/constants";
 
 // ================================================================
 // calcRecencyScore

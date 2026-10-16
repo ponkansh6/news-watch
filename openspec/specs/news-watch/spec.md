@@ -21,7 +21,7 @@ authors: [shunki]
 
 - Fetching news from multiple external providers (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Blog)
 - User-triggered fetch via `/api/fetch-news` button on dashboard (manual cron via Vercel scheduled deployments supported)
-  - Requires Bearer token authentication (CRON_SECRET) to prevent unauthorized cost consumption
+  - Scheduled/API callers require Bearer token authentication (CRON_SECRET); interactive browser requests use HTTP Basic Auth (ADMIN_BASIC_AUTH_USER / ADMIN_BASIC_AUTH_PASSWORD)
 - LLM-based relevance scoring + LLM-based usefulness scoring + algorithmic recency scoring
 - Japanese summary generation (20-40 characters)
 - Dashboard display with sort/filter capabilities
@@ -102,8 +102,9 @@ authors: [shunki]
 - **Priority**: Must
 - **Acceptance Criteria**:
   - WHEN a request is made to `/api/fetch-news`
-  - THEN the server validates a Bearer token (CRON_SECRET) in the Authorization header
-  - AND only requests with a valid token are processed (401 Unauthorized otherwise)
+  - THEN the server validates a Bearer token (CRON_SECRET) in the Authorization header for scheduled/API callers
+  - AND interactive browser requests may use HTTP Basic Auth (ADMIN_BASIC_AUTH_USER / ADMIN_BASIC_AUTH_PASSWORD), without exposing credentials to client JavaScript
+  - AND missing credentials or an unset credential configuration fail closed (401 Unauthorized)
   - AND the admin database viewer (`/admin/db/*`) requires Basic Authentication (username + password)
 
 #### FR-008: Preference Analysis
@@ -114,21 +115,22 @@ authors: [shunki]
   - WHEN the user clicks "傾向を分析" on `/bookmarks`
   - THEN the system calls `POST /api/favorites/analyze`
   - AND the favorites and optional explicit "Not For Me" (NFM) items (`src/lib/db/repository/not-for-me-repository.ts`) are analyzed by the LLM (`src/lib/llm/preference.ts`) to extract themes / traits / dislikes / scoring guidance
+  - AND text from favorites and NFM items is bounded and sanitized before prompt insertion by removing control characters and prompt delimiters
   - AND the resulting profile is stored in `preference_profiles` (append-only)
   - AND analysis is rate-limited to once per hour (cooldown), and skipped entirely when favorites and NFM states are unchanged (previous result reused via `favoriteCount`, `favoriteMaxId`, `notForMeCount`, `notForMeMaxId`)
   - AND subsequent scoring injects the profile into the prompt, utilizing NFM as explicit negative examples for disliking and scoring guidance (FR-002)
 
 ## 4. Non-Functional Requirements
 
-| Category      | Requirement                   | Target                                                  |
-| ------------- | ----------------------------- | ------------------------------------------------------- |
-| Performance   | Dashboard load time           | <2s                                                     |
-| Performance   | News fetch + score pipeline   | <30s per source                                         |
-| Accessibility | Keyboard navigation           | Supported                                               |
-| Reliability   | LLM API failure handling      | Graceful degradation with cached scores                 |
-| Security      | Admin dashboard access        | Basic Auth (username + password)                        |
-| Security      | News fetch API access         | Bearer token (CRON_SECRET)                              |
-| Security      | Favorites analysis API access | Cooldown (1h) + min-count guard (≥5 favorites), no auth |
+| Category      | Requirement                   | Target                                                    |
+| ------------- | ----------------------------- | --------------------------------------------------------- |
+| Performance   | Dashboard load time           | <2s                                                       |
+| Performance   | News fetch + score pipeline   | <30s per source                                           |
+| Accessibility | Keyboard navigation           | Supported                                                 |
+| Reliability   | LLM API failure handling      | Graceful degradation with cached scores                   |
+| Security      | Admin dashboard access        | Basic Auth (username + password)                          |
+| Security      | News fetch API access         | Bearer token (CRON_SECRET) or interactive HTTP Basic Auth |
+| Security      | Favorites analysis API access | Cooldown (1h) + min-count guard (≥5 favorites), no auth   |
 
 ## 5. Data Model
 
@@ -236,7 +238,7 @@ RootLayout (src/app/layout.tsx)
 │       ├── AnalyzeButton (src/app/bookmarks/analyze-button.tsx - Client)
 │       └── ArticleList (same as above)
 │
-├── /admin/db (src/app/admin/db/page.tsx - RSC, Basic Auth protected)
+├── /admin/db (src/app/admin/db/page.tsx - RSC, Basic Auth protected by src/proxy.ts)
 │   └── PageShell width="wide"
 │       └── Table list with counts
 │
@@ -295,6 +297,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 
 - **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript 6 (strict mode)
+- **Runtime / Toolchain**: Node.js `^24.0.0` only (`package.json` engines); CI runs on Node.js 24
 - **Database**: SQLite via Turso (libSQL)
 - **ORM**: Drizzle ORM + Drizzle Kit
 - **Styling**: Tailwind CSS v4 + **shadcn/ui (Radix + CVA)** + **tw-animate-css**
@@ -313,7 +316,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 | Component (UI rendering)        | Key components  | **Tier 5: 93.85% (168/179 statements)** ✅          |
 | Schema Consistency              | Automated       | Automated ✅                                        |
 
-- **CI**: `.github/workflows/ci.yml` が lint / typecheck / vitest / カバレッジ Tier / spec 参照 / スモークテストを実行する（フックは `--no-verify` で迂回可能なため、CI が非迂回の検査ライン）。
+- **CI**: Node.js 24 で `.github/workflows/ci.yml` が lint / typecheck / vitest / カバレッジ Tier / spec 参照 / スモークテストを実行する（フックは `--no-verify` で迂回可能なため、CI が非迂回の検査ライン）。
 - **スモークテスト**: `scripts/smoke-test.sh` が `pnpm build && pnpm start` 後に `/` を検証し、RSC レンダリング中の cookie 書き込み等の実行時エラーを検出する（HTTP 200 は成功判定に使わない）。
 
 ### 7.1 Tiered Coverage Targets

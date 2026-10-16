@@ -278,7 +278,7 @@ describe("Refresh lifecycle integration", () => {
       const setArticlesRef = useRef(setArticles);
       useEffect(() => {
         setArticlesRef.current = setArticles;
-      });
+      }, []);
       useEffect(() => {
         rscRefresh = (newArticles: Article[]) => {
           setArticlesRef.current(newArticles);
@@ -356,7 +356,7 @@ describe("Refresh lifecycle integration", () => {
       const setArticlesRef = useRef(setArticles);
       useEffect(() => {
         setArticlesRef.current = setArticles;
-      });
+      }, []);
       // Expose setter so mockRefresh can trigger article updates
       useEffect(() => {
         rscRefresh = (newArticles: Article[]) => {

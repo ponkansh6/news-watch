@@ -7,7 +7,6 @@ import { PREFERENCE_MIN_FAVORITES } from "@/lib/constants";
 export default function AnalyzeButton({
   favoriteCount,
   minFavorites = PREFERENCE_MIN_FAVORITES,
-  lastAnalyzedAt,
 }: {
   favoriteCount: number;
   minFavorites?: number;

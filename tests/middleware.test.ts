@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { middleware } from "@/middleware";
+import { proxy } from "@/proxy";
 
 function createMockRequest(url: string, headers?: Record<string, string>): NextRequest {
   const request = new Request(url, { headers: new Headers(headers) });
   return new NextRequest(request);
 }
 
-describe("middleware - Basic Auth for /admin/db", () => {
+describe("proxy - Basic Auth for /admin/db", () => {
   beforeEach(() => {
     vi.stubEnv("ADMIN_BASIC_AUTH_USER", undefined);
     vi.stubEnv("ADMIN_BASIC_AUTH_PASSWORD", undefined);
@@ -24,7 +24,7 @@ describe("middleware - Basic Auth for /admin/db", () => {
     vi.stubEnv("NODE_ENV", "development");
 
     const req = createMockRequest("http://localhost:3000/admin/db");
-    const res = await middleware(req);
+    const res = await proxy(req);
 
     expect(res.status).toBe(200);
   });
@@ -35,7 +35,7 @@ describe("middleware - Basic Auth for /admin/db", () => {
     vi.stubEnv("NODE_ENV", "production");
 
     const req = createMockRequest("http://localhost:3000/admin/db");
-    const res = await middleware(req);
+    const res = await proxy(req);
 
     expect(res.status).toBe(503);
   });
@@ -45,7 +45,7 @@ describe("middleware - Basic Auth for /admin/db", () => {
     vi.stubEnv("ADMIN_BASIC_AUTH_PASSWORD", "password");
 
     const req = createMockRequest("http://localhost:3000/admin/db");
-    const res = await middleware(req);
+    const res = await proxy(req);
 
     expect(res.status).toBe(401);
     expect(res.headers.get("www-authenticate")).toBe('Basic realm="News Watch Admin"');
@@ -59,7 +59,7 @@ describe("middleware - Basic Auth for /admin/db", () => {
     const req = createMockRequest("http://localhost:3000/admin/db", {
       authorization: `Basic ${credentials}`,
     });
-    const res = await middleware(req);
+    const res = await proxy(req);
 
     expect(res.status).toBe(401);
   });
@@ -72,17 +72,17 @@ describe("middleware - Basic Auth for /admin/db", () => {
     const req = createMockRequest("http://localhost:3000/admin/db", {
       authorization: `Basic ${credentials}`,
     });
-    const res = await middleware(req);
+    const res = await proxy(req);
 
     expect(res.status).toBe(200);
   });
 
-  it("skips middleware for non-admin paths", async () => {
+  it("skips auth for non-admin paths", async () => {
     vi.stubEnv("ADMIN_BASIC_AUTH_USER", "admin");
     vi.stubEnv("ADMIN_BASIC_AUTH_PASSWORD", "password");
 
     const req = createMockRequest("http://localhost:3000/");
-    const res = await middleware(req);
+    const res = await proxy(req);
 
     expect(res.status).toBe(200);
   });

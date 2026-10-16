@@ -87,7 +87,10 @@ describe("fetch-news route source selection", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "qiita" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const response = await POST(request);
@@ -102,7 +105,10 @@ describe("fetch-news route source selection", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "yamadashy" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const response = await POST(request);
@@ -117,7 +123,10 @@ describe("fetch-news route source selection", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({}),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const response = await POST(request);
@@ -132,7 +141,10 @@ describe("fetch-news route source selection", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "zenn" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const response = await POST(request);
@@ -147,7 +159,10 @@ describe("fetch-news route source selection", () => {
     const request = new NextRequest("http://localhost/api/fetch-news", {
       method: "POST",
       body: JSON.stringify({ source: "not-a-real-source" }),
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
     });
 
     const response = await POST(request);

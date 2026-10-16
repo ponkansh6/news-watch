@@ -3,7 +3,6 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RefreshProvider, useRefresh } from "../../src/app/refresh-context";
-import type { ReactNode } from "react";
 
 /**
  * Test helper that renders a consumer component inside RefreshProvider
@@ -81,8 +80,7 @@ describe("RefreshProvider / useRefresh", () => {
     expect(screen.getByTestId("refreshing").textContent).toBe("false");
   });
 
-  it("supports nested providers with isolated state", async () => {
-    const user = userEvent.setup();
+  it("supports nested providers with isolated state", () => {
     render(
       <RefreshProvider>
         <span data-testid="outer">

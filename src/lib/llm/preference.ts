@@ -15,12 +15,21 @@ import {
   LLM_PREFERENCE_TIMEOUT_MS,
 } from "../constants";
 
+const ASCII_SPACE_CODE = 0x20;
+const ASCII_DELETE_CODE = 0x7f;
+const PREFERENCE_KEYWORD_LABEL_MAX_CHARS = 20;
+
 /** Sanitize text for inclusion in prompts. */
 export function sanitizeForPrompt(s: string | null, maxChars: number): string {
   if (!s) return "";
   const cleaned = s
     .replace(/[\n\r\t]/g, " ")
-    .replace(/[\x00-\x1F\x7F]/g, "")
+    .split("")
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return code >= ASCII_SPACE_CODE && code !== ASCII_DELETE_CODE;
+    })
+    .join("")
     .replace(/[{}]/g, "")
     .replace(/[<>]/g, "")
     .replace(/`/g, "")
@@ -35,7 +44,7 @@ export function buildFavoritesBlock(items: FavoriteInput[]): string {
   if (slice.length === 0) return "(データなし)";
   return slice
     .map((item, i) => {
-      const label = sanitizeForPrompt(item.keywordLabel, 20);
+      const label = sanitizeForPrompt(item.keywordLabel, PREFERENCE_KEYWORD_LABEL_MAX_CHARS);
       const scoreStr =
         item.score !== null && item.score !== undefined ? item.score.toFixed(1) : "-";
       const title = sanitizeForPrompt(item.title, PREFERENCE_FAV_TITLE_MAX_CHARS);
@@ -52,7 +61,7 @@ export function buildNotForMeBlock(items: FavoriteInput[]): string {
   if (slice.length === 0) return "(データなし)";
   return slice
     .map((item, i) => {
-      const label = sanitizeForPrompt(item.keywordLabel, 20);
+      const label = sanitizeForPrompt(item.keywordLabel, PREFERENCE_KEYWORD_LABEL_MAX_CHARS);
       const scoreStr =
         item.score !== null && item.score !== undefined ? item.score.toFixed(1) : "-";
       const title = sanitizeForPrompt(item.title, PREFERENCE_FAV_TITLE_MAX_CHARS);
