@@ -2,7 +2,17 @@ import { db } from "../index";
 import { articles } from "../schema";
 import { and, lt, inArray, eq, notInArray, isNotNull } from "drizzle-orm";
 import { calcRecencyScore } from "../../scoring";
-import { DEFAULT_DELETE_LOW_SCORE, WEIGHT_RECENCY, SOFTMAX_SCALE } from "../../constants";
+import {
+  DEFAULT_DELETE_LOW_SCORE,
+  WEIGHT_RECENCY,
+  SOFTMAX_SCALE,
+  MS_PER_SECOND,
+  SECONDS_PER_MINUTE,
+  MINUTES_PER_HOUR,
+  HOURS_PER_DAY,
+} from "../../constants";
+
+const MILLISECONDS_PER_DAY = MS_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY;
 
 export interface ArticleInsert {
   title: string;
@@ -142,7 +152,7 @@ export async function deleteLowScoredArticles(minScore = DEFAULT_DELETE_LOW_SCOR
 /** Delete stale low-scored articles older than retentionDays (tombstone GC). */
 export async function deleteStaleLowScored(minScore: number, retentionDays: number): Promise<void> {
   try {
-    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const cutoff = new Date(Date.now() - retentionDays * MILLISECONDS_PER_DAY).toISOString();
     await db
       .delete(articles)
       .where(

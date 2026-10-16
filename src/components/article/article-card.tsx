@@ -25,7 +25,6 @@ export interface ArticleCardProps {
   reason?: string | null;
   // eslint-disable-next-line @sbougerel/next-use-client-boundary/props-must-be-serializable
   onPointerDown?: React.PointerEventHandler<HTMLElement>;
-  // eslint-disable-next-line @sbougerel/next-use-client-boundary/props-must-be-serializable
   swipeGesture?: {
     onPointerDown: React.PointerEventHandler<HTMLElement>;
     onPointerUp: React.PointerEventHandler<HTMLElement>;

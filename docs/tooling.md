@@ -17,7 +17,7 @@ AGENTS.md の「ツール使用に関するガイドライン」の詳細版。
 
 - **`rtk <command>` は出力をトークン最適化する**: ビルドログやテスト出力が自動的に短縮・グループ化される。エラーの詳細や警告の全文が必要な場合は生出力を使うこと。
 - **生出力が必要な場合**: `rtk run <command>` を使用する（フィルタリングなし、素の出力）。
-  - 例: `rtk run pnpm exec next build`（Next.jsビルドの完全なログを取得）
+  - 例: `rtk run pnpm run build`（Webpackを使う本番ビルドの完全なログを取得）
   - 例: `rtk run pnpm exec vitest run`（テストの完全な出力を取得）
 - **未知のツール・コマンドで出力が期待と異なる場合**: まずそのツールの仕様を調査すること。`rtk` 自体のヘルプは `rtk --help` で確認可能。繰り返し同じコマンドを再実行せず、`@explorer` や `@librarian` に委譲して仕様を確認してから使用する。
 - **`rtk` の主要サブコマンド**:
@@ -28,7 +28,7 @@ AGENTS.md の「ツール使用に関するガイドライン」の詳細版。
 
 ## スモークテスト（scripts/smoke-test.sh）
 
-- `pnpm build && pnpm start` 後に `/` を curl し、RSC レンダリングエラー（cookie 書き込み等）を検出する。
+- `pnpm run build`（Webpack）と `pnpm start` の後に `/` を curl し、RSC レンダリングエラー（cookie 書き込み等）を検出する。Vercelの既定ビルドも `package.json` の `build` スクリプトを使う。
 - 実行: `bash scripts/smoke-test.sh`（pre-push で `src/` 変更時に自動実行）
 - 判定は HTTP 200 ではなく、本文に `E{"digest"` が無いこと・ログに `Cookies can only be modified` が無いこと・`News Watch` 見出しが描画されること。
 - ポート占有の事前チェック: 起動前に `ss -tlnp` で `SMOKE_PORT`（既定 3100）の LISTEN を検出したら即座に失敗する。`pnpm start` は `next-server` を子プロセスとして生成するため、過去の実行で孤児化したサーバーが残っていると**古いビルドに対して検証して偽の失敗**（`page did not render`）が出る。`lsof -i :3100` で確認し、`pkill -f next-server` で掃除すること。

@@ -10,6 +10,8 @@ import { getAllowedSortColumns } from "@/app/admin/db/lib/table-config";
 import { unstable_cache } from "next/cache";
 import { resolveKeywordLabel } from "../../config";
 
+const MAX_TABLE_PAGE_SIZE = 200;
+
 /** Display-safe columns for article list (excludes embedding, description, and other unused fields). */
 export const ARTICLE_LIST_COLUMNS = {
   id: articles.id,
@@ -154,7 +156,7 @@ export async function getTablePage<T extends TableName>(
       .select()
       .from(tableObj)
       .orderBy(sortDir(colRef as SQL))
-      .limit(Math.min(options.limit, 200))
+      .limit(Math.min(options.limit, MAX_TABLE_PAGE_SIZE))
       .offset(options.offset);
 
     return { rows: rows as TableRowMap[T][], total };

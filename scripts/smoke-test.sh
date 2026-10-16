@@ -18,14 +18,13 @@ echo "[smoke] Building..."
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 PATH="$ROOT/node_modules/.bin:$PATH"
 export PATH
-# pnpm build / pnpm start はラッパー分だけ余計に時間がかかる（~1s）ため、
-# next build / next start を直接叩く。フラグは package.json の scripts と
-# 一致させること（CI は scripts 経由なので乖離があれば CI で顕在化する）。
+# Build through package.json so local smoke checks, CI, and Vercel use the same
+# bundler and build flags.
 # ビルド出力は捨てずに退避する。pre-push はレーンのログを「失敗したときだけ」
 # 全文表示する設計なので、ここで /dev/null に流すと肝心の失敗時に
 # 「❌ [smoke] build failed」の 1 行しか残らず原因が追えない。
 BUILD_LOG="$(mktemp)"
-if ! next build > "$BUILD_LOG" 2>&1; then
+if ! pnpm run build > "$BUILD_LOG" 2>&1; then
   echo "❌ [smoke] build failed"
   cat "$BUILD_LOG"
   rm -f "$BUILD_LOG"
