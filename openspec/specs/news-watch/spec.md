@@ -297,7 +297,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 
 - **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript 6 (strict mode)
-- **Runtime / Toolchain**: Node.js `^24.0.0` only (`package.json` engines); CI runs on Node.js 24
+- **Runtime / Toolchain**: Node.js `24.22.1` only (`package.json` engines); CI runs on Node.js 24.22.1
 - **Database**: SQLite via Turso (libSQL)
 - **ORM**: Drizzle ORM + Drizzle Kit
 - **Styling**: Tailwind CSS v4 + **shadcn/ui (Radix + CVA)** + **tw-animate-css**
@@ -316,7 +316,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 | Component (UI rendering)        | Key components  | **Tier 5: 93.85% (168/179 statements)** ✅          |
 | Schema Consistency              | Automated       | Automated ✅                                        |
 
-- **CI**: Node.js 24 で `.github/workflows/ci.yml` が lint / typecheck / vitest / カバレッジ Tier / spec 参照 / スモークテストを実行する（フックは `--no-verify` で迂回可能なため、CI が非迂回の検査ライン）。
+- **CI**: Node.js 24.22.1 で `.github/workflows/ci.yml` が lint / typecheck / vitest / カバレッジ Tier / spec 参照 / スモークテストを実行する（フックは `--no-verify` で迂回可能なため、CI が非迂回の検査ライン）。
 - **スモークテスト**: `scripts/smoke-test.sh` が `pnpm build && pnpm start` 後に `/` を検証し、RSC レンダリング中の cookie 書き込み等の実行時エラーを検出する（HTTP 200 は成功判定に使わない）。
 
 ### 7.1 Tiered Coverage Targets
