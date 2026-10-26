@@ -85,6 +85,36 @@ async function insertRawArticle(overrides: Record<string, any> = {}) {
   );
 }
 
+function observeRefreshQueries() {
+  const selectedQueries: Array<{ sql: string; rowCount: number }> = [];
+  const updateStatements: string[] = [];
+  const client = dbClient as any;
+  const execute = client.execute.bind(client);
+  const executeSpy = vi.spyOn(client, "execute").mockImplementation(async (statement: any) => {
+    const result = await execute(statement);
+    if (typeof statement !== "string") {
+      if (/^\s*select\b/i.test(statement.sql)) {
+        selectedQueries.push({ sql: statement.sql, rowCount: result.rows.length });
+      }
+      if (/^\s*update\b/i.test(statement.sql)) {
+        updateStatements.push(statement.sql);
+      }
+    }
+    return result;
+  });
+  const batchSpy = vi.spyOn(dbMod.db, "batch");
+
+  return {
+    selectedQueries,
+    updateStatements,
+    batchSpy,
+    restore: () => {
+      executeSpy.mockRestore();
+      batchSpy.mockRestore();
+    },
+  };
+}
+
 describe("refreshRecencyForSources", () => {
   beforeAll(async () => {
     await dbClient.execute(CREATE_SQL);
@@ -96,6 +126,7 @@ describe("refreshRecencyForSources", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -201,6 +232,215 @@ describe("refreshRecencyForSources", () => {
     const row = rows.rows[0] as any;
     expect(row.score).toBeNull();
     expect(row.recency).toBe(5); // unchanged
+  });
+
+  it("recencyがnullの場合は、delta計算上0でも保存値を正規化する", async () => {
+    const NOW = new Date("2026-07-27T12:00:00Z").getTime();
+    vi.setSystemTime(NOW);
+
+    await insertRawArticle({
+      url: "https://example.com/null-recency",
+      source_id: "zenn",
+      published_at: new Date(NOW - 60 * 86400 * 1000).toISOString(),
+      recency: null,
+      score: 8.0,
+    });
+
+    const updatedCount = await refreshRecencyForSources(["zenn"], []);
+
+    expect(updatedCount).toBe(1);
+    const row = (
+      await dbClient.execute(
+        "SELECT * FROM articles WHERE url = 'https://example.com/null-recency'",
+      )
+    ).rows[0] as any;
+    expect(row.recency).toBe(0);
+    expect(row.score).toBe(8.0);
+    expect(row.recency_refreshed_at).toBe(new Date(NOW).toISOString());
+  });
+
+  it("同じ固定時刻の初回と再実行で、再実行の無変更UPDATEを省く", async () => {
+    const NOW = new Date("2026-07-27T12:00:00Z").getTime();
+    vi.setSystemTime(NOW);
+
+    await insertRawArticle({
+      url: "https://example.com/no-op-recency",
+      source_id: "zenn",
+      published_at: new Date(NOW - 5 * 86400 * 1000).toISOString(),
+      recency: 8,
+      score: 7.0,
+    });
+
+    const initialUpdatedCount = await refreshRecencyForSources(["zenn"], []);
+    expect(initialUpdatedCount).toBe(1);
+    const initialRow = (
+      await dbClient.execute(
+        "SELECT * FROM articles WHERE url = 'https://example.com/no-op-recency'",
+      )
+    ).rows[0] as any;
+    expect(initialRow.recency_refreshed_at).toBe(new Date(NOW).toISOString());
+
+    const updatedCount = await refreshRecencyForSources(["zenn"], []);
+
+    expect(updatedCount).toBe(0);
+    const row = (
+      await dbClient.execute(
+        "SELECT * FROM articles WHERE url = 'https://example.com/no-op-recency'",
+      )
+    ).rows[0] as any;
+    expect(row.recency).toBe(6);
+    expect(row.score).toBe(6.4);
+    expect(row.recency_refreshed_at).toBe(new Date(NOW).toISOString());
+    const observer = observeRefreshQueries();
+    expect(await refreshRecencyForSources(["zenn"], [])).toBe(0);
+    expect(observer.batchSpy).not.toHaveBeenCalled();
+    observer.restore();
+  });
+
+  it("対象が0件なら更新数は0を返す", async () => {
+    const observer = observeRefreshQueries();
+    const updatedCount = await refreshRecencyForSources(["missing-source"], []);
+
+    expect(updatedCount).toBe(0);
+    expect(observer.batchSpy).not.toHaveBeenCalled();
+    observer.restore();
+  });
+
+  it("batch失敗時は個別fallback UPDATEを実行し、実行文数を返す", async () => {
+    const NOW = new Date("2026-07-27T12:00:00Z").getTime();
+    vi.setSystemTime(NOW);
+    await insertRawArticle({
+      url: "https://example.com/fallback-update",
+      source_id: "zenn",
+      published_at: new Date(NOW - 5 * 86400 * 1000).toISOString(),
+      recency: 8,
+      score: 7,
+    });
+
+    const observer = observeRefreshQueries();
+    observer.batchSpy.mockRejectedValueOnce(new Error("simulated batch failure"));
+
+    const updatedCount = await refreshRecencyForSources(["zenn"], []);
+
+    expect(updatedCount).toBe(1);
+    expect(observer.batchSpy).toHaveBeenCalledTimes(1);
+    expect(observer.batchSpy.mock.calls[0][0]).toHaveLength(1);
+    expect(observer.updateStatements).toHaveLength(1);
+    expect(observer.updateStatements[0].toLowerCase()).toMatch(/^\s*update\b/);
+    observer.restore();
+  });
+
+  it("score IS NOT NULLで対象SELECT行を絞り、必要なUPDATE文を1回のbatchに渡す", async () => {
+    const NOW = new Date("2026-07-27T12:00:00Z").getTime();
+    vi.setSystemTime(NOW);
+    const publishedAt = new Date(NOW - 5 * 86400 * 1000).toISOString();
+    await insertRawArticle({
+      url: "https://example.com/observed-null-score",
+      source_id: "zenn",
+      published_at: publishedAt,
+      score: null,
+    });
+    await insertRawArticle({
+      url: "https://example.com/observed-excluded",
+      source_id: "zenn",
+      published_at: publishedAt,
+      recency: 8,
+      score: 7,
+    });
+    await insertRawArticle({
+      url: "https://example.com/observed-included",
+      source_id: "zenn",
+      published_at: publishedAt,
+      recency: 8,
+      score: 7,
+    });
+
+    const observer = observeRefreshQueries();
+    const updatedCount = await refreshRecencyForSources(
+      ["zenn"],
+      ["https://example.com/observed-excluded"],
+    );
+
+    expect(updatedCount).toBe(1);
+    expect(observer.selectedQueries).toHaveLength(1);
+    expect(observer.selectedQueries[0].sql.toLowerCase()).toContain("score");
+    expect(observer.selectedQueries[0].sql.toLowerCase()).toMatch(/score[^)]*is not null/);
+    expect(observer.selectedQueries[0].rowCount).toBe(1);
+    expect(observer.batchSpy).toHaveBeenCalledTimes(1);
+    const updateStatements = observer.batchSpy.mock.calls[0][0] as unknown as Array<{
+      toSQL: () => { sql: string };
+    }>;
+    expect(updateStatements).toHaveLength(1);
+    expect(updateStatements[0].toSQL().sql.toLowerCase()).toMatch(/^\s*update\b/);
+    observer.restore();
+  });
+
+  it("1日tier境界の直前・一致・直後を固定時刻で区別し、score丸めを維持する", async () => {
+    const NOW = new Date("2026-07-27T12:00:00Z").getTime();
+    vi.setSystemTime(NOW);
+    const oneDay = 86400 * 1000;
+    const cases = [
+      {
+        url: "https://example.com/tier-before",
+        ageMs: oneDay - 1,
+        oldRecency: 8,
+        score: 5.0,
+        expectedRecency: 10,
+        expectedScore: 5.6,
+      },
+      {
+        url: "https://example.com/tier-at",
+        ageMs: oneDay,
+        oldRecency: 8,
+        score: 5.0,
+        expectedRecency: 10,
+        expectedScore: 5.6,
+      },
+      {
+        url: "https://example.com/tier-after",
+        ageMs: oneDay + 1,
+        oldRecency: 8,
+        score: 5.0,
+        expectedRecency: 8,
+        expectedScore: 5.0,
+      },
+      {
+        url: "https://example.com/round-below",
+        ageMs: oneDay,
+        oldRecency: 8,
+        score: 5.04,
+        expectedRecency: 10,
+        expectedScore: 5.6,
+      },
+      {
+        url: "https://example.com/round-above",
+        ageMs: oneDay,
+        oldRecency: 8,
+        score: 5.06,
+        expectedRecency: 10,
+        expectedScore: 5.7,
+      },
+    ];
+
+    for (const item of cases) {
+      await insertRawArticle({
+        url: item.url,
+        source_id: "zenn",
+        published_at: new Date(NOW - item.ageMs).toISOString(),
+        recency: item.oldRecency,
+        score: item.score,
+      });
+    }
+
+    const updatedCount = await refreshRecencyForSources(["zenn"], []);
+
+    expect(updatedCount).toBe(4);
+    for (const item of cases) {
+      const row = (await dbClient.execute(`SELECT * FROM articles WHERE url = '${item.url}'`))
+        .rows[0] as any;
+      expect(row.recency).toBe(item.expectedRecency);
+      expect(row.score).toBe(item.expectedScore);
+    }
   });
 
   it("excludeUrlsに含まれる記事はスキップされる", async () => {

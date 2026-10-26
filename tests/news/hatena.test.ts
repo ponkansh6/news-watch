@@ -1,4 +1,5 @@
-import { beforeAll, afterAll, describe, expect, test, vi } from "vitest";
+import { beforeAll, beforeEach, afterAll, describe, expect, test, vi } from "vitest";
+import { XMLParser } from "fast-xml-parser";
 import { searchHatena } from "@/lib/news/hatena";
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -6,6 +7,10 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeAll(() => {
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
+});
+
+beforeEach(() => {
+  fetchMock.mockReset();
 });
 
 describe("searchHatena", () => {
@@ -39,6 +44,84 @@ describe("searchHatena", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].title).toBe("Feed 1 Item 1");
+  });
+
+  test("hotentry fetch exception does not discard entrylist items", async () => {
+    const entrylistXml = `<?xml version="1.0"?><rss version="2.0"><channel><item><title>Entrylist Item</title><link>https://example.com/entrylist</link></item></channel></rss>`;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("hotentry")) throw new Error("Hotentry network error");
+      return { ok: true, text: async () => entrylistXml };
+    });
+
+    const result = await searchHatena();
+
+    expect(result.map(({ title }) => title)).toEqual(["Entrylist Item"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("entrylist fetch exception does not discard hotentry items", async () => {
+    const hotentryXml = `<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://purl.org/rss/1.0/"><item rdf:about="https://example.com/hotentry"><title>Hotentry Item</title><link>https://example.com/hotentry</link></item></rdf:RDF>`;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("entrylist")) throw new Error("Entrylist network error");
+      return { ok: true, text: async () => hotentryXml };
+    });
+
+    const result = await searchHatena();
+
+    expect(result.map(({ title }) => title)).toEqual(["Hotentry Item"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("parse exception for one feed does not discard the other feed", async () => {
+    const invalidForTest = "<force-parse-error />";
+    const entrylistXml = `<?xml version="1.0"?><rss version="2.0"><channel><item><title>Entrylist Item</title><link>https://example.com/entrylist</link></item></channel></rss>`;
+    const originalParse = XMLParser.prototype.parse;
+    const parseSpy = vi.spyOn(XMLParser.prototype, "parse").mockImplementation(function (
+      this: XMLParser,
+      ...args: Parameters<XMLParser["parse"]>
+    ) {
+      const [xml] = args;
+      if (xml === invalidForTest) throw new Error("Parse error");
+      return originalParse.apply(this, args);
+    });
+    fetchMock.mockImplementation(async (url: string) => ({
+      ok: true,
+      text: async () => (url.includes("hotentry") ? invalidForTest : entrylistXml),
+    }));
+
+    try {
+      const result = await searchHatena();
+      expect(result.map(({ title }) => title)).toEqual(["Entrylist Item"]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      parseSpy.mockRestore();
+    }
+  });
+
+  test("entrylist parse exception does not discard hotentry items", async () => {
+    const invalidForTest = "<force-parse-error-entrylist />";
+    const hotentryXml = `<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://purl.org/rss/1.0/"><item rdf:about="https://example.com/hotentry"><title>Hotentry Item</title><link>https://example.com/hotentry</link></item></rdf:RDF>`;
+    const originalParse = XMLParser.prototype.parse;
+    const parseSpy = vi.spyOn(XMLParser.prototype, "parse").mockImplementation(function (
+      this: XMLParser,
+      ...args: Parameters<XMLParser["parse"]>
+    ) {
+      const [xml] = args;
+      if (xml === invalidForTest) throw new Error("Parse error");
+      return originalParse.apply(this, args);
+    });
+    fetchMock.mockImplementation(async (url: string) => ({
+      ok: true,
+      text: async () => (url.includes("entrylist") ? invalidForTest : hotentryXml),
+    }));
+
+    try {
+      const result = await searchHatena();
+      expect(result.map(({ title }) => title)).toEqual(["Hotentry Item"]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      parseSpy.mockRestore();
+    }
   });
 
   test("fetch exception - returns empty array", async () => {

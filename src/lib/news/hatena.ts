@@ -42,12 +42,16 @@ export async function searchHatena(limit?: number): Promise<HatenaItem[]> {
   const rssUrls = [HATENA_HOTENTRY_RSS_URL, HATENA_ENTRYLIST_RSS_URL];
   const results = await Promise.all(
     rssUrls.map(async (url) => {
-      const xml = await fetchRssText(url, "hatena", {
-        timeoutMs: HATENA_TIMEOUT_MS,
-        headers: { "User-Agent": "news-watch/1.0 (+https://github.com/shunki/news-watch)" },
-      });
-      if (!xml) return [] as HatenaItem[];
-      return parseHatenaRss(xml);
+      try {
+        const xml = await fetchRssText(url, "hatena", {
+          timeoutMs: HATENA_TIMEOUT_MS,
+          headers: { "User-Agent": "news-watch/1.0 (+https://github.com/shunki/news-watch)" },
+        });
+        if (!xml) return [] as HatenaItem[];
+        return parseHatenaRss(xml);
+      } catch {
+        return [] as HatenaItem[];
+      }
     }),
   );
   const seen = new Set<string>();

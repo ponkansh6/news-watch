@@ -181,9 +181,17 @@ export async function refreshRecencyForSources(
         publishedAt: articles.publishedAt,
       })
       .from(articles)
-      .where(and(inArray(articles.sourceId, sourceIds), notInArray(articles.url, excludeUrls)));
+      .where(
+        and(
+          inArray(articles.sourceId, sourceIds),
+          notInArray(articles.url, excludeUrls),
+          isNotNull(articles.score),
+        ),
+      );
 
     // Calculate updates upfront
+    const evaluationTime = Date.now();
+    const recencyRefreshedAt = new Date(evaluationTime).toISOString();
     const updates: Array<{
       url: string;
       recency: number;
@@ -194,17 +202,21 @@ export async function refreshRecencyForSources(
       if (article.score === null) continue;
 
       const oldRecency = article.recency ?? 0;
-      const newRecency = calcRecencyScore(article.publishedAt);
+      const newRecency = calcRecencyScore(article.publishedAt, evaluationTime);
       const delta = (newRecency - oldRecency) * WEIGHT_RECENCY;
       const newScore =
         Math.round(Math.max(0, Math.min(SOFTMAX_SCALE, article.score + delta)) * SOFTMAX_SCALE) /
         SOFTMAX_SCALE;
 
+      // Keep null recency normalization as a real change, even when it is treated as zero
+      // in the delta calculation. The refresh timestamp tracks actual recency delta updates.
+      if (article.recency === newRecency && article.score === newScore) continue;
+
       updates.push({
         url: article.url,
         recency: newRecency,
         score: newScore,
-        recencyRefreshedAt: new Date().toISOString(),
+        recencyRefreshedAt,
       });
     }
 

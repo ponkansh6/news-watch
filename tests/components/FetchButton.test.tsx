@@ -73,6 +73,13 @@ const newScoredArticle: Article = {
   reason: "新着理由",
 };
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 describe("FetchButton", () => {
   const mockOnSourceChange = vi.fn();
 
@@ -126,12 +133,12 @@ describe("FetchButton", () => {
 
   it("shows loading state during API call", async () => {
     const user = userEvent.setup();
-    let resolveFetch: (value: any) => void = () => {};
-    const fetchPromise = new Promise((resolve) => {
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchPromise = new Promise<Response>((resolve) => {
       resolveFetch = resolve;
     });
 
-    vi.spyOn(globalThis, "fetch").mockReturnValue(fetchPromise as Promise<Response>);
+    vi.spyOn(globalThis, "fetch").mockReturnValue(fetchPromise);
 
     render(
       <RefreshProvider>
@@ -146,23 +153,26 @@ describe("FetchButton", () => {
     expect(screen.getByText("記事を更新中...")).toBeInTheDocument();
 
     await act(async () => {
-      resolveFetch({
-        ok: true,
-        json: async () => ({ ok: true, results: [{ fetched: 5, saved: 3, errors: [] }] }),
-      });
+      resolveFetch(jsonResponse({ ok: true, results: [{ fetched: 5, saved: 3, errors: [] }] }));
     });
 
     await waitFor(() => {
       expect(screen.getByText("3件 スコアリング完了")).toBeInTheDocument();
     });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/fetch-news",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ source: "zenn" }),
+      }),
+    );
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("displays error on API failure (ok: false)", async () => {
     const user = userEvent.setup();
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: false }),
-    } as Response);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ ok: false }));
 
     render(
       <RefreshProvider>
@@ -176,6 +186,136 @@ describe("FetchButton", () => {
     await waitFor(() => {
       expect(screen.getByText("ニュース取得に失敗しました")).toBeInTheDocument();
     });
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(screen.queryByText("記事を更新中...")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      label: "non-2xx JSON responses",
+      responseOk: false,
+      body: { ok: true, results: [{ fetched: 5, saved: 3 }] },
+    },
+    { label: "a null response body", responseOk: true, body: null },
+    { label: "a response without results", responseOk: true, body: { ok: true } },
+    {
+      label: "a null result item",
+      responseOk: true,
+      body: { ok: true, results: [null] },
+    },
+    {
+      label: "an empty result item",
+      responseOk: true,
+      body: { ok: true, results: [{}] },
+    },
+    {
+      label: "a result item that is an array",
+      responseOk: true,
+      body: { ok: true, results: [[]] },
+    },
+    {
+      label: "a result without fetched",
+      responseOk: true,
+      body: { ok: true, results: [{ errors: [] }] },
+    },
+    {
+      label: "a string fetched count",
+      responseOk: true,
+      body: { ok: true, results: [{ fetched: "5" }] },
+    },
+    {
+      label: "a result without errors",
+      responseOk: true,
+      body: { ok: true, results: [{ fetched: 5 }] },
+    },
+    {
+      label: "a null saved count",
+      responseOk: true,
+      body: { ok: true, results: [{ saved: null }] },
+    },
+    {
+      label: "a non-finite fetched count",
+      responseOk: true,
+      body: { ok: true, results: [{ fetched: Number.NaN }] },
+    },
+    {
+      label: "counts whose sum is non-finite",
+      responseOk: true,
+      body: { ok: true, results: [{ fetched: 1e308 }, { fetched: 1e308 }] },
+    },
+    {
+      label: "a malformed errors field",
+      responseOk: true,
+      body: { ok: true, results: [{ errors: [1] }] },
+    },
+  ])("rejects $label without refreshing", async ({ responseOk, body }) => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(body, responseOk ? 200 : 500));
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("ニュース取得に失敗しました")).toBeInTheDocument();
+    });
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(screen.queryByText("記事を更新中...")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "ニュースを取得してスコアリング" }),
+    ).toBeInTheDocument();
+  });
+
+  it("treats invalid JSON as an error and releases the loading state", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("Invalid JSON", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("通信エラーが発生しました")).toBeInTheDocument();
+    });
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(screen.queryByText("記事を更新中...")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "ニュースを取得してスコアリング" }),
+    ).toBeInTheDocument();
+  });
+
+  it("accepts a result without saved and refreshes", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({ ok: true, results: [{ fetched: 5, errors: [] }] }),
+    );
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("0件 スコアリング完了")).toBeInTheDocument();
+    });
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("記事を更新中...")).toBeInTheDocument();
   });
 
   it("displays network error on fetch rejection", async () => {
@@ -198,13 +338,12 @@ describe("FetchButton", () => {
 
   it("displays success results correctly", async () => {
     const user = userEvent.setup();
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
         ok: true,
         results: [{ fetched: 5, saved: 3, errors: [] }],
       }),
-    } as Response);
+    );
 
     render(
       <RefreshProvider>
@@ -228,13 +367,12 @@ describe("FetchButton", () => {
 
   it("displays error results with warning indicator", async () => {
     const user = userEvent.setup();
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
         ok: true,
         results: [{ fetched: 5, saved: 2, errors: ["Some error"] }],
       }),
-    } as Response);
+    );
 
     render(
       <RefreshProvider>
@@ -300,11 +438,11 @@ describe("Refresh lifecycle integration", () => {
       }
     });
 
-    let resolveFetch: (value: any) => void = () => {};
-    const fetchPromise = new Promise((resolve) => {
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchPromise = new Promise<Response>((resolve) => {
       resolveFetch = resolve;
     });
-    vi.spyOn(globalThis, "fetch").mockReturnValue(fetchPromise as Promise<Response>);
+    vi.spyOn(globalThis, "fetch").mockReturnValue(fetchPromise);
 
     render(<RscSimulatorPage />);
 
@@ -321,10 +459,7 @@ describe("Refresh lifecycle integration", () => {
 
     // ----- Phase 3: API responds with saved=0 -----
     await act(async () => {
-      resolveFetch({
-        ok: true,
-        json: async () => ({ ok: true, results: [{ fetched: 5, saved: 0, errors: [] }] }),
-      });
+      resolveFetch(jsonResponse({ ok: true, results: [{ fetched: 5, saved: 0, errors: [] }] }));
     });
 
     // "0件 スコアリング完了" result appears
@@ -380,11 +515,11 @@ describe("Refresh lifecycle integration", () => {
     });
 
     // Controlled fetch promise
-    let resolveFetch: (value: any) => void = () => {};
-    const fetchPromise = new Promise((resolve) => {
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchPromise = new Promise<Response>((resolve) => {
       resolveFetch = resolve;
     });
-    vi.spyOn(globalThis, "fetch").mockReturnValue(fetchPromise as Promise<Response>);
+    vi.spyOn(globalThis, "fetch").mockReturnValue(fetchPromise);
 
     render(<RscSimulatorPage />);
 
@@ -405,10 +540,7 @@ describe("Refresh lifecycle integration", () => {
     expect(screen.getByText("既存記事 2")).toBeInTheDocument();
 
     // ----- Phase 3: API completes, scoring done -----
-    resolveFetch({
-      ok: true,
-      json: async () => ({ ok: true, results: [{ fetched: 3, saved: 1, errors: [] }] }),
-    });
+    resolveFetch(jsonResponse({ ok: true, results: [{ fetched: 3, saved: 1, errors: [] }] }));
 
     // After API returns but before RSC data arrives:
     // updating indicator must STILL be visible, old articles stay dimmed

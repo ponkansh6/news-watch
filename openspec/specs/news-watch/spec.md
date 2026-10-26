@@ -47,6 +47,9 @@ authors: [shunki]
   - WHEN the user clicks the fetch button
   - THEN the system triggers a background fetch via the `/api/fetch-news` endpoint
   - AND the fetch status is indicated to the user
+  - AND Hatena's `hotentry` and `entrylist` feeds fail independently: a fetch or parse failure yields no items for that feed while preserving items and input order from the other successful feed
+  - AND the client accepts a fetch response only when the HTTP response is successful, the JSON body has `ok: true`, and `results` is an array whose entries have a finite numeric `fetched` and an `errors` string array; `saved` is optional but must be a finite number when present
+  - AND a non-success HTTP response or malformed response is shown as a fetch error and does not refresh the dashboard
 
 #### FR-002: Data Processing with Scoring
 
@@ -403,7 +406,9 @@ Articles are evaluated using LLM-based relevance (NTT Group relevance) and usefu
 
 ### 10.6 Recency Delta Refresh
 
-- fetch-news 実行時に、selectedSources に含まれる sourceId の全記事（今回 fetch されたもの＋されなかった既存記事）について recency を再計算し、`score += (newRecency - oldRecency) × 0.3` で差分更新する。
+- fetch-news 実行時に、selectedSources に含まれる sourceId のうち `score IS NOT NULL` の全記事（今回 fetch されたもの＋されなかった既存記事）について recency を再計算し、`score += (newRecency - oldRecency) × 0.3` で差分更新する。1回の呼び出し内では共通の評価時刻を使い、null の recency は 0 として扱う。
+- recency と score の両方が既存値と同じ場合は UPDATE を省略し、`recencyRefreshedAt` を変更しない。それ以外の差分更新では `recencyRefreshedAt` を記録する。
+- batch 更新に失敗した場合は、個別更新を fallback として試みる。
 - relevance / usefulness は再計算せず既存値を維持する。
 - recency リフレッシュ日時は `recencyRefreshedAt` カラムに記録する。
 - score は 0–10 にクランプする。

@@ -16,9 +16,29 @@ interface FetchResultData {
 }
 
 interface FetchResultItem {
-  fetched?: number;
+  fetched: number;
   saved?: number;
-  errors?: string[];
+  errors: string[];
+}
+
+function isFetchResultItem(value: unknown): value is FetchResultItem {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item.fetched === "number" &&
+    Number.isFinite(item.fetched) &&
+    (item.saved === undefined || (typeof item.saved === "number" && Number.isFinite(item.saved))) &&
+    Array.isArray(item.errors) &&
+    item.errors.every((error) => typeof error === "string")
+  );
+}
+
+function isFetchResponse(value: unknown): value is { ok: true; results: FetchResultItem[] } {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+
+  const body = value as Record<string, unknown>;
+  return body.ok === true && Array.isArray(body.results) && body.results.every(isFetchResultItem);
 }
 
 interface FetchButtonProps {
@@ -76,20 +96,23 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source: selectedSource }),
       });
-      const data = await res.json();
+      const data: unknown = await res.json();
 
-      if (data.ok && Array.isArray(data.results)) {
+      if (res.ok && isFetchResponse(data)) {
         const totalFetched = data.results.reduce(
-          (acc: number, r: FetchResultItem) => acc + (r.fetched || 0),
+          (acc: number, r: FetchResultItem) => acc + r.fetched,
           0,
         );
         const totalSaved = data.results.reduce(
-          (acc: number, r: FetchResultItem) => acc + (r.saved || 0),
+          (acc: number, r: FetchResultItem) => acc + (r.saved ?? 0),
           0,
         );
-        const hasErrors = data.results.some(
-          (r: FetchResultItem) => Array.isArray(r.errors) && r.errors.length > 0,
-        );
+        if (!Number.isFinite(totalFetched) || !Number.isFinite(totalSaved)) {
+          setFetchError("ニュース取得に失敗しました");
+          setRefreshing(false);
+          return;
+        }
+        const hasErrors = data.results.some((r: FetchResultItem) => r.errors.length > 0);
 
         setResults([
           {

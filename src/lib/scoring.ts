@@ -14,8 +14,7 @@ import {
  * Algorithmic recency score (0-10) based on publishedAt freshness.
  * Used by fetch-news to calculate article scores.
  */
-export function calcRecencyScore(publishedAt: string): number {
-  const now = Date.now();
+export function calcRecencyScore(publishedAt: string, now = Date.now()): number {
   const pub = new Date(publishedAt).getTime();
   const days =
     (now - pub) / (MS_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY);

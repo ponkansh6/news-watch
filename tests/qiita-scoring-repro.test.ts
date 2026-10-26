@@ -147,7 +147,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     mockScoreArticles.mockImplementation(
       (articles: { title: string; description: string | null }[]) => {
         return Promise.resolve(
-          articles.map((_, _i) => {
+          articles.map(() => {
             callCount++;
             return callCount % 3 === 0
               ? null

@@ -46,6 +46,7 @@ minimumReleaseAgeExclude:
   - "@vercel/vc-native-win32-x64@64.3.1"
   - vercel@64.3.1
   - undici@6.29.1
+  - lucide-react@1.61.0
 
 overrides:
   ajv@8.6.3: 8.18.0
@@ -57,7 +58,7 @@ overrides:
   esbuild@0.18.20: 0.25.12
   fast-uri@3.1.5: 3.1.8
   fast-uri@3.1.7: 3.1.8
-  hono@4.13.2: 4.13.7
+  hono@4.13.2: 4.13.13
   ip-address@10.5.0: 10.7.1
   js-yaml@4.3.1: 4.3.2
   js-yaml@4.1.1: 4.3.2
@@ -79,3 +80,4 @@ overrides:
   undici@5.28.4: 6.29.1
   undici@5.29.0: 6.29.1
   undici@7.29.0: 7.29.1
+  vite@8.1.3: 8.1.6
