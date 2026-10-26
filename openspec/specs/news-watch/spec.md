@@ -3,7 +3,7 @@ title: News Watch
 status: Active
 version: 1.0.2
 created_at: 2026-06-01
-updated_at: 2026-08-02
+updated_at: 2026-10-26
 authors: [shunki]
 ---
 
@@ -50,6 +50,8 @@ authors: [shunki]
   - AND Hatena's `hotentry` and `entrylist` feeds fail independently: a fetch or parse failure yields no items for that feed while preserving items and input order from the other successful feed
   - AND the client accepts a fetch response only when the HTTP response is successful, the JSON body has `ok: true`, and `results` is an array whose entries have a finite numeric `fetched` and an `errors` string array; `saved` is optional but must be a finite number when present
   - AND a non-success HTTP response or malformed response is shown as a fetch error and does not refresh the dashboard
+  - AND after the fetch pipeline finishes scoring and stale-article cleanup, the API immediately expires the `articles` cache tag with `revalidateTag("articles", { expire: 0 })`, regardless of the saved count
+  - AND after a successful fetch response, the client refreshes the dashboard once, and that first refreshed view includes newly saved articles that meet the display criteria without requiring another fetch operation
 
 #### FR-002: Data Processing with Scoring
 
@@ -74,6 +76,7 @@ authors: [shunki]
   - WHEN the user visits the home page
   - THEN the system renders a list of articles sorted by score or date
   - AND each article shows title, source, score (with tier-based styling), and summary
+  - AND the first-refresh cache contract in FR-001 is covered by `tests/api/fetch-news/route.test.ts` and the production-mode regression harness (`pnpm run build` followed by `node scripts/smoke-first-fetch-refresh.mjs --case=warm --expect=fresh`; cold-cache control: `node scripts/smoke-first-fetch-refresh.mjs --case=cold --expect=fresh`)
   - AND clicking the score button opens a Popover showing 3-metric breakdown (関連性/有用性/新しさ with weights × 10%/60%/30%, rendered as horizontal bars)
   - AND the breakdown is accessible via keyboard (Enter/Space on button)
 

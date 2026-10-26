@@ -140,7 +140,7 @@ export async function POST(request: Request) {
   }
 
   await gcStaleArticles();
-  revalidateTag("articles", "max");
+  revalidateTag("articles", { expire: 0 });
 
   return NextResponse.json({ ok: true, message: "Scoring queued", results: [result], perSource });
 }

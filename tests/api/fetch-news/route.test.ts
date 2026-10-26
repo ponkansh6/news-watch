@@ -2,6 +2,7 @@ import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST, GET } from "@/app/api/fetch-news/route";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
+import { revalidateTag } from "next/cache";
 
 vi.mock("@/lib/news/zenn", () => ({
   searchZenn: vi.fn().mockResolvedValue([
@@ -118,6 +119,106 @@ describe("POST /api/fetch-news", () => {
     expect(data.results).toBeDefined();
   });
 
+  test("POST immediately expires the article list cache after scoring and cleanup", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
+    const { deleteStaleLowScored } = await import("@/lib/db");
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
+    });
+
+    const response = await POST(req);
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(scoreAndSaveTagged)).toHaveBeenCalled();
+    expect(vi.mocked(deleteStaleLowScored)).toHaveBeenCalled();
+    expect(vi.mocked(revalidateTag)).toHaveBeenCalledWith("articles", { expire: 0 });
+    expect(vi.mocked(scoreAndSaveTagged).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(deleteStaleLowScored).mock.invocationCallOrder[0],
+    );
+    expect(vi.mocked(deleteStaleLowScored).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(revalidateTag).mock.invocationCallOrder[0],
+    );
+  });
+
+  test("POST expires the cache when only an already-scored article is returned", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
+    const { getScoringStateByUrls } = await import("@/lib/db");
+    vi.mocked(getScoringStateByUrls).mockResolvedValueOnce(
+      new Map([
+        [
+          "https://zenn.dev/articles/zenn-1",
+          {
+            url: "https://zenn.dev/articles/zenn-1",
+            contentHash: null,
+            score: 8,
+            scoringSignature: null,
+            scoredAt: new Date().toISOString(),
+          },
+        ],
+      ]),
+    );
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
+    });
+
+    const response = await POST(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.results[0].scored).toBe(0);
+    expect(body.results[0].skipped).toBe(1);
+    expect(scoreAndSaveTagged).not.toHaveBeenCalled();
+    expect(revalidateTag).toHaveBeenCalledWith("articles", { expire: 0 });
+  });
+
+  test("POST expires the cache even when scoring saves zero articles", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
+    vi.mocked(scoreAndSaveTagged).mockResolvedValueOnce(0);
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
+    });
+
+    const response = await POST(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.results[0].saved).toBe(0);
+    expect(revalidateTag).toHaveBeenCalledWith("articles", { expire: 0 });
+  });
+
+  test("invalid source response does not expire the article cache", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "unknown-source" }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
+    });
+
+    const response = await POST(req);
+
+    expect(response.status).toBe(400);
+    expect(revalidateTag).not.toHaveBeenCalled();
+    expect(scoreAndSaveTagged).not.toHaveBeenCalled();
+  });
+
   test("CRON_SECRET missing authorization returns 401", async () => {
     vi.stubEnv("CRON_SECRET", "test-secret");
     const req = new NextRequest("http://localhost/api/fetch-news", {
@@ -199,6 +300,36 @@ describe("POST /api/fetch-news", () => {
     expect(res.headers.get("WWW-Authenticate")).toContain("Basic");
   });
 
+  test("partial refresh failure preserves a scored article and errors before cache expiry", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
+    const { deleteStaleLowScored, refreshRecencyForSources } = await import("@/lib/db");
+    vi.mocked(refreshRecencyForSources).mockRejectedValueOnce(new Error("recency write failed"));
+    vi.mocked(scoreAndSaveTagged).mockResolvedValueOnce(1);
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
+    });
+
+    const response = await POST(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.results[0].saved).toBe(1);
+    expect(body.results[0].errors).toEqual([expect.stringContaining("Recency refresh failed")]);
+    expect(vi.mocked(scoreAndSaveTagged).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(deleteStaleLowScored).mock.invocationCallOrder[0],
+    );
+    expect(vi.mocked(deleteStaleLowScored).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(revalidateTag).mock.invocationCallOrder[0],
+    );
+    expect(revalidateTag).toHaveBeenCalledWith("articles", { expire: 0 });
+  });
+
   test("scoreAndSaveTagged throwing error is caught and added to errors array, returns 200", async () => {
     vi.stubEnv("CRON_SECRET", "test-secret");
     vi.mocked(scoreAndSaveTagged).mockRejectedValueOnce(new Error("boom"));
@@ -218,6 +349,11 @@ describe("POST /api/fetch-news", () => {
     expect(data.ok).toBe(true);
     expect(data.results[0].errors).toBeDefined();
     expect(data.results[0].errors[0]).toContain("Scoring failed");
+    expect(revalidateTag).toHaveBeenCalledWith("articles", { expire: 0 });
+    const { deleteStaleLowScored } = await import("@/lib/db");
+    expect(vi.mocked(deleteStaleLowScored).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(revalidateTag).mock.invocationCallOrder[0],
+    );
   });
 
   test("churn check: 1st POST calls scoreAndSaveTagged, 2nd POST with identical state calls 0 scored/skipped, 3rd POST with changed signature re-scores", async () => {
