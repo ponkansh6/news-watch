@@ -13,6 +13,7 @@ Husky + lint-staged により pre-commit / pre-push フックが強制実行さ�
 - ユーザーが依頼・許可した操作が sandbox の権限制限で失敗した場合、その操作だけを `sandbox_permissions=require_escalated` で再実行する。昇格範囲は必要最小限にし、sandbox や承認の永続設定は変更しない。
 - ネットワーク接続や loopback を必要とする検証ゲート・integration test・smoke test が sandbox 制限で失敗した場合も、失敗した対象コマンドだけを `require_escalated` で再実行する。昇格が拒否された場合は拒否理由と未完了項目を記録して止め、bypass はしない。
 - 依頼に通常の `git push` が含まれる場合は `git push` を最初から `require_escalated` で実行する。`--force` / `--force-with-lease` や ref 削除は別途明示指示が必要。
+- **承認済みpush先**: ユーザー確認済みの送信先は `origin` (`git@github.com:ponkansh6/news-watch.git`) の `master` で、この宛先への通常pushはユーザーの明示依頼時に許可されている。他のremote/branchには適用しない。
 
 ### pre-push のブロックチェック
 
