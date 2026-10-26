@@ -1,7 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import { HATENA_TIMEOUT_MS } from "../constants";
-import { fetchRssText } from "./base/rss-fetcher";
 import { decodeEntities } from "./base/entity-decoder";
+import { fetchAndParseFeed, NEWS_USER_AGENT } from "./feeds";
 
 const HATENA_HOTENTRY_RSS_URL = "https://b.hatena.ne.jp/hotentry/it.rss";
 const HATENA_ENTRYLIST_RSS_URL = "https://b.hatena.ne.jp/entrylist/it.rss";
@@ -43,12 +43,10 @@ export async function searchHatena(limit?: number): Promise<HatenaItem[]> {
   const results = await Promise.all(
     rssUrls.map(async (url) => {
       try {
-        const xml = await fetchRssText(url, "hatena", {
+        return await fetchAndParseFeed(url, "hatena", parseHatenaRss, {
           timeoutMs: HATENA_TIMEOUT_MS,
-          headers: { "User-Agent": "news-watch/1.0 (+https://github.com/shunki/news-watch)" },
+          headers: { "User-Agent": NEWS_USER_AGENT },
         });
-        if (!xml) return [] as HatenaItem[];
-        return parseHatenaRss(xml);
       } catch {
         return [] as HatenaItem[];
       }

@@ -4,6 +4,23 @@ import { parseRss2 } from "./base/rss2-parser";
 
 export const NEWS_USER_AGENT = "news-watch/1.0 (+https://github.com/shunki/news-watch)";
 
+type FeedFetchOptions = NonNullable<Parameters<typeof fetchRssText>[2]>;
+
+/** Fetch and parse one feed without imposing source-specific limits or error handling. */
+export async function fetchAndParseFeed<T>(
+  url: string,
+  sourceName: string,
+  parse: (xml: string) => T[],
+  options?: FeedFetchOptions,
+): Promise<T[]> {
+  const xml = await fetchRssText(url, sourceName, options);
+  return xml ? parse(xml) : [];
+}
+
+function applyLimit<T>(items: T[], limit?: number): T[] {
+  return limit === undefined ? items : items.slice(0, limit);
+}
+
 interface RdfFeedConfig {
   url: string;
 }
@@ -16,12 +33,10 @@ export const RDF_FEEDS = {
 
 export function createRdfSource(sourceName: string, cfg: RdfFeedConfig) {
   return async function search(limit?: number): Promise<StandardRdfItem[]> {
-    const xml = await fetchRssText(cfg.url, sourceName, {
+    const items = await fetchAndParseFeed(cfg.url, sourceName, parseRdf, {
       headers: { "User-Agent": NEWS_USER_AGENT },
     });
-    if (!xml) return [];
-    const parsed = parseRdf(xml);
-    return limit === undefined ? parsed : parsed.slice(0, limit);
+    return applyLimit(items, limit);
   };
 }
 
@@ -37,9 +52,7 @@ export const RSS2_FEEDS = {
 
 export function createRss2Source<T>(sourceName: string, cfg: Rss2FeedConfig) {
   return async function search(limit?: number): Promise<T[]> {
-    const xml = await fetchRssText(cfg.url, sourceName);
-    if (!xml) return [];
-    const parsed = parseRss2<T>(xml);
-    return limit === undefined ? parsed : parsed.slice(0, limit);
+    const items = await fetchAndParseFeed(cfg.url, sourceName, parseRss2<T>);
+    return applyLimit(items, limit);
   };
 }

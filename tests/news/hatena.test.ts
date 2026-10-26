@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, afterAll, describe, expect, test, vi } from "vitest";
 import { XMLParser } from "fast-xml-parser";
+import { HATENA_TIMEOUT_MS } from "@/lib/constants";
 import { searchHatena } from "@/lib/news/hatena";
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -30,6 +31,20 @@ describe("searchHatena", () => {
     expect(result[0].title).toBe("Feed 1 Item 1");
     expect(result[1].title).toBe("Feed 2 Item 1");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://b.hatena.ne.jp/hotentry/it.rss",
+      "https://b.hatena.ne.jp/entrylist/it.rss",
+    ]);
+    for (const [, options] of fetchMock.mock.calls) {
+      expect(options).toEqual(
+        expect.objectContaining({
+          headers: {
+            "User-Agent": "news-watch/1.0 (+https://github.com/shunki/news-watch)",
+          },
+        }),
+      );
+      expect(options.signal).toBeInstanceOf(AbortSignal);
+    }
   });
 
   test("partial failure - returns only successful items", async () => {
@@ -70,6 +85,34 @@ describe("searchHatena", () => {
 
     expect(result.map(({ title }) => title)).toEqual(["Hotentry Item"]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("aborts both feed requests at the Hatena timeout and returns no items", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockImplementation((_url: string, options: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          options.signal?.addEventListener("abort", () => reject(new Error("Request aborted")), {
+            once: true,
+          });
+        });
+      });
+
+      const resultPromise = searchHatena();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const signals = fetchMock.mock.calls.map(([, options]) => options.signal as AbortSignal);
+      expect(signals).toHaveLength(2);
+      expect(signals.every((signal) => !signal.aborted)).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(HATENA_TIMEOUT_MS - 1);
+      expect(signals.every((signal) => !signal.aborted)).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(resultPromise).resolves.toEqual([]);
+      expect(signals.every((signal) => signal.aborted)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("parse exception for one feed does not discard the other feed", async () => {

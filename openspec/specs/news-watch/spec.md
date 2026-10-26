@@ -19,7 +19,7 @@ authors: [shunki]
 
 ### 2.1 In Scope
 
-- Fetching news from multiple external providers (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Blog)
+- Fetching news from multiple external providers (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Bookmark IT hotentry/entrylist feeds)
 - User-triggered fetch via `/api/fetch-news` button on dashboard (manual cron via Vercel scheduled deployments supported)
   - Scheduled/API callers require Bearer token authentication (CRON_SECRET); interactive browser requests use HTTP Basic Auth (ADMIN_BASIC_AUTH_USER / ADMIN_BASIC_AUTH_PASSWORD)
 - LLM-based relevance scoring + LLM-based usefulness scoring + algorithmic recency scoring
@@ -259,7 +259,7 @@ Supporting utilities:
 ### Data Flow
 
 ```
-External APIs (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Blog)
+External feeds and APIs (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Bookmark IT hotentry/entrylist)
   → src/lib/news/ (Fetchers)
     → src/lib/score-pipeline.ts (scoreAndSaveTagged: parallel LLM batching via p-limit)
       → src/lib/llm/index.ts (LLM batch scoring: relevance + usefulness + topic + summary)
@@ -308,7 +308,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 - **Theme**: **next-themes** (light/dark/system toggle)
 - **Toasts**: **sonner** (rich notifications)
 - **LLM**: Gemini 3.1 Flash Lite (via `@google/generative-ai` SDK)
-- **News Sources**: Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Blog
+- **News Sources**: Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Bookmark IT hotentry/entrylist feeds
 - **Deployment**: Vercel
 
 ## 7. Test Strategy
@@ -356,7 +356,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 - User accounts or personalized feeds (currently global)
 - Complex user interactions with article content (read-only display)
 - Real-time WebSub/PubSubHubbub push notifications (polling-based discovery is sufficient for daily cadence)
-- Full-text search of Hatena Blog content (RSS summary only)
+- Full-text search of articles linked from Hatena Bookmark IT feeds (only feed-provided metadata is collected)
 
 ## 9. Hidden Features
 
