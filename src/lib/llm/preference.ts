@@ -38,8 +38,7 @@ export function sanitizeForPrompt(s: string | null, maxChars: number): string {
   return cleaned.slice(0, maxChars);
 }
 
-/** Build favorites text block for preference analysis prompt. */
-export function buildFavoritesBlock(items: FavoriteInput[]): string {
+function buildPreferenceItemsBlock(items: FavoriteInput[]): string {
   const slice = items.slice(0, PREFERENCE_MAX_FAVORITES_IN_PROMPT);
   if (slice.length === 0) return "(データなし)";
   return slice
@@ -55,21 +54,14 @@ export function buildFavoritesBlock(items: FavoriteInput[]): string {
     .join("\n");
 }
 
+/** Build favorites text block for preference analysis prompt. */
+export function buildFavoritesBlock(items: FavoriteInput[]): string {
+  return buildPreferenceItemsBlock(items);
+}
+
 /** Build not-for-me text block for preference analysis prompt. */
 export function buildNotForMeBlock(items: FavoriteInput[]): string {
-  const slice = items.slice(0, PREFERENCE_MAX_FAVORITES_IN_PROMPT);
-  if (slice.length === 0) return "(データなし)";
-  return slice
-    .map((item, i) => {
-      const label = sanitizeForPrompt(item.keywordLabel, PREFERENCE_KEYWORD_LABEL_MAX_CHARS);
-      const scoreStr =
-        item.score !== null && item.score !== undefined ? item.score.toFixed(1) : "-";
-      const title = sanitizeForPrompt(item.title, PREFERENCE_FAV_TITLE_MAX_CHARS);
-      const summary = sanitizeForPrompt(item.summary, PREFERENCE_FAV_TEXT_MAX_CHARS);
-      const reason = sanitizeForPrompt(item.reason, PREFERENCE_FAV_TEXT_MAX_CHARS);
-      return `${i + 1}. [${label}] score=${scoreStr} | ${title} | ${summary} | ${reason}`;
-    })
-    .join("\n");
+  return buildPreferenceItemsBlock(items);
 }
 
 /** Clamp and normalize raw parsed preference analysis payload before Zod validation. */

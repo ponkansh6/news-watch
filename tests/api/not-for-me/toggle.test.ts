@@ -34,6 +34,7 @@ describe("POST /api/not-for-me/toggle", () => {
     expect(res2.status).toBe(400);
 
     expect(toggleNotForMe).not.toHaveBeenCalled();
+    expect(revalidateTag).not.toHaveBeenCalled();
   });
 
   it("toggles successfully and revalidates tags", async () => {
@@ -50,10 +51,14 @@ describe("POST /api/not-for-me/toggle", () => {
 
     expect(toggleNotForMe).toHaveBeenCalledWith(123);
     expect(revalidateTag).toHaveBeenCalledWith("not-for-me", "max");
+    expect(vi.mocked(toggleNotForMe).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(revalidateTag).mock.invocationCallOrder[0],
+    );
   });
 
   it("returns 500 when toggleNotForMe throws", async () => {
     vi.mocked(toggleNotForMe).mockRejectedValue(new Error("DB error"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const req = new Request("http://localhost/api/not-for-me/toggle", {
       method: "POST",
@@ -63,5 +68,8 @@ describe("POST /api/not-for-me/toggle", () => {
     expect(res.status).toBe(500);
     const json = await res.json();
     expect(json.error).toBe("Internal Server Error");
+    expect(consoleError).toHaveBeenCalledWith("[api] not-for-me/toggle error:", expect.any(Error));
+    expect(revalidateTag).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });

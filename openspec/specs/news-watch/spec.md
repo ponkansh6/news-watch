@@ -95,6 +95,7 @@ authors: [shunki]
 - **Acceptance Criteria**:
   - WHEN a client-side component needs to initiate a server-side action (like fetching news or reactivating a feed)
   - THEN it communicates via a REST API route
+  - AND `POST /api/favorites/toggle` and `POST /api/not-for-me/toggle` share request validation, error handling, and cache revalidation through `src/lib/api/create-toggle-route-handler.ts`, while each route preserves its own database operation, cache tag, response key, and log prefix
 
 #### FR-006: Server-side Rendering
 
@@ -122,6 +123,7 @@ authors: [shunki]
   - THEN the system calls `POST /api/favorites/analyze`
   - AND the favorites and optional explicit "Not For Me" (NFM) items (`src/lib/db/repository/not-for-me-repository.ts`) are analyzed by the LLM (`src/lib/llm/preference.ts`) to extract themes / traits / dislikes / scoring guidance
   - AND text from favorites and NFM items is bounded and sanitized before prompt insertion by removing control characters and prompt delimiters
+  - AND `buildFavoritesBlock` and `buildNotForMeBlock` retain separate prompt placeholders while sharing the private item formatter in `src/lib/llm/preference.ts`
   - AND the resulting profile is stored in `preference_profiles` (append-only)
   - AND analysis is rate-limited to once per hour (cooldown), and skipped entirely when favorites and NFM states are unchanged (previous result reused via `favoriteCount`, `favoriteMaxId`, `notForMeCount`, `notForMeMaxId`)
   - AND subsequent scoring injects the profile into the prompt, utilizing NFM as explicit negative examples for disliking and scoring guidance (FR-002)
@@ -304,6 +306,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 - **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript 6 (strict mode)
 - **Runtime / Toolchain**: Node.js `24.22.1` only (`package.json` engines); CI runs on Node.js 24.22.1
+- **Build-time type checking**: Next.js uses the TypeScript API (`experimental.useTypeScriptCli: false`) because this build environment drops stdout from child processes.
 - **Database**: SQLite via Turso (libSQL)
 - **ORM**: Drizzle ORM + Drizzle Kit
 - **Styling**: Tailwind CSS v4 + **shadcn/ui (Radix + CVA)** + **tw-animate-css**

@@ -56,7 +56,7 @@ function walk(dir: string): string[] {
   return files;
 }
 
-function isEdgeRuntimeFile(relPath: string, source: string): boolean {
+function isEdgeRuntimeFile(source: string): boolean {
   // Route handler 等は `export const runtime = "edge"` でオプトインする。
   return /\bruntime\s*=\s*["']edge["']/.test(source);
 }
@@ -72,7 +72,7 @@ function findEdgeFiles(): EdgeFile[] {
       relPath: path.relative(SRC_DIR, file),
       source: readFileSync(file, "utf-8"),
     }))
-    .filter(({ relPath, source }) => isEdgeRuntimeFile(relPath, source));
+    .filter(({ source }) => isEdgeRuntimeFile(source));
 }
 
 function collectImportSpecifiers(source: string): string[] {
@@ -92,7 +92,7 @@ describe("edge runtime compatibility", () => {
   const edgeFiles = findEdgeFiles();
 
   it("明示的な edge runtime ファイルを検出できる", () => {
-    expect(isEdgeRuntimeFile("app/api/route.ts", 'export const runtime = "edge";')).toBe(true);
+    expect(isEdgeRuntimeFile('export const runtime = "edge";')).toBe(true);
   });
 
   for (const { relPath, source } of edgeFiles) {

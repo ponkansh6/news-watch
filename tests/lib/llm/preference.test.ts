@@ -79,6 +79,23 @@ describe("preference ユーティリティ & LLM分析のテスト", () => {
     expect(lines[0]).toContain("1. [Tag 1] score=3.5 | NFM Title 1");
   });
 
+  test("favorites と NFM は同じ sanitize・truncate 済み item block を使う", () => {
+    const items = [
+      {
+        title: "Title\n{unsafe}",
+        summary: "Summary <tag>",
+        keywordLabel: "Label`",
+        reason: "Reason\ttext",
+        score: 7.26,
+      },
+    ];
+
+    expect(buildFavoritesBlock(items)).toBe(
+      "1. [Label] score=7.3 | Title unsafe | Summary tag | Reason text",
+    );
+    expect(buildNotForMeBlock(items)).toBe(buildFavoritesBlock(items));
+  });
+
   test("clampPreferencePayload: 配列・文字列のクランプと未定義キーの補完", () => {
     const raw = {
       themes: Array.from({ length: 10 }, (_, i) => `theme-${i}`),

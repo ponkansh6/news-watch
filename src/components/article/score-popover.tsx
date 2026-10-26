@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { scoreTier, SCORE_TIER_LABEL } from "@/lib/ui/score";
 import { cn } from "@/lib/utils";
