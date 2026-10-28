@@ -21,9 +21,7 @@ interface FetchProgress {
   failed: number;
 }
 
-function isProgressEvent(
-  value: unknown,
-): value is {
+function isProgressEvent(value: unknown): value is {
   type: "progress";
   stage: FetchProgress["stage"];
   scoring: Omit<FetchProgress, "stage">;
