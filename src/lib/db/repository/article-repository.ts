@@ -103,6 +103,8 @@ export async function upsertArticles(
               reason: data.reason,
               scoredAt: data.scoredAt,
               score: data.score,
+              contentHash: data.contentHash,
+              scoringSignature: data.scoringSignature,
             },
           }),
       );

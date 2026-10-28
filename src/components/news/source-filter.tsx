@@ -15,7 +15,12 @@ export function SourceFilter({ value, onSourceChange }: SourceFilterProps) {
   const handleSourceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newSource = e.target.value;
     startTransition(async () => {
-      await onSourceChange(newSource);
+      try {
+        await onSourceChange(newSource);
+      } catch {
+        // Keep a failed source update from leaving the filter pending or
+        // producing an unhandled rejection from the transition callback.
+      }
     });
   };
 

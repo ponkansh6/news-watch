@@ -407,6 +407,7 @@ Articles are evaluated using LLM-based relevance (NTT Group relevance) and usefu
 - **Rescore Conditions**: Re-scoring happens only when article content or preference profile changes, determined by cryptographic hashes in `src/lib/scoring-signature.ts`:
   - `content_hash`: SHA-256 of `title + description` (first 16 hex chars).
   - `scoring_signature`: SHA-256 of prompt version, model, and preference section (first 16 hex chars).
+- **Batch Upsert State**: When an existing article is updated through batch upsert, its `content_hash` and `scoring_signature` are updated from that article's own values. A later selection skips the article when the stored values match; legacy null values retain their existing compatibility behavior.
 - **Selection Module**: `src/app/api/fetch-news/pipeline/select.ts` (`selectForScoring`) filters out already-scored articles with matching hashes, then selects up to `SCORING_BUDGET` by recency.
 - **Display Filter**: `getScoredArticles` returns only articles where `score IS NOT NULL AND score >= DISPLAY_MIN_SCORE` (5). Favorites and Not-For-Me items bypass this filter.
 
@@ -418,3 +419,8 @@ Articles are evaluated using LLM-based relevance (NTT Group relevance) and usefu
 - relevance / usefulness は再計算せず既存値を維持する。
 - recency リフレッシュ日時は `recencyRefreshedAt` カラムに記録する。
 - score は 0–10 にクランプする。
+
+### 10.7 Source Filter Pending State
+
+- Source selection remains pending and disabled while its server action completes; on success, the URL is updated after the action. A failed action leaves the current selection and URL unchanged and clears the pending state.
+- Source-selection pending state is independent of fetch/API loading state.

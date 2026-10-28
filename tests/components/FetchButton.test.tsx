@@ -131,6 +131,97 @@ describe("FetchButton", () => {
     });
   });
 
+  it("keeps source pending until the action finishes, then updates the URL", async () => {
+    const user = userEvent.setup();
+    let finishSourceChange: () => void = () => {};
+    const sourceChange = new Promise<void>((resolve) => {
+      finishSourceChange = resolve;
+    });
+    const steps: string[] = [];
+    mockOnSourceChange.mockImplementation(async () => {
+      steps.push("action-start");
+      await sourceChange;
+      steps.push("action-done");
+    });
+    mockPush.mockImplementation(() => steps.push("push"));
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    await user.selectOptions(select, "qiita");
+
+    await waitFor(() => expect(select).toBeDisabled());
+    expect(steps).toEqual(["action-start"]);
+    expect(mockPush).not.toHaveBeenCalled();
+
+    await act(async () => finishSourceChange());
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("?source=qiita", { scroll: false }));
+    expect(steps).toEqual(["action-start", "action-done", "push"]);
+    expect(select).toBeEnabled();
+  });
+
+  it("does not update the URL when the source action fails and restores the filter", async () => {
+    const user = userEvent.setup();
+    mockOnSourceChange.mockRejectedValue(new Error("source update failed"));
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    await user.selectOptions(select, "qiita");
+
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(select.value).toBe("zenn");
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("keeps source and API fetch pending states independent", async () => {
+    const user = userEvent.setup();
+    let finishSourceChange: () => void = () => {};
+    const sourceChange = new Promise<void>((resolve) => {
+      finishSourceChange = resolve;
+    });
+    let finishFetch: (response: Response) => void = () => {};
+    const fetchPromise = new Promise<Response>((resolve) => {
+      finishFetch = resolve;
+    });
+    mockOnSourceChange.mockReturnValue(sourceChange);
+    vi.spyOn(globalThis, "fetch").mockReturnValue(fetchPromise);
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    await user.selectOptions(select, "qiita");
+    await waitFor(() => expect(select).toBeDisabled());
+
+    const fetchButton = screen.getByRole("button", { name: "ニュースを取得してスコアリング" });
+    await user.click(fetchButton);
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "取得・スコアリング中..." })).toBeInTheDocument();
+    expect(select).toBeDisabled();
+
+    await act(async () => finishSourceChange());
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(screen.getByRole("button", { name: "取得・スコアリング中..." })).toBeInTheDocument();
+
+    await act(async () =>
+      finishFetch(jsonResponse({ ok: true, results: [{ fetched: 2, saved: 1, errors: [] }] })),
+    );
+    await waitFor(() => expect(screen.getByText("1件 スコアリング完了")).toBeInTheDocument());
+  });
+
   it("shows loading state during API call", async () => {
     const user = userEvent.setup();
     let resolveFetch: (value: Response) => void = () => {};

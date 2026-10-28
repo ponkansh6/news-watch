@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-interface FetchResultData {
+export interface FetchResultData {
   keyword: string;
   fetched: number;
   scored: number;

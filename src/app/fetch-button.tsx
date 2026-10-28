@@ -4,16 +4,8 @@ import { useState, useTransition, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { SourceFilter } from "@/components/news/source-filter";
 import { FetchAction } from "@/components/news/fetch-action";
-import { FetchResult } from "@/components/news/fetch-result";
+import { FetchResult, type FetchResultData } from "@/components/news/fetch-result";
 import { useRefresh } from "./refresh-context";
-
-interface FetchResultData {
-  keyword: string;
-  fetched: number;
-  scored: number;
-  processed: number;
-  errors: string[];
-}
 
 interface FetchResultItem {
   fetched: number;
@@ -76,12 +68,10 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
   }, []);
 
   const handleSourceChangeWithRouter = async (newSource: string) => {
-    startTransition(async () => {
-      await onSourceChange(newSource);
-      const params = new URLSearchParams();
-      params.set("source", newSource);
-      router.push(`?${params.toString()}`, { scroll: false });
-    });
+    await onSourceChange(newSource);
+    const params = new URLSearchParams();
+    params.set("source", newSource);
+    router.push(`?${params.toString()}`, { scroll: false });
   };
 
   const handleFetch = useCallback(async () => {
