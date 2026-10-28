@@ -32,6 +32,7 @@ export async function scoreAndSaveTagged(
     signature?: string;
     onScoringError?: (message: string) => void;
     onScoringSuccess?: () => void;
+    onScoringProgress?: (completed: number, failed: number, total: number) => void;
   },
 ): Promise<number> {
   let preferenceSection = "";
@@ -56,6 +57,13 @@ export async function scoreAndSaveTagged(
   }
 
   const limit = pLimit(LLM_BATCH_CONCURRENCY);
+  let completed = 0;
+  let failed = 0;
+  const reportProgress = (isFailure: boolean) => {
+    completed = Math.min(articles.length, completed + 1);
+    if (isFailure) failed++;
+    options?.onScoringProgress?.(completed, failed, articles.length);
+  };
   const settled = await Promise.allSettled(
     batches.map((batch) =>
       limit(() =>
@@ -66,6 +74,7 @@ export async function scoreAndSaveTagged(
           deadline,
           options?.onScoringError,
           options?.onScoringSuccess,
+          reportProgress,
         ),
       ),
     ),
@@ -82,11 +91,17 @@ async function scoreAndSaveBatch(
   deadline: number,
   onScoringError?: (message: string) => void,
   onScoringSuccess?: () => void,
+  onScoringProgress?: (isFailure: boolean) => void,
 ): Promise<number> {
+  let processed = 0;
   try {
     const remaining = deadline - Date.now();
     if (remaining < SCORING_MIN_SLICE_MS) {
       onScoringError?.("Scoring deadline exceeded");
+      for (let i = 0; i < batch.length; i++) {
+        onScoringProgress?.(true);
+        processed++;
+      }
       return 0;
     }
 
@@ -104,8 +119,12 @@ async function scoreAndSaveBatch(
       const llmResult = llmResults[i] ?? null;
       if (!llmResult) {
         onScoringError?.("LLM returned no scoring result for an article");
+        onScoringProgress?.(true);
+        processed++;
       } else {
         onScoringSuccess?.();
+        onScoringProgress?.(false);
+        processed++;
       }
       const usefulness = llmResult?.usefulness ?? null;
       const relevance = llmResult?.ntt_relevance ?? 0;
@@ -153,6 +172,8 @@ async function scoreAndSaveBatch(
   } catch (err) {
     console.error(`[pipeline] Batch scoring/saving failed:`, err);
     onScoringError?.(err instanceof Error ? err.message : String(err));
+    // The batch result could not be established; count each article as processed and failed.
+    for (let i = processed; i < batch.length; i++) onScoringProgress?.(true);
     return 0;
   }
 }

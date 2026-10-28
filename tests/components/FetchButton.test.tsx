@@ -241,7 +241,7 @@ describe("FetchButton", () => {
     await user.click(fetchBtn);
 
     expect(screen.getByRole("button", { name: "取得・スコアリング中..." })).toBeInTheDocument();
-    expect(screen.getByText("記事を更新中...")).toBeInTheDocument();
+    expect(screen.getByText("記事取得中...")).toBeInTheDocument();
 
     await act(async () => {
       resolveFetch(jsonResponse({ ok: true, results: [{ fetched: 5, saved: 3, errors: [] }] }));
@@ -261,6 +261,101 @@ describe("FetchButton", () => {
     expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("reads progress across split NDJSON chunks and applies the final result once", async () => {
+    const user = userEvent.setup();
+    const encoder = new TextEncoder();
+    let releaseResult: () => void = () => {};
+    const resultGate = new Promise<void>((resolve) => {
+      releaseResult = resolve;
+    });
+    const progressLine =
+      JSON.stringify({
+        type: "progress",
+        stage: "scoring",
+        scoring: { completed: 1, total: 2, failed: 0 },
+      }) + "\n";
+    const resultLine =
+      JSON.stringify({
+        type: "result",
+        ok: true,
+        message: "Scoring queued",
+        results: [{ fetched: 2, saved: 1, errors: [] }],
+        perSource: [{ source: "zenn", fetched: 2 }],
+      }) + "\n";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          async start(controller) {
+            const splitAt = 17;
+            controller.enqueue(encoder.encode(progressLine.slice(0, splitAt)));
+            controller.enqueue(encoder.encode(progressLine.slice(splitAt)));
+            await resultGate;
+            controller.enqueue(encoder.encode(resultLine));
+            controller.close();
+          },
+        }),
+        { headers: { "Content-Type": "application/x-ndjson" } },
+      ),
+    );
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
+
+    await waitFor(() => expect(screen.getByText("採点中 1 / 2（失敗 0）")).toBeInTheDocument());
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/fetch-news",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/x-ndjson" }),
+      }),
+    );
+    expect(mockRefresh).not.toHaveBeenCalled();
+
+    await act(async () => releaseResult());
+
+    await waitFor(() => expect(screen.getByText("1件 スコアリング完了")).toBeInTheDocument());
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    {
+      label: "a stream error event",
+      body: `${JSON.stringify({ type: "error", error: "ニュース取得に失敗しました" })}\n`,
+    },
+    {
+      label: "a stream that closes before its result event",
+      body: `${JSON.stringify({
+        type: "progress",
+        stage: "scoring",
+        scoring: { completed: 1, total: 2, failed: 0 },
+      })}\n`,
+    },
+  ])("shows an error for $label and releases loading state", async ({ body }) => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(body, { headers: { "Content-Type": "application/x-ndjson" } }),
+    );
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
+
+    await waitFor(() => expect(screen.getByText("ニュース取得に失敗しました")).toBeInTheDocument());
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "ニュースを取得してスコアリング" }),
+    ).toBeInTheDocument();
+  });
+
   it("displays error on API failure (ok: false)", async () => {
     const user = userEvent.setup();
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ ok: false }));
@@ -278,7 +373,7 @@ describe("FetchButton", () => {
       expect(screen.getByText("ニュース取得に失敗しました")).toBeInTheDocument();
     });
     expect(mockRefresh).not.toHaveBeenCalled();
-    expect(screen.queryByText("記事を更新中...")).not.toBeInTheDocument();
+    expect(screen.queryByText("記事取得中...")).not.toBeInTheDocument();
   });
 
   it.each([
@@ -355,7 +450,7 @@ describe("FetchButton", () => {
       expect(screen.getByText("ニュース取得に失敗しました")).toBeInTheDocument();
     });
     expect(mockRefresh).not.toHaveBeenCalled();
-    expect(screen.queryByText("記事を更新中...")).not.toBeInTheDocument();
+    expect(screen.queryByText("記事取得中...")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "ニュースを取得してスコアリング" }),
     ).toBeInTheDocument();
@@ -382,7 +477,7 @@ describe("FetchButton", () => {
       expect(screen.getByText("通信エラーが発生しました")).toBeInTheDocument();
     });
     expect(mockRefresh).not.toHaveBeenCalled();
-    expect(screen.queryByText("記事を更新中...")).not.toBeInTheDocument();
+    expect(screen.queryByText("記事取得中...")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "ニュースを取得してスコアリング" }),
     ).toBeInTheDocument();
@@ -406,7 +501,7 @@ describe("FetchButton", () => {
       expect(screen.getByText("0件 スコアリング完了")).toBeInTheDocument();
     });
     expect(mockRefresh).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("記事を更新中...")).toBeInTheDocument();
+    expect(screen.queryByText("記事取得中...")).toBeInTheDocument();
   });
 
   it("displays network error on fetch rejection", async () => {

@@ -117,6 +117,104 @@ describe("POST /api/fetch-news", () => {
     const data = await res.json();
     expect(data.ok).toBe(true);
     expect(data.results).toBeDefined();
+    expect(res.headers.get("content-type")).toContain("application/json");
+  });
+
+  test("POST streams progress and the final fetch result when NDJSON is requested", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/x-ndjson",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
+    });
+
+    const response = await POST(req);
+    const events = (await response.text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/x-ndjson");
+    expect(events.some((event) => event.type === "progress" && event.stage === "fetching")).toBe(
+      true,
+    );
+    expect(events.some((event) => event.type === "progress" && event.stage === "scoring")).toBe(
+      true,
+    );
+    expect(events.at(-1)).toMatchObject({
+      type: "result",
+      ok: true,
+      results: [{ fetched: expect.any(Number), saved: expect.any(Number) }],
+    });
+  });
+
+  test("NDJSON stream emits a five-second heartbeat while source fetching is still pending", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
+    vi.useFakeTimers();
+    const { searchZenn } = await import("@/lib/news/zenn");
+    let finishSearch: () => void = () => {};
+    vi.mocked(searchZenn).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishSearch = () => resolve([]);
+      }),
+    );
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/x-ndjson",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
+    });
+
+    try {
+      const response = await POST(req);
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      const first = await reader.read();
+      expect(JSON.parse(decoder.decode(first.value))).toMatchObject({
+        type: "progress",
+        stage: "fetching",
+      });
+
+      const heartbeatPromise = reader.read();
+      await vi.advanceTimersByTimeAsync(5_000);
+      const heartbeat = await heartbeatPromise;
+      expect(JSON.parse(decoder.decode(heartbeat.value))).toMatchObject({
+        type: "progress",
+        stage: "fetching",
+      });
+
+      finishSearch();
+      await reader.cancel();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("stream opt-in preserves regular JSON errors for invalid requests", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "invalid-source" }),
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/x-ndjson",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
+    });
+
+    const response = await POST(req);
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    await expect(response.json()).resolves.toMatchObject({ ok: false, error: "invalid source" });
   });
 
   test("POST immediately expires the article list cache after scoring and cleanup", async () => {

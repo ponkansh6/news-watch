@@ -20,6 +20,101 @@ export function normalize(article: unknown, sourceId: string): NormalizedArticle
   return adapter ? adapter.toArticle(article, sourceId) : normalizeUnknownSource(article, sourceId);
 }
 
+type FetchProgress = {
+  stage: "fetching" | "selecting" | "scoring" | "cleanup" | "complete";
+  completed: number;
+  total: number;
+  failed: number;
+};
+
+async function executeFetch(
+  selectedSource: string,
+  onProgress?: (progress: FetchProgress) => void,
+) {
+  await cleanupOrphaned();
+  onProgress?.({ stage: "fetching", completed: 0, total: 0, failed: 0 });
+  const adapter = getSourceAdapter(selectedSource)!;
+
+  const profile = await getLatestPreferenceProfile();
+  const preferenceSection = buildPreferencePromptSection(profile?.analysis ?? null);
+  const signature = computeScoringSignature(preferenceSection);
+
+  const raw = await adapter.fetch();
+  const all = deduplicate(raw.map((item) => adapter.toArticle(item, adapter.id)));
+  const perSource = [{ source: adapter.id, fetched: raw.length }];
+
+  onProgress?.({ stage: "selecting", completed: 0, total: 0, failed: 0 });
+  const selection = await selectForScoring(all, signature, SCORING_BUDGET);
+  const result = {
+    keyword: "latest",
+    fetched: all.length,
+    candidates: all.length,
+    saved: undefined as number | undefined,
+    scored: selection.toScore.length,
+    skipped: selection.skipped.length,
+    deferred: selection.deferred.length,
+    errors: [] as string[],
+    scoringErrors: [] as string[],
+  };
+
+  await refreshRecency(
+    selectedSource,
+    selection.toScore.map((a) => a.url),
+    result,
+  );
+
+  let completedScoring = 0;
+  let failedScoring = 0;
+  if (selection.toScore.length > 0) {
+    let scoringFailed = false;
+    let scoredCount = 0;
+    onProgress?.({ stage: "scoring", completed: 0, total: selection.toScore.length, failed: 0 });
+    try {
+      result.saved = await scoreAndSaveTagged(selection.toScore, {
+        preferenceSection,
+        signature,
+        onScoringError: () => {
+          scoringFailed = true;
+        },
+        onScoringSuccess: () => {
+          scoredCount++;
+        },
+        onScoringProgress: (completed, failed, total) => {
+          completedScoring = completed;
+          failedScoring = failed;
+          onProgress?.({ stage: "scoring", completed, failed, total });
+        },
+      });
+    } catch (scoringError) {
+      console.error(`[fetch-news] Scoring failed:`, scoringError);
+      scoringFailed = true;
+    }
+
+    if (scoringFailed && scoredCount === 0) {
+      const message = "採点サービスでエラーが発生しました。時間をおいて再試行してください。";
+      result.scoringErrors.push(message);
+      result.errors.push(`Scoring failed: ${message}`);
+    }
+  }
+
+  onProgress?.({
+    stage: "cleanup",
+    completed: completedScoring,
+    total: selection.toScore.length,
+    failed: failedScoring,
+  });
+  await gcStaleArticles();
+  revalidateTag("articles", { expire: 0 });
+  const response = { ok: true as const, message: "Scoring queued", results: [result], perSource };
+  onProgress?.({
+    stage: "complete",
+    completed: completedScoring,
+    total: selection.toScore.length,
+    failed: failedScoring,
+  });
+  return response;
+}
+
 function isAuthorized(request: Request): boolean {
   const bearerSecret = process.env.CRON_SECRET;
   const adminUser = process.env.ADMIN_BASIC_AUTH_USER;
@@ -89,8 +184,6 @@ export async function POST(request: Request) {
       },
     );
   }
-  await cleanupOrphaned();
-
   const rawBody = await request.json().catch(() => ({}));
   const parsed = FetchNewsBodySchema.safeParse(rawBody);
   if (!parsed.success) {
@@ -100,68 +193,66 @@ export async function POST(request: Request) {
     );
   }
   const selectedSource = parsed.data.source;
-  const adapter = getSourceAdapter(selectedSource)!;
-
-  // 嗜好プロファイルは選抜とスコアリングの両方が必要 → ここで一度だけ読む
-  const profile = await getLatestPreferenceProfile();
-  const preferenceSection = buildPreferencePromptSection(profile?.analysis ?? null);
-  const signature = computeScoringSignature(preferenceSection);
-
-  const raw = await adapter.fetch(); // 上限なし
-  const all = deduplicate(raw.map((item) => adapter.toArticle(item, adapter.id))); // 冗長 slice 削除
-  const perSource = [{ source: adapter.id, fetched: raw.length }];
-
-  const selection = await selectForScoring(all, signature, SCORING_BUDGET);
-
-  const result = {
-    keyword: "latest",
-    fetched: all.length, // 重複排除後の取得件数
-    candidates: all.length, // 候補プール全体
-    saved: undefined as number | undefined,
-    scored: selection.toScore.length, // LLM に送る件数
-    skipped: selection.skipped.length,
-    deferred: selection.deferred.length,
-    errors: [] as string[],
-    scoringErrors: [] as string[],
-  };
-
-  await refreshRecency(
-    selectedSource,
-    selection.toScore.map((a) => a.url),
-    result,
-  );
-
-  if (selection.toScore.length > 0) {
-    let scoringFailed = false;
-    let scoredCount = 0;
-    try {
-      result.saved = await scoreAndSaveTagged(selection.toScore, {
-        preferenceSection,
-        signature,
-        onScoringError: () => {
-          scoringFailed = true;
-        },
-        onScoringSuccess: () => {
-          scoredCount++;
-        },
-      });
-    } catch (scoringError) {
-      console.error(`[fetch-news] Scoring failed:`, scoringError);
-      scoringFailed = true;
-    }
-
-    if (scoringFailed && scoredCount === 0) {
-      const message = "採点サービスでエラーが発生しました。時間をおいて再試行してください。";
-      result.scoringErrors.push(message);
-      const error = `Scoring failed: ${message}`;
-      result.errors.push(error);
-    }
+  if (!request.headers.get("accept")?.includes("application/x-ndjson")) {
+    return NextResponse.json(await executeFetch(selectedSource));
   }
 
-  await gcStaleArticles();
-  revalidateTag("articles", { expire: 0 });
-
-  return NextResponse.json({ ok: true, message: "Scoring queued", results: [result], perSource });
+  const encoder = new TextEncoder();
+  let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let closed = false;
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let latest: FetchProgress = { stage: "fetching", completed: 0, total: 0, failed: 0 };
+  const send = (event: Record<string, unknown>) => {
+    if (closed || !controllerRef) return;
+    try {
+      controllerRef.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+    } catch {
+      closed = true;
+    }
+  };
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controllerRef = controller;
+      const publishProgress = () =>
+        send({
+          type: "progress",
+          stage: latest.stage,
+          scoring: { completed: latest.completed, total: latest.total, failed: latest.failed },
+        });
+      publishProgress();
+      heartbeatTimer = setInterval(publishProgress, 5_000);
+      void executeFetch(selectedSource, (progress) => {
+        const stageChanged = progress.stage !== latest.stage;
+        latest = progress;
+        if (stageChanged) publishProgress();
+      })
+        .then((result) => send({ type: "result", ...result }))
+        .catch((error: unknown) => {
+          console.error("[fetch-news] Streaming fetch failed:", error);
+          send({ type: "error", error: "ニュース取得に失敗しました" });
+        })
+        .finally(() => {
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
+          heartbeatTimer = null;
+          if (!closed) {
+            closed = true;
+            controller.close();
+          }
+        });
+    },
+    cancel() {
+      closed = true;
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }
 
 export async function GET() {

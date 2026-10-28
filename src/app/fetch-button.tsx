@@ -14,6 +14,34 @@ interface FetchResultItem {
   scoringErrors?: string[];
 }
 
+interface FetchProgress {
+  stage: "fetching" | "selecting" | "scoring" | "cleanup" | "complete";
+  completed: number;
+  total: number;
+  failed: number;
+}
+
+function isProgressEvent(
+  value: unknown,
+): value is {
+  type: "progress";
+  stage: FetchProgress["stage"];
+  scoring: Omit<FetchProgress, "stage">;
+} {
+  if (typeof value !== "object" || value === null) return false;
+  const event = value as Record<string, unknown>;
+  const scoring = event.scoring;
+  if (typeof scoring !== "object" || scoring === null) return false;
+  const counts = scoring as Record<string, unknown>;
+  return (
+    event.type === "progress" &&
+    ["fetching", "selecting", "scoring", "cleanup", "complete"].includes(String(event.stage)) &&
+    Number.isFinite(counts.completed) &&
+    Number.isFinite(counts.total) &&
+    Number.isFinite(counts.failed)
+  );
+}
+
 function isFetchResultItem(value: unknown): value is FetchResultItem {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
 
@@ -47,6 +75,7 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
   const [apiInFlight, setApiInFlight] = useState(false);
   const [results, setResults] = useState<FetchResultData[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<FetchProgress | null>(null);
   const [, startTransition] = useTransition();
   const { isRefreshing, setRefreshing } = useRefresh();
   const refreshFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,14 +112,65 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
     setRefreshing(true);
     setResults(null);
     setFetchError(null);
+    setProgress({ stage: "fetching", completed: 0, total: 0, failed: 0 });
 
     try {
       const res = await fetch("/api/fetch-news", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
         body: JSON.stringify({ source: selectedSource }),
       });
-      const data: unknown = await res.json();
+      if (!res.ok) {
+        setFetchError("ニュース取得に失敗しました");
+        setRefreshing(false);
+        return;
+      }
+      let data: unknown;
+      if (res.headers.get("content-type")?.includes("application/x-ndjson")) {
+        if (!res.body) throw new Error("Missing progress stream");
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        data = null;
+        let streamError = false;
+        const handleLine = (line: string) => {
+          if (!line.trim()) return;
+          const event: unknown = JSON.parse(line);
+          if (isProgressEvent(event)) {
+            setProgress({
+              stage: event.stage,
+              completed: event.scoring.completed,
+              total: event.scoring.total,
+              failed: event.scoring.failed,
+            });
+          } else if (typeof event === "object" && event !== null && "type" in event) {
+            const terminal = event as Record<string, unknown>;
+            if (terminal.type === "result") data = terminal;
+            else if (terminal.type === "error") streamError = true;
+            else throw new Error("Invalid fetch progress event");
+          } else {
+            throw new Error("Invalid fetch progress event");
+          }
+        };
+        while (true) {
+          const { done, value } = await reader.read();
+          buffer += decoder.decode(value, { stream: !done });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) handleLine(line);
+          if (done) break;
+        }
+        if (buffer.trim()) handleLine(buffer);
+
+        if (streamError || data === null) {
+          setFetchError("ニュース取得に失敗しました");
+          setRefreshing(false);
+          return;
+        }
+      } else {
+        // Compatibility with servers still returning the legacy JSON response.
+        data = await res.json();
+      }
 
       if (res.ok && isFetchResponse(data)) {
         const totalFetched = data.results.reduce(
@@ -155,7 +235,13 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
       {isRefreshing && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-muted-foreground" />
-          記事を更新中...
+          {progress?.stage === "scoring"
+            ? `採点中 ${progress.completed} / ${progress.total}（失敗 ${progress.failed}）`
+            : progress?.stage === "selecting"
+              ? "対象選定中..."
+              : progress?.stage === "cleanup" || progress?.stage === "complete"
+                ? "取得結果を整理中..."
+                : "記事取得中..."}
         </div>
       )}
     </div>
