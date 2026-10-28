@@ -349,11 +349,40 @@ describe("POST /api/fetch-news", () => {
     expect(data.ok).toBe(true);
     expect(data.results[0].errors).toBeDefined();
     expect(data.results[0].errors[0]).toContain("Scoring failed");
+    expect(data.results[0].scoringErrors).toEqual([
+      "採点サービスでエラーが発生しました。時間をおいて再試行してください。",
+    ]);
     expect(revalidateTag).toHaveBeenCalledWith("articles", { expire: 0 });
     const { deleteStaleLowScored } = await import("@/lib/db");
     expect(vi.mocked(deleteStaleLowScored).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(revalidateTag).mock.invocationCallOrder[0],
     );
+  });
+
+  test("reports a safe scoring error when the scoring pipeline reports a per-article failure", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
+    vi.mocked(scoreAndSaveTagged).mockImplementationOnce(async (_articles, options) => {
+      options?.onScoringError?.("provider secret/internal stack");
+      options?.onScoringError?.("a different provider error");
+      return 0;
+    });
+
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
+    });
+
+    const res = await POST(req);
+    const data = await res.json();
+
+    expect(data.results[0].scoringErrors).toEqual([
+      "採点サービスでエラーが発生しました。時間をおいて再試行してください。",
+    ]);
+    expect(JSON.stringify(data)).not.toContain("provider secret/internal stack");
   });
 
   test("churn check: 1st POST calls scoreAndSaveTagged, 2nd POST with identical state calls 0 scored/skipped, 3rd POST with changed signature re-scores", async () => {

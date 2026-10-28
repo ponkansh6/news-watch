@@ -31,7 +31,32 @@ describe("score-pipeline-resilience", () => {
       },
     ];
 
-    const result = await scoreAndSaveTagged(articles);
+    const onScoringError = vi.fn();
+    const result = await scoreAndSaveTagged(articles, { onScoringError });
     expect(result).toBe(0);
+    expect(onScoringError).toHaveBeenCalledWith("LLM failure");
+  });
+
+  test("reports an article whose LLM result is null", async () => {
+    vi.mocked(llmMod.scoreArticles).mockResolvedValueOnce([null]);
+    const { upsertArticles } = await import("@/lib/db");
+    vi.mocked(upsertArticles).mockResolvedValueOnce({ succeeded: [], failed: [] } as never);
+    const onScoringError = vi.fn();
+    const articles = [
+      {
+        title: "Test",
+        description: "Desc",
+        url: "https://example.com/1",
+        urlToImage: null,
+        publishedAt: new Date().toISOString(),
+        sourceName: "Source",
+        sourceId: "src",
+        author: "Author",
+      },
+    ];
+
+    await scoreAndSaveTagged(articles, { onScoringError });
+
+    expect(onScoringError).toHaveBeenCalledWith("LLM returned no scoring result for an article");
   });
 });

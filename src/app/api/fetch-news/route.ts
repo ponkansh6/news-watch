@@ -122,6 +122,7 @@ export async function POST(request: Request) {
     skipped: selection.skipped.length,
     deferred: selection.deferred.length,
     errors: [] as string[],
+    scoringErrors: [] as string[],
   };
 
   await refreshRecency(
@@ -132,10 +133,22 @@ export async function POST(request: Request) {
 
   if (selection.toScore.length > 0) {
     try {
-      result.saved = await scoreAndSaveTagged(selection.toScore, { preferenceSection, signature });
+      result.saved = await scoreAndSaveTagged(selection.toScore, {
+        preferenceSection,
+        signature,
+        onScoringError: () => {
+          const message = "採点サービスでエラーが発生しました。時間をおいて再試行してください。";
+          if (!result.scoringErrors.includes(message)) result.scoringErrors.push(message);
+          const error = `Scoring failed: ${message}`;
+          if (!result.errors.includes(error)) result.errors.push(error);
+        },
+      });
     } catch (scoringError) {
       console.error(`[fetch-news] Scoring failed:`, scoringError);
-      result.errors.push(`Scoring failed: ${scoringError}`);
+      const message = "採点サービスでエラーが発生しました。時間をおいて再試行してください。";
+      if (!result.scoringErrors.includes(message)) result.scoringErrors.push(message);
+      const error = `Scoring failed: ${message}`;
+      if (!result.errors.includes(error)) result.errors.push(error);
     }
   }
 

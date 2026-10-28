@@ -8,6 +8,7 @@ export interface FetchResultData {
   scored: number;
   processed: number;
   errors: string[];
+  scoringErrors?: string[];
 }
 
 interface FetchResultProps {
@@ -42,6 +43,19 @@ export function FetchResult({ results, error }: FetchResultProps) {
           {showDetail ? "閉じる" : "詳細を表示"}
         </button>
       </div>
+
+      {results.some((r) => (r.scoringErrors?.length ?? 0) > 0) && (
+        <div role="alert" className="mt-2 text-destructive">
+          <p>採点エラーが発生しました</p>
+          <ul className="list-inside list-disc">
+            {results
+              .flatMap((r) => r.scoringErrors ?? [])
+              .map((message, index) => (
+                <li key={`${index}-${message}`}>{message}</li>
+              ))}
+          </ul>
+        </div>
+      )}
 
       {showDetail && (
         <div className="mt-3 space-y-1.5 border-t border-border pt-3">

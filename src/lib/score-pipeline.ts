@@ -27,7 +27,11 @@ function getBatchSize(articles: NormalizedArticle[]): number {
 /** Score articles in batches of LLM_BATCH_SIZE via LLM, and save. */
 export async function scoreAndSaveTagged(
   articles: NormalizedArticle[],
-  options?: { preferenceSection?: string; signature?: string },
+  options?: {
+    preferenceSection?: string;
+    signature?: string;
+    onScoringError?: (message: string) => void;
+  },
 ): Promise<number> {
   let preferenceSection = "";
   if (options?.preferenceSection !== undefined) {
@@ -53,7 +57,9 @@ export async function scoreAndSaveTagged(
   const limit = pLimit(LLM_BATCH_CONCURRENCY);
   const settled = await Promise.allSettled(
     batches.map((batch) =>
-      limit(() => scoreAndSaveBatch(batch, preferenceSection, signature, deadline)),
+      limit(() =>
+        scoreAndSaveBatch(batch, preferenceSection, signature, deadline, options?.onScoringError),
+      ),
     ),
   );
 
@@ -66,10 +72,14 @@ async function scoreAndSaveBatch(
   preferenceSection: string,
   signature: string,
   deadline: number,
+  onScoringError?: (message: string) => void,
 ): Promise<number> {
   try {
     const remaining = deadline - Date.now();
-    if (remaining < SCORING_MIN_SLICE_MS) return 0;
+    if (remaining < SCORING_MIN_SLICE_MS) {
+      onScoringError?.("Scoring deadline exceeded");
+      return 0;
+    }
 
     const llmResults = await scoreArticles(
       batch.map((a) => ({ title: a.title, description: a.description })),
@@ -83,6 +93,7 @@ async function scoreAndSaveBatch(
     for (let i = 0; i < batch.length; i++) {
       const article = batch[i];
       const llmResult = llmResults[i] ?? null;
+      if (!llmResult) onScoringError?.("LLM returned no scoring result for an article");
       const usefulness = llmResult?.usefulness ?? null;
       const relevance = llmResult?.ntt_relevance ?? 0;
       const recency = calcRecencyScore(article.publishedAt);
@@ -128,6 +139,7 @@ async function scoreAndSaveBatch(
     return savedCount;
   } catch (err) {
     console.error(`[pipeline] Batch scoring/saving failed:`, err);
+    onScoringError?.(err instanceof Error ? err.message : String(err));
     return 0;
   }
 }

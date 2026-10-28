@@ -483,6 +483,38 @@ describe("FetchButton", () => {
 
     expect(screen.getByText("5件取得 / 2件スコアリング ⚠")).toBeInTheDocument();
   });
+
+  it("clearly labels scoring failures in the result summary", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({
+        ok: true,
+        results: [
+          {
+            fetched: 5,
+            saved: 2,
+            errors: ["Scoring failed: Gemini API error: 429"],
+            scoringErrors: ["採点サービスでエラーが発生しました。時間をおいて再試行してください。"],
+          },
+        ],
+      }),
+    );
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/採点エラー/)).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("採点サービスでエラーが発生しました。時間をおいて再試行してください。"),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("Refresh lifecycle integration", () => {

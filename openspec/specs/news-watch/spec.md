@@ -49,6 +49,7 @@ authors: [shunki]
   - AND the fetch status is indicated to the user
   - AND Hatena's `hotentry` and `entrylist` feeds fail independently: a fetch or parse failure yields no items for that feed while preserving items and input order from the other successful feed
   - AND the client accepts a fetch response only when the HTTP response is successful, the JSON body has `ok: true`, and `results` is an array whose entries have a finite numeric `fetched` and an `errors` string array; `saved` is optional but must be a finite number when present
+  - AND scoring failures are reported separately in each result's optional `scoringErrors` string array, while preserving the fetch response; the dashboard visibly labels them as 採点エラー and shows a safe retry message without exposing provider exception details
   - AND a non-success HTTP response or malformed response is shown as a fetch error and does not refresh the dashboard
   - AND after the fetch pipeline finishes scoring and stale-article cleanup, the API immediately expires the `articles` cache tag with `revalidateTag("articles", { expire: 0 })`, regardless of the saved count
   - AND after a successful fetch response, the client refreshes the dashboard once, and that first refreshed view includes newly saved articles that meet the display criteria without requiring another fetch operation

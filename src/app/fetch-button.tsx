@@ -11,6 +11,7 @@ interface FetchResultItem {
   fetched: number;
   saved?: number;
   errors: string[];
+  scoringErrors?: string[];
 }
 
 function isFetchResultItem(value: unknown): value is FetchResultItem {
@@ -22,7 +23,10 @@ function isFetchResultItem(value: unknown): value is FetchResultItem {
     Number.isFinite(item.fetched) &&
     (item.saved === undefined || (typeof item.saved === "number" && Number.isFinite(item.saved))) &&
     Array.isArray(item.errors) &&
-    item.errors.every((error) => typeof error === "string")
+    item.errors.every((error) => typeof error === "string") &&
+    (item.scoringErrors === undefined ||
+      (Array.isArray(item.scoringErrors) &&
+        item.scoringErrors.every((error) => typeof error === "string")))
   );
 }
 
@@ -103,6 +107,7 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
           return;
         }
         const hasErrors = data.results.some((r: FetchResultItem) => r.errors.length > 0);
+        const scoringErrors = data.results.flatMap((r: FetchResultItem) => r.scoringErrors ?? []);
 
         setResults([
           {
@@ -111,6 +116,7 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
             scored: totalSaved,
             processed: totalFetched,
             errors: hasErrors ? ["一部の処理でエラーが発生しました"] : [],
+            scoringErrors,
           },
         ]);
 
