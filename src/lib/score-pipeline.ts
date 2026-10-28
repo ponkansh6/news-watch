@@ -31,6 +31,7 @@ export async function scoreAndSaveTagged(
     preferenceSection?: string;
     signature?: string;
     onScoringError?: (message: string) => void;
+    onScoringSuccess?: () => void;
   },
 ): Promise<number> {
   let preferenceSection = "";
@@ -58,7 +59,14 @@ export async function scoreAndSaveTagged(
   const settled = await Promise.allSettled(
     batches.map((batch) =>
       limit(() =>
-        scoreAndSaveBatch(batch, preferenceSection, signature, deadline, options?.onScoringError),
+        scoreAndSaveBatch(
+          batch,
+          preferenceSection,
+          signature,
+          deadline,
+          options?.onScoringError,
+          options?.onScoringSuccess,
+        ),
       ),
     ),
   );
@@ -73,6 +81,7 @@ async function scoreAndSaveBatch(
   signature: string,
   deadline: number,
   onScoringError?: (message: string) => void,
+  onScoringSuccess?: () => void,
 ): Promise<number> {
   try {
     const remaining = deadline - Date.now();
@@ -93,7 +102,11 @@ async function scoreAndSaveBatch(
     for (let i = 0; i < batch.length; i++) {
       const article = batch[i];
       const llmResult = llmResults[i] ?? null;
-      if (!llmResult) onScoringError?.("LLM returned no scoring result for an article");
+      if (!llmResult) {
+        onScoringError?.("LLM returned no scoring result for an article");
+      } else {
+        onScoringSuccess?.();
+      }
       const usefulness = llmResult?.usefulness ?? null;
       const relevance = llmResult?.ntt_relevance ?? 0;
       const recency = calcRecencyScore(article.publishedAt);

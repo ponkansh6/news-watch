@@ -385,6 +385,59 @@ describe("POST /api/fetch-news", () => {
     expect(JSON.stringify(data)).not.toContain("provider secret/internal stack");
   });
 
+  test("does not report a scoring error when some articles were scored successfully", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
+    const { searchZenn } = await import("@/lib/news/zenn");
+    vi.mocked(searchZenn).mockResolvedValueOnce([
+      {
+        id: 1,
+        title: "Zenn Article 1",
+        slug: "zenn-1",
+        liked_count: 0,
+        bookmarked_count: 0,
+        article_type: "tech",
+        emoji: null,
+        path: "/articles/zenn-1",
+        published_at: new Date().toISOString(),
+        user: { username: "zenn-user", name: "Zenn User" },
+      },
+      {
+        id: 2,
+        title: "Zenn Article 2",
+        slug: "zenn-2",
+        liked_count: 0,
+        bookmarked_count: 0,
+        article_type: "tech",
+        emoji: null,
+        path: "/articles/zenn-2",
+        published_at: new Date().toISOString(),
+        user: { username: "zenn-user", name: "Zenn User" },
+      },
+    ]);
+    vi.mocked(scoreAndSaveTagged).mockImplementationOnce(async (_articles, options) => {
+      options?.onScoringError?.("one article failed");
+      options?.onScoringSuccess?.();
+      return 0;
+    });
+
+    const req = new NextRequest("http://localhost/api/fetch-news", {
+      method: "POST",
+      body: JSON.stringify({ source: "zenn" }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
+    });
+
+    const res = await POST(req);
+    const data = await res.json();
+
+    expect(
+      data.results.some((result: { scoringErrors?: string[] }) => result.scoringErrors?.length),
+    ).toBe(false);
+    expect(data.results.some((result: { saved?: number }) => result.saved === 0)).toBe(true);
+  });
+
   test("churn check: 1st POST calls scoreAndSaveTagged, 2nd POST with identical state calls 0 scored/skipped, 3rd POST with changed signature re-scores", async () => {
     vi.stubEnv("CRON_SECRET", "test-secret");
     const { getScoringStateByUrls } = await import("@/lib/db");

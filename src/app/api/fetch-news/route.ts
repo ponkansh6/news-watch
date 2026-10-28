@@ -132,23 +132,29 @@ export async function POST(request: Request) {
   );
 
   if (selection.toScore.length > 0) {
+    let scoringFailed = false;
+    let scoredCount = 0;
     try {
       result.saved = await scoreAndSaveTagged(selection.toScore, {
         preferenceSection,
         signature,
         onScoringError: () => {
-          const message = "採点サービスでエラーが発生しました。時間をおいて再試行してください。";
-          if (!result.scoringErrors.includes(message)) result.scoringErrors.push(message);
-          const error = `Scoring failed: ${message}`;
-          if (!result.errors.includes(error)) result.errors.push(error);
+          scoringFailed = true;
+        },
+        onScoringSuccess: () => {
+          scoredCount++;
         },
       });
     } catch (scoringError) {
       console.error(`[fetch-news] Scoring failed:`, scoringError);
+      scoringFailed = true;
+    }
+
+    if (scoringFailed && scoredCount === 0) {
       const message = "採点サービスでエラーが発生しました。時間をおいて再試行してください。";
-      if (!result.scoringErrors.includes(message)) result.scoringErrors.push(message);
+      result.scoringErrors.push(message);
       const error = `Scoring failed: ${message}`;
-      if (!result.errors.includes(error)) result.errors.push(error);
+      result.errors.push(error);
     }
   }
 

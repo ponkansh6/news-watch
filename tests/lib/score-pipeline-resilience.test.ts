@@ -59,4 +59,30 @@ describe("score-pipeline-resilience", () => {
 
     expect(onScoringError).toHaveBeenCalledWith("LLM returned no scoring result for an article");
   });
+
+  test("preserves successful LLM scoring when article persistence fails", async () => {
+    vi.mocked(llmMod.scoreArticles).mockResolvedValueOnce([{} as never]);
+    const { upsertArticles } = await import("@/lib/db");
+    vi.mocked(upsertArticles).mockRejectedValueOnce(new Error("database unavailable"));
+    const onScoringSuccess = vi.fn();
+    const onScoringError = vi.fn();
+    const articles = [
+      {
+        title: "Test",
+        description: "Desc",
+        url: "https://example.com/1",
+        urlToImage: null,
+        publishedAt: new Date().toISOString(),
+        sourceName: "Source",
+        sourceId: "src",
+        author: "Author",
+      },
+    ];
+
+    const result = await scoreAndSaveTagged(articles, { onScoringSuccess, onScoringError });
+
+    expect(result).toBe(0);
+    expect(onScoringSuccess).toHaveBeenCalledOnce();
+    expect(onScoringError).toHaveBeenCalledWith("database unavailable");
+  });
 });
