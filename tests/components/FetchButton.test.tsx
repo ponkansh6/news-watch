@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent, act } from "../lib/test-utils";
+import { render, screen, waitFor, fireEvent, act, within } from "../lib/test-utils";
 import userEvent from "@testing-library/user-event";
 import { useState, useEffect, useRef } from "react";
 import FetchButton from "../../src/app/fetch-button";
@@ -134,6 +134,196 @@ describe("FetchButton", () => {
 
     const select = screen.getByRole("combobox") as HTMLSelectElement;
     expect(select.value).toBe("zenn");
+  });
+
+  it("総合表示では単一ソース更新を送信しない", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ job: null }));
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="all" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "全ソースを一括更新" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith("/api/refresh-jobs", expect.anything()),
+    );
+    expect(
+      fetchSpy.mock.calls.some(
+        ([url, init]) =>
+          url === "/api/fetch-news" || (url === "/api/refresh-jobs" && init?.method === "POST"),
+      ),
+    ).toBe(false);
+  });
+
+  it("starts an aggregate job and follows its server status", async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/refresh-jobs" && init?.method === "POST") {
+        return jsonResponse(
+          {
+            jobId: "job-aggregate",
+            status: "running",
+            revision: 1,
+            sources: [
+              {
+                sourceId: "zenn",
+                status: "pending",
+                resultCount: null,
+                errorCode: null,
+                cacheInvalidatedAt: null,
+              },
+            ],
+          },
+          202,
+        );
+      }
+      if (input === "/api/refresh-jobs/job-aggregate") {
+        return jsonResponse({
+          job: {
+            jobId: "job-aggregate",
+            status: "completed",
+            revision: 2,
+            currentSourceId: null,
+            errorCode: null,
+            sources: [
+              {
+                sourceId: "zenn",
+                status: "invalidated",
+                resultCount: 3,
+                errorCode: null,
+                cacheInvalidatedAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          },
+        });
+      }
+      return jsonResponse({ job: null });
+    });
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="all" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+    await user.click(await screen.findByRole("button", { name: "全ソースを一括更新" }));
+
+    expect(await screen.findByText("総合更新が完了しました")).toBeInTheDocument();
+    const progress = screen.getByRole("region", { name: "総合更新の進捗" });
+    expect(within(progress).getByText("Zenn")).toBeInTheDocument();
+    expect(within(progress).getByText("完了 3件")).toBeInTheDocument();
+    expect(fetchSpy).toHaveBeenCalledWith("/api/refresh-jobs", { method: "POST" });
+    expect(fetchSpy.mock.calls.some(([url]) => url === "/api/fetch-news")).toBe(false);
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+
+  it("restores an active aggregate job when revisiting the page", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (input === "/api/refresh-jobs") {
+        return jsonResponse({
+          job: {
+            jobId: "job-restored",
+            status: "running",
+            revision: 3,
+            currentSourceId: "qiita",
+            errorCode: null,
+            sources: [
+              {
+                sourceId: "qiita",
+                status: "executing",
+                resultCount: null,
+                errorCode: null,
+                cacheInvalidatedAt: null,
+              },
+            ],
+          },
+        });
+      }
+      return jsonResponse({
+        job: {
+          jobId: "job-restored",
+          status: "needs_reconciliation",
+          revision: 4,
+          currentSourceId: "qiita",
+          errorCode: "enqueue_unknown",
+          sources: [
+            {
+              sourceId: "qiita",
+              status: "unknown",
+              resultCount: null,
+              errorCode: "enqueue_unknown",
+              cacheInvalidatedAt: null,
+            },
+          ],
+        },
+      });
+    });
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="all" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+
+    expect(
+      await screen.findByText(
+        "更新状況を確認できません。自動再実行は行いません。管理者による確認が必要です。",
+      ),
+    ).toBeInTheDocument();
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/refresh-jobs",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(fetchSpy.mock.calls.some(([url]) => url === "/api/refresh-jobs/job-restored")).toBe(
+      true,
+    );
+  });
+
+  it("follows the aggregate job returned by a single-source busy response", async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (input === "/api/fetch-news") {
+        return jsonResponse(
+          { error: "refresh already running", jobId: "job-busy", status: "running" },
+          409,
+        );
+      }
+      if (input === "/api/refresh-jobs/job-busy") {
+        return jsonResponse({
+          job: {
+            jobId: "job-busy",
+            status: "needs_reconciliation",
+            revision: 4,
+            currentSourceId: "qiita",
+            errorCode: "enqueue_unknown",
+            sources: [
+              {
+                sourceId: "qiita",
+                status: "unknown",
+                resultCount: null,
+                errorCode: "enqueue_unknown",
+                cacheInvalidatedAt: null,
+              },
+            ],
+          },
+        });
+      }
+      return jsonResponse({ job: null });
+    });
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
+
+    expect(
+      await screen.findByText("管理者の確認が終わるまで更新を停止しています"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "ニュースを取得してスコアリング" })).toBeNull();
+    expect(fetchSpy.mock.calls.some(([url]) => url === "/api/refresh-jobs/job-busy")).toBe(true);
+    expect(fetchSpy.mock.calls.filter(([url]) => url === "/api/fetch-news")).toHaveLength(1);
   });
 
   it("calls onSourceChange when source is changed", async () => {

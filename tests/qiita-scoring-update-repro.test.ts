@@ -6,6 +6,19 @@ import { NextRequest } from "next/server";
 import { POST } from "@/app/api/fetch-news/route";
 import * as db from "@/lib/db";
 
+const refreshJobMocks = vi.hoisted(() => ({
+  claimSingleRefresh: vi.fn().mockResolvedValue({
+    kind: "claimed",
+    ownerId: "single:test",
+    ownerToken: "test-owner-token",
+  }),
+  releaseSingleRefresh: vi.fn().mockResolvedValue(true),
+  getActiveRefreshSlot: vi.fn().mockResolvedValue(null),
+  getOwnedRefreshJob: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("@/lib/db/repository/refresh-job-repository", () => refreshJobMocks);
+
 vi.mock("@/lib/news/qiita", () => ({
   searchQiita: vi.fn().mockResolvedValue([
     {

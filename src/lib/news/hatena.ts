@@ -1,7 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import { HATENA_TIMEOUT_MS } from "../constants";
 import { decodeEntities } from "./base/entity-decoder";
-import { fetchAndParseFeed, NEWS_USER_AGENT } from "./feeds";
+import { fetchAndParseFeed, fetchAndParseFeedStrict, NEWS_USER_AGENT } from "./feeds";
 
 const HATENA_HOTENTRY_RSS_URL = "https://b.hatena.ne.jp/hotentry/it.rss";
 const HATENA_ENTRYLIST_RSS_URL = "https://b.hatena.ne.jp/entrylist/it.rss";
@@ -38,6 +38,16 @@ function parseHatenaRss(xml: string): HatenaItem[] {
   }));
 }
 
+function mergeFeeds(results: HatenaItem[][], limit?: number): HatenaItem[] {
+  const seen = new Set<string>();
+  const deduped = results.flat().filter((item) => {
+    if (!item.link || seen.has(item.link)) return false;
+    seen.add(item.link);
+    return true;
+  });
+  return limit === undefined ? deduped : deduped.slice(0, limit);
+}
+
 export async function searchHatena(limit?: number): Promise<HatenaItem[]> {
   const rssUrls = [HATENA_HOTENTRY_RSS_URL, HATENA_ENTRYLIST_RSS_URL];
   const results = await Promise.all(
@@ -52,11 +62,18 @@ export async function searchHatena(limit?: number): Promise<HatenaItem[]> {
       }
     }),
   );
-  const seen = new Set<string>();
-  const deduped = results.flat().filter((item) => {
-    if (!item.link || seen.has(item.link)) return false;
-    seen.add(item.link);
-    return true;
-  });
-  return limit === undefined ? deduped : deduped.slice(0, limit);
+  return mergeFeeds(results, limit);
+}
+
+export async function fetchHatenaForWorkflow(limit?: number): Promise<HatenaItem[]> {
+  const rssUrls = [HATENA_HOTENTRY_RSS_URL, HATENA_ENTRYLIST_RSS_URL];
+  const results = await Promise.all(
+    rssUrls.map((url) =>
+      fetchAndParseFeedStrict(url, "hatena", parseHatenaRss, {
+        timeoutMs: HATENA_TIMEOUT_MS,
+        headers: { "User-Agent": NEWS_USER_AGENT },
+      }),
+    ),
+  );
+  return mergeFeeds(results, limit);
 }

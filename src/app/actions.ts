@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { updateTag } from "next/cache";
 import { verifyArticlesInvalidationToken } from "@/lib/cache-invalidation-token";
+import { isSourceSelection } from "@/lib/sources";
 
 /** Invalidate the article list after an authenticated interactive fetch. */
 export async function invalidateArticlesAfterFetch(token: string): Promise<{ ok: true }> {
@@ -20,6 +21,8 @@ export async function invalidateArticlesAfterFetch(token: string): Promise<{ ok:
  * 旧 `handleSourceChange`（page.tsx の空ラッパー）は単一関数に統合した。
  */
 export async function setSourceCookie(source: string) {
+  if (!isSourceSelection(source)) return;
+
   const cookieStore = await cookies();
   cookieStore.set("source", source, {
     httpOnly: false,

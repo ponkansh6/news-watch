@@ -14,6 +14,7 @@ export interface SourceAdapter<T> {
   name: string;
   displayName: string;
   fetch: (limit?: number) => Promise<T[]>;
+  fetchForWorkflow: (limit?: number) => Promise<T[]>;
   toArticle: (item: T, sourceId: string) => NormalizedArticle;
 }
 
@@ -34,6 +35,10 @@ export const SOURCE_REGISTRY = {
     name: "Zenn",
     displayName: "Zenn",
     fetch: searchZenn,
+    fetchForWorkflow: async (limit) => {
+      const { fetchZennForWorkflow } = await import("./zenn");
+      return fetchZennForWorkflow(limit);
+    },
     toArticle: (z: ZennArticle, sourceId): NormalizedArticle => ({
       title: z.title,
       description: extractDescription(z),
@@ -50,6 +55,10 @@ export const SOURCE_REGISTRY = {
     name: "Qiita",
     displayName: "Qiita",
     fetch: searchQiita,
+    fetchForWorkflow: async (limit) => {
+      const { fetchQiitaForWorkflow } = await import("./qiita");
+      return fetchQiitaForWorkflow(limit);
+    },
     toArticle: (q: QiitaFeedItem, sourceId): NormalizedArticle => ({
       title: q.title,
       description: extractDescription(q),
@@ -66,6 +75,10 @@ export const SOURCE_REGISTRY = {
     name: "Tech Blog",
     displayName: "Tech Blog",
     fetch: searchYamadashy,
+    fetchForWorkflow: async (limit) => {
+      const { searchYamadashy } = await import("./yamadashy");
+      return searchYamadashy.fetchForWorkflow(limit);
+    },
     toArticle: (yd: YamadashyItem, sourceId): NormalizedArticle => ({
       title: yd.title,
       description: extractDescription(yd),
@@ -82,6 +95,10 @@ export const SOURCE_REGISTRY = {
     name: "@IT",
     displayName: "@IT",
     fetch: searchITmedia,
+    fetchForWorkflow: async (limit) => {
+      const { searchITmedia } = await import("./itmedia");
+      return searchITmedia.fetchForWorkflow(limit);
+    },
     toArticle: (it: ItmediaItem, sourceId): NormalizedArticle => ({
       title: it.title,
       description: extractDescription(it),
@@ -98,6 +115,10 @@ export const SOURCE_REGISTRY = {
     name: "CodeZine",
     displayName: "CodeZine",
     fetch: searchCodeZine,
+    fetchForWorkflow: async (limit) => {
+      const { searchCodeZine } = await import("./codezine");
+      return searchCodeZine.fetchForWorkflow(limit);
+    },
     toArticle: (cz: CodeZineItem, sourceId): NormalizedArticle => ({
       title: cz.title,
       description: extractDescription(cz),
@@ -114,6 +135,10 @@ export const SOURCE_REGISTRY = {
     name: "ZDNet Japan",
     displayName: "ZDNet Japan",
     fetch: searchZdnet,
+    fetchForWorkflow: async (limit) => {
+      const { searchZdnet } = await import("./zdnet");
+      return searchZdnet.fetchForWorkflow(limit);
+    },
     toArticle: (z: ZdnetItem, sourceId): NormalizedArticle => ({
       title: z.title,
       description: extractDescription(z),
@@ -130,6 +155,10 @@ export const SOURCE_REGISTRY = {
     name: "日経クロステック",
     displayName: "日経クロステック",
     fetch: searchXtech,
+    fetchForWorkflow: async (limit) => {
+      const { searchXtech } = await import("./xtech");
+      return searchXtech.fetchForWorkflow(limit);
+    },
     toArticle: (x: XtechItem, sourceId): NormalizedArticle => ({
       title: x.title,
       description: extractDescription(x),
@@ -146,6 +175,10 @@ export const SOURCE_REGISTRY = {
     name: "クラウド Watch",
     displayName: "クラウド Watch",
     fetch: searchCloudWatch,
+    fetchForWorkflow: async (limit) => {
+      const { searchCloudWatch } = await import("./cloudwatch");
+      return searchCloudWatch.fetchForWorkflow(limit);
+    },
     toArticle: (cw: CloudWatchItem, sourceId): NormalizedArticle => ({
       title: cw.title,
       description: extractDescription(cw),
@@ -162,6 +195,10 @@ export const SOURCE_REGISTRY = {
     name: "Hatena Blog",
     displayName: "Hatena Blog",
     fetch: searchHatena,
+    fetchForWorkflow: async (limit) => {
+      const { fetchHatenaForWorkflow } = await import("./hatena");
+      return fetchHatenaForWorkflow(limit);
+    },
     toArticle: (h: HatenaItem, sourceId): NormalizedArticle => ({
       title: h.title,
       description: extractDescription(h),

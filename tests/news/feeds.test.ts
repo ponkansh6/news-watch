@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
-import { fetchAndParseFeed } from "@/lib/news/feeds";
+import { fetchAndParseFeed, fetchAndParseFeedStrict } from "@/lib/news/feeds";
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -66,6 +66,43 @@ describe("fetchAndParseFeed", () => {
     await expect(fetchAndParseFeed("https://example.com/feed", "example", parse)).rejects.toThrow(
       "invalid feed",
     );
+  });
+});
+
+describe("fetchAndParseFeedStrict", () => {
+  test("preserves a healthy empty feed as an empty result", async () => {
+    fetchMock.mockResolvedValue({ ok: true, text: async () => "" });
+
+    await expect(
+      fetchAndParseFeedStrict("https://example.com/feed", "example", () => []),
+    ).resolves.toEqual([]);
+  });
+
+  test("reports an HTTP failure instead of turning it into an empty feed", async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 503 });
+
+    await expect(
+      fetchAndParseFeedStrict("https://example.com/feed", "example", () => []),
+    ).rejects.toMatchObject({
+      name: "SourceFetchError",
+      sourceName: "example",
+      kind: "http",
+      status: 503,
+    });
+  });
+
+  test("reports transport and parser failures with their distinct kinds", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("offline"));
+    await expect(
+      fetchAndParseFeedStrict("https://example.com/feed", "example", () => []),
+    ).rejects.toMatchObject({ name: "SourceFetchError", kind: "network" });
+
+    fetchMock.mockResolvedValueOnce({ ok: true, text: async () => "invalid" });
+    await expect(
+      fetchAndParseFeedStrict("https://example.com/feed", "example", () => {
+        throw new Error("invalid XML");
+      }),
+    ).rejects.toMatchObject({ name: "SourceFetchError", kind: "parse" });
   });
 });
 

@@ -51,3 +51,4 @@ test.db
 # local working artifacts (session logs / scratch design docs)
 log/
 shared_plan/
+/.swc

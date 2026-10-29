@@ -34,6 +34,11 @@ describe("setSourceCookie (Server Action)", () => {
     );
   });
 
+  it("does not write a cookie for an unknown source", async () => {
+    await setSourceCookie("unknown-source");
+    expect(mockSet).not.toHaveBeenCalled();
+  });
+
   it("immediately invalidates the fixed articles tag for an authenticated admin", async () => {
     vi.stubEnv("CRON_SECRET", "test-secret");
     const { issueArticlesInvalidationToken } = await import("@/lib/cache-invalidation-token");

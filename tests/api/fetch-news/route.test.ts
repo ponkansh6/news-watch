@@ -4,8 +4,25 @@ import { POST, GET } from "@/app/api/fetch-news/route";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 import { revalidateTag } from "next/cache";
 
+const refreshMocks = vi.hoisted(() => ({
+  claimSingleRefresh: vi.fn(),
+  getActiveRefreshSlot: vi.fn(),
+  getOwnedRefreshJob: vi.fn(),
+  releaseSingleRefresh: vi.fn(),
+}));
+
+vi.mock("@/lib/db/repository/refresh-job-repository", () => refreshMocks);
+
 vi.mock("@/lib/news/zenn", () => ({
   searchZenn: vi.fn().mockResolvedValue([
+    {
+      title: "Zenn Article",
+      path: "/articles/zenn-1",
+      published_at: new Date().toISOString(),
+      user: { name: "Zenn User" },
+    },
+  ]),
+  fetchZennForWorkflow: vi.fn().mockResolvedValue([
     {
       title: "Zenn Article",
       path: "/articles/zenn-1",
@@ -17,6 +34,14 @@ vi.mock("@/lib/news/zenn", () => ({
 
 vi.mock("@/lib/news/qiita", () => ({
   searchQiita: vi.fn().mockResolvedValue([
+    {
+      title: "Qiita Article",
+      link: "https://qiita.com/items/1",
+      published: new Date().toISOString(),
+      author: { name: "Qiita User" },
+    },
+  ]),
+  fetchQiitaForWorkflow: vi.fn().mockResolvedValue([
     {
       title: "Qiita Article",
       link: "https://qiita.com/items/1",
@@ -43,6 +68,7 @@ vi.mock("@/lib/news/xtech", () => ({
 }));
 vi.mock("@/lib/news/hatena", () => ({
   searchHatena: vi.fn().mockResolvedValue([]),
+  fetchHatenaForWorkflow: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("@/lib/news/hatena-discovery", () => ({
   discoverHatenaFeeds: vi.fn().mockResolvedValue({ discovered: 0, updated: 0, errors: [] }),
@@ -88,6 +114,14 @@ vi.mock("@/lib/score-pipeline", () => ({
 describe("POST /api/fetch-news", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    refreshMocks.claimSingleRefresh.mockResolvedValue({
+      kind: "claimed",
+      ownerId: "single:test",
+      ownerToken: "test-owner-token",
+    });
+    refreshMocks.getActiveRefreshSlot.mockResolvedValue(null);
+    refreshMocks.getOwnedRefreshJob.mockResolvedValue(null);
+    refreshMocks.releaseSingleRefresh.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -118,6 +152,59 @@ describe("POST /api/fetch-news", () => {
     expect(data.ok).toBe(true);
     expect(data.results).toBeDefined();
     expect(res.headers.get("content-type")).toContain("application/json");
+    expect(refreshMocks.releaseSingleRefresh).toHaveBeenCalledWith(
+      "single:test",
+      "test-owner-token",
+    );
+  });
+
+  test("returns a structured JSON conflict when an aggregate job owns the refresh slot", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
+    refreshMocks.claimSingleRefresh.mockResolvedValue({ kind: "busy" });
+    refreshMocks.getActiveRefreshSlot.mockResolvedValue({ ownerKind: "job", ownerId: "job-123" });
+    refreshMocks.getOwnedRefreshJob.mockResolvedValue({ id: "job-123", status: "running" });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/fetch-news", {
+        method: "POST",
+        body: JSON.stringify({ source: "zenn" }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.CRON_SECRET}`,
+        },
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      type: "busy",
+      jobId: "job-123",
+      status: "running",
+    });
+    expect(refreshMocks.releaseSingleRefresh).not.toHaveBeenCalled();
+  });
+
+  test("returns a structured NDJSON conflict when a job owns the refresh slot", async () => {
+    vi.stubEnv("CRON_SECRET", "test-secret");
+    refreshMocks.claimSingleRefresh.mockResolvedValue({ kind: "busy" });
+    refreshMocks.getActiveRefreshSlot.mockResolvedValue({ ownerKind: "job", ownerId: "job-456" });
+    refreshMocks.getOwnedRefreshJob.mockResolvedValue({ id: "job-456", status: "queued" });
+
+    const response = await POST(
+      new NextRequest("http://localhost/api/fetch-news", {
+        method: "POST",
+        body: JSON.stringify({ source: "zenn" }),
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/x-ndjson",
+          Authorization: `Bearer ${process.env.CRON_SECRET}`,
+        },
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("content-type")).toContain("application/x-ndjson");
+    expect(await response.text()).toContain('"jobId":"job-456"');
   });
 
   test("POST streams progress and the final fetch result when NDJSON is requested", async () => {

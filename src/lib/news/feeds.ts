@@ -1,4 +1,4 @@
-import { fetchRssText } from "./base/rss-fetcher";
+import { fetchRssText, fetchRssTextStrict, SourceFetchError } from "./base/rss-fetcher";
 import { parseRdf, type StandardRdfItem } from "./base/rdf-parser";
 import { parseRss2 } from "./base/rss2-parser";
 
@@ -17,6 +17,23 @@ export async function fetchAndParseFeed<T>(
   return xml ? parse(xml) : [];
 }
 
+/** Strict counterpart for background jobs: transport and parse failures reject, while
+ * a successful empty response remains an empty list. */
+export async function fetchAndParseFeedStrict<T>(
+  url: string,
+  sourceName: string,
+  parse: (xml: string) => T[],
+  options?: FeedFetchOptions,
+): Promise<T[]> {
+  const xml = await fetchRssTextStrict(url, sourceName, options);
+  if (!xml) return [];
+  try {
+    return parse(xml);
+  } catch (err) {
+    throw new SourceFetchError(sourceName, "parse", "Feed parsing failed", { cause: err });
+  }
+}
+
 function applyLimit<T>(items: T[], limit?: number): T[] {
   return limit === undefined ? items : items.slice(0, limit);
 }
@@ -32,12 +49,20 @@ export const RDF_FEEDS = {
 } as const satisfies Record<string, RdfFeedConfig>;
 
 export function createRdfSource(sourceName: string, cfg: RdfFeedConfig) {
-  return async function search(limit?: number): Promise<StandardRdfItem[]> {
+  const search = async function search(limit?: number): Promise<StandardRdfItem[]> {
     const items = await fetchAndParseFeed(cfg.url, sourceName, parseRdf, {
       headers: { "User-Agent": NEWS_USER_AGENT },
     });
     return applyLimit(items, limit);
   };
+
+  const fetchForWorkflow = async (limit?: number): Promise<StandardRdfItem[]> => {
+    const items = await fetchAndParseFeedStrict(cfg.url, sourceName, parseRdf, {
+      headers: { "User-Agent": NEWS_USER_AGENT },
+    });
+    return applyLimit(items, limit);
+  };
+  return Object.assign(search, { fetchForWorkflow });
 }
 
 interface Rss2FeedConfig {
@@ -51,8 +76,14 @@ export const RSS2_FEEDS = {
 } as const satisfies Record<string, Rss2FeedConfig>;
 
 export function createRss2Source<T>(sourceName: string, cfg: Rss2FeedConfig) {
-  return async function search(limit?: number): Promise<T[]> {
+  const search = async function search(limit?: number): Promise<T[]> {
     const items = await fetchAndParseFeed(cfg.url, sourceName, parseRss2<T>);
     return applyLimit(items, limit);
   };
+
+  const fetchForWorkflow = async (limit?: number): Promise<T[]> => {
+    const items = await fetchAndParseFeedStrict(cfg.url, sourceName, parseRss2<T>);
+    return applyLimit(items, limit);
+  };
+  return Object.assign(search, { fetchForWorkflow });
 }

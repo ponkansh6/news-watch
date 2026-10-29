@@ -8,6 +8,7 @@ import "@testing-library/jest-dom/vitest";
 
 const mockCookieGet = vi.fn();
 const mockCookieSet = vi.fn();
+const mockGetScoredArticlesCached = vi.hoisted(() => vi.fn(async () => []));
 
 vi.mock("next/headers", () => ({
   cookies: vi.fn(async () => ({
@@ -22,12 +23,12 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/db", async (importOriginal) => {
   const actual = (await importOriginal<Record<string, any>>()) as Record<string, any>;
-  return { ...actual, getScoredArticlesCached: vi.fn(async () => []) };
+  return { ...actual, getScoredArticlesCached: mockGetScoredArticlesCached };
 });
 
 import Home from "../../src/app/page";
 
-async function renderHome(searchParams: Record<string, string> = {}) {
+async function renderHome(searchParams: Record<string, string | string[]> = {}) {
   // RSC コンポーネントを直接呼び出して ReactNode を得てから render する
   const element = await Home({ searchParams: Promise.resolve(searchParams) });
   return render(<RefreshProvider>{element}</RefreshProvider>);
@@ -37,6 +38,7 @@ describe("Home (RSC page) — レンダリング中の cookie 書き込み禁止
   beforeEach(() => {
     mockCookieGet.mockReset();
     mockCookieSet.mockReset();
+    mockGetScoredArticlesCached.mockClear();
     mockCookieGet.mockReturnValue(undefined);
   });
 
@@ -66,6 +68,40 @@ describe("Home (RSC page) — レンダリング中の cookie 書き込み禁止
   it("cookie も ?source も無ければ zenn を表示する", async () => {
     await renderHome();
     expect(screen.getByRole("combobox")).toHaveValue("zenn");
+  });
+
+  it("?source=all で総合を選択し、全 SOURCE_IDS で検索する", async () => {
+    const { SOURCE_IDS } = await import("../../src/lib/news/registry");
+    await renderHome({ source: "all" });
+    expect(screen.getByRole("combobox")).toHaveValue("all");
+    expect(mockGetScoredArticlesCached).toHaveBeenCalledWith(100, [...SOURCE_IDS]);
+  });
+
+  it("総合の cookie を復元して全ソースを検索する", async () => {
+    const { SOURCE_IDS } = await import("../../src/lib/news/registry");
+    mockCookieGet.mockReturnValue({ value: "all" });
+    await renderHome();
+    expect(screen.getByRole("combobox")).toHaveValue("all");
+    expect(mockGetScoredArticlesCached).toHaveBeenCalledWith(100, [...SOURCE_IDS]);
+  });
+
+  it("不明な URL source は zenn に fallback する", async () => {
+    await renderHome({ source: "not-a-source" });
+    expect(screen.getByRole("combobox")).toHaveValue("zenn");
+    expect(mockGetScoredArticlesCached).toHaveBeenCalledWith(100, "zenn");
+  });
+
+  it("繰り返し指定された URL source は zenn に fallback する", async () => {
+    await renderHome({ source: ["all", "qiita"] });
+    expect(screen.getByRole("combobox")).toHaveValue("zenn");
+    expect(mockGetScoredArticlesCached).toHaveBeenCalledWith(100, "zenn");
+  });
+
+  it("不明な cookie source は zenn に fallback する", async () => {
+    mockCookieGet.mockReturnValue({ value: "not-a-source" });
+    await renderHome();
+    expect(screen.getByRole("combobox")).toHaveValue("zenn");
+    expect(mockGetScoredArticlesCached).toHaveBeenCalledWith(100, "zenn");
   });
 });
 

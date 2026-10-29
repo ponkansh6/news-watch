@@ -1,9 +1,9 @@
 ---
 title: News Watch
 status: Active
-version: 1.0.2
+version: 1.0.3
 created_at: 2026-06-01
-updated_at: 2026-10-26
+updated_at: 2026-10-29
 authors: [shunki]
 ---
 
@@ -22,6 +22,7 @@ authors: [shunki]
 - Fetching news from multiple external providers (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Bookmark IT hotentry/entrylist feeds)
 - User-triggered fetch via `/api/fetch-news` button on dashboard (manual cron via Vercel scheduled deployments supported)
   - Scheduled/API callers require Bearer token authentication (CRON_SECRET); interactive browser requests use HTTP Basic Auth (ADMIN_BASIC_AUTH_USER / ADMIN_BASIC_AUTH_PASSWORD)
+- Aggregate news view across the nine registered sources, plus a durable background refresh that reports per-source progress
 - LLM-based relevance scoring + LLM-based usefulness scoring + algorithmic recency scoring
 - Japanese summary generation (20-40 characters)
 - Dashboard display with sort/filter capabilities
@@ -135,6 +136,26 @@ authors: [shunki]
   - AND analysis is rate-limited to once per hour (cooldown), and skipped entirely when favorites and NFM states are unchanged (previous result reused via `favoriteCount`, `favoriteMaxId`, `notForMeCount`, `notForMeMaxId`)
   - AND subsequent scoring injects the profile into the prompt, utilizing NFM as explicit negative examples for disliking and scoring guidance (FR-002)
 
+#### FR-009: Aggregate View and Background Refresh
+
+- **Priority**: Must
+- **Acceptance Criteria**:
+  - The source selector offers `総合` as a display selection; it is not a synthetic source adapter or registry entry.
+  - The dashboard restores `総合` from the `source` URL parameter or `source` cookie. Unknown or repeated query values and invalid cookie values fall back to `zenn`; the existing `zenn` default and individual sources remain supported.
+  - The aggregate article query passes the ordered `SOURCE_IDS` list to the existing scored-article query, retaining its score filtering, sort order, page limit, and each article's real source name.
+  - Selecting `総合` starts or joins an authenticated job through `POST /api/refresh-jobs`. `GET /api/refresh-jobs` restores the active aggregate job after navigation or reload, and `GET /api/refresh-jobs/{jobId}` returns its status without exposing the execution token.
+  - Job status is shared among callers using the existing Basic Auth or cron bearer credential; the current application does not have per-user identities.
+  - The singleton `refresh_job_slot` serializes an aggregate job against individual `/api/fetch-news` requests. A conflicting request returns a structured `409` and includes the active aggregate `jobId` when available. The interactive client attaches to that job's status rather than starting another fetch.
+  - Each job stores a registry-ordered snapshot of source IDs. The Workflow invokes one source at a time; it records the adapter invocation start and does not start the next source until at least 70 seconds after that start. The wait is a durable Workflow sleep and continues when the browser is closed.
+  - The SDK-generated Workflow run ID is bound to the job using the stored execution-token hash. Each source has durable claim, execution, save, cache-invalidation, completion, failure, and unknown-outcome checkpoints. A redelivered saved source reuses its checkpoint and proceeds to cache invalidation without fetching again.
+  - Source-scoped fetch, parse, or scoring failures are recorded and reported as partial or failed results; they are not presented as a successful empty feed. A source with saved data has its cache invalidated even if its result also reports a partial scoring error.
+  - After saved data is recorded, a separate Workflow step expires the `articles` cache tag with `revalidateTag("articles", { expire: 0 })`. The job revision advances after invalidation so a connected dashboard refreshes its list.
+  - The client polls status only for display. Unmounting stops polling but does not cancel the server job. A `needs_reconciliation` job remains visible, blocks another refresh, and requires operator attention; the system does not retry an enqueue whose outcome is unknown.
+  - An authenticated operator can call `POST /api/refresh-jobs/{jobId}/reconcile` only for a `needs_reconciliation` job with a known Workflow run. The endpoint confirms that run is terminal, rejects unsafe `executing` or `unknown` source checkpoints, revalidates the article cache for already-saved sources without fetching or scoring them again, and conditionally reconciles the job and matching slot in one write batch.
+  - Reconciliation does not release a slot when the run ID is missing or unverifiable, the run is still active, the Workflow API is unavailable, the slot/job ownership changed, or any source outcome is unknown. A crashed single-source request has no run ID or per-source checkpoint and cannot be recovered automatically; operators follow `docs/refresh-job-recovery.md` and do not clear slots by age.
+  - Vercel Workflows runs on the Hobby project. The current fixture verification confirmed a 70-second durable sleep/resume, 14 events and no step retries per test run, and cache revalidation from a Workflow step. The shared Usage snapshot showed Queue sends/receives/deletes/notifications of 22/16/16/16; those are team totals and cannot be attributed solely to the test runs. Workflow Data Written is not present in the supplied Overview and remains unverified.
+  - The user has waived pre-implementation processing-time measurement. This requirement does not claim measured Gemini, Turso, or per-source end-to-end durations; the existing fetch route's configured execution limit still applies.
+
 ## 4. Non-Functional Requirements
 
 | Category      | Requirement                   | Target                                                    |
@@ -212,6 +233,13 @@ Vector embeddings and `keyword_embeddings` table have been completely removed.
 
 - `not_for_me_article_id_unique`: Unique index on `articleId`
 
+### refresh_job_slot, refresh_jobs, refresh_job_sources (SQLite via Drizzle ORM)
+
+- `refresh_job_slot` contains the singleton lock owner (`single` or `job`), owner ID, hashed owner token, and acquisition time. A held slot is not reclaimed by elapsed time alone.
+- `refresh_jobs` stores the shared owner, hashed execution token, ordered source snapshot, Workflow run ID, job status, current source, progress revision, next eligible time, sanitized error code, and lifecycle timestamps. Statuses include `enqueue_unknown` and `needs_reconciliation` so an uncertain start is not silently restarted.
+- `refresh_job_sources` stores one ordered checkpoint per job/source: pending, executing, saved, invalidated, failed, or unknown, together with adapter start, save/cache timestamps, result count, and sanitized error code.
+- These job tables do not store article bodies or LLM output. The Workflow receives job ID and execution capability only.
+
 ## 6. Architecture
 
 ### Component Tree (src/app/)
@@ -272,13 +300,16 @@ Supporting utilities:
 
 ```
 External feeds and APIs (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Bookmark IT hotentry/entrylist)
-  → src/lib/news/ (Fetchers)
-    → src/lib/score-pipeline.ts (scoreAndSaveTagged: parallel LLM batching via p-limit)
-      → src/lib/llm/index.ts (LLM batch scoring: relevance + usefulness + topic + summary)
-        → src/app/api/fetch-news/route.ts (calcRecencyScore + weighted composite)
-        → src/lib/db (Persistence)
+  → src/lib/news/ (source adapters; strict Workflow path distinguishes fetch/parse failures from empty results)
+    → src/lib/news/fetch-service.ts (fetchSource shared by the individual API and Workflow)
+      → src/lib/score-pipeline.ts (scoreAndSaveTagged: parallel LLM batching via p-limit)
+        → src/lib/llm/index.ts (LLM batch scoring: relevance + usefulness + topic + summary)
+          → src/lib/db (article persistence)
+            → individual: src/app/api/fetch-news/route.ts (auth, JSON/NDJSON, single-refresh slot)
+            → aggregate: POST /api/refresh-jobs → src/workflows/aggregate-refresh.ts (durable source order/sleep/checkpoints/cache invalidation)
+              → refresh_job_slot / refresh_jobs / refresh_job_sources
             → SQLite Database (articles, not_for_me, preference_profiles)
-              → src/app/page.tsx (RSC: getScoredArticles → taggedCache; ソース選択は src/app/actions.ts Server Action 経由で cookie へ)
+              → src/app/page.tsx (RSC: getScoredArticles → taggedCache; individual source or all SOURCE_IDS; selection restored from URL/cookie)
                 → src/components/news/news-section.tsx (Client: isRefreshing → ArticleList dimmed via aria-busy + opacity-60)
                   → src/components/article/article-list.tsx (Client: Rendering + Popover breakdown, 5-tap favorites, 5-swipe NFM via /api/not-for-me/toggle)
               → src/app/bookmarks/page.tsx (RSC: getFavoriteArticlesCached + getLatestPreferenceProfileCached)

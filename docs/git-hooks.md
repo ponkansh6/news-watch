@@ -2,6 +2,10 @@
 
 AGENTS.md の「Git Hooks の対処ルール」の詳細版。コミット / push 時にフックの warning や error が発生した場合は本ファイルを参照する。`--no-verify` / `HUSKY=0` での bypass は禁止。
 
+## pnpm install script の許可設定
+
+`pnpm-workspace.yaml` では `@swc/core` と `cbor-extract` の install script を許可せず、Workflow SDK が要求する `@vercel/oidc` は `@vercel/functions@3.10.4` の依存に限って `4.0.3` に固定している。設定を変更した場合は `docs/tooling.md` と本節を同期する。
+
 ## pre-push warning: `src/ files changed but tests/ was NOT updated`
 
 - **発生条件**: `src/` 配下のファイルを変更してコミットし、push したときに、対応する `tests/` 配下のテストファイルが変更・追加されていない場合に出力される。
@@ -19,7 +23,7 @@ AGENTS.md の「Git Hooks の対処ルール」の詳細版。コミット / pus
    - 対処: spec.md の参照と実際のファイルパスを同期させる。
 2. **`pnpm exec vitest run tests/db/schema-consistency.test.ts`** — ローカル in-memory DB でのスキーマ整合性テスト。
    - 対処: `src/lib/db/schema.ts` とマイグレーション / テストの同期を確認する。
-3. **カバレッジ段階検証**（`src/` 変更時のみ実行・約30秒）— `vitest run --coverage` 後に `node scripts/check-coverage-tiers.mjs` を実行し、spec.md §7.1 のティア別目標（Tier 1: 95% 〜 Tier 6: 65%）を達成しているか検証する。
+3. **カバレッジ段階検証**（`src/` 変更時のみ実行・約30秒）— `vitest run --coverage` 後に `node scripts/check-coverage-tiers.mjs` を実行し、spec.md §7.1 のティア別目標（Tier 1: 95% 〜 Tier 6: 65%）を達成しているか検証する。Vitest は SDK 生成の `src/app/.well-known/workflow/**` だけを除外し、アプリ側 Workflow 実装は計測対象に含める。
    - 対処: 未達のモジュールにテストを追加する。検証コマンド: `pnpm exec vitest run --coverage && node scripts/check-coverage-tiers.mjs`
 4. **`pnpm exec eslint src/`** — Server Action 境界の静的検査（`@sbougerel/next-use-client-boundary/props-must-be-serializable` が RSC→Client 境界の非シリアライズ可能 props を検出）。
    - 対処: エラーを修正するか、意図的な場合は eslint-disable コメントに理由を添える。

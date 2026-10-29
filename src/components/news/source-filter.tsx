@@ -1,12 +1,12 @@
 "use client";
 
 import { useTransition } from "react";
-import { SOURCES } from "@/lib/sources";
+import { isSourceSelection, SOURCE_FILTER_OPTIONS, type SourceSelection } from "@/lib/sources";
 
 interface SourceFilterProps {
-  value: string;
+  value: SourceSelection;
   // eslint-disable-next-line @sbougerel/next-use-client-boundary/props-must-be-serializable
-  onSourceChange: (source: string) => Promise<void>;
+  onSourceChange: (source: SourceSelection) => Promise<void>;
 }
 
 export function SourceFilter({ value, onSourceChange }: SourceFilterProps) {
@@ -14,6 +14,8 @@ export function SourceFilter({ value, onSourceChange }: SourceFilterProps) {
 
   const handleSourceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newSource = e.target.value;
+    if (!isSourceSelection(newSource)) return;
+
     startTransition(async () => {
       try {
         await onSourceChange(newSource);
@@ -36,7 +38,7 @@ export function SourceFilter({ value, onSourceChange }: SourceFilterProps) {
         disabled={isPending}
         className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
       >
-        {SOURCES.map((source) => (
+        {SOURCE_FILTER_OPTIONS.map((source) => (
           <option key={source.id} value={source.id}>
             {source.name}
           </option>

@@ -8,6 +8,8 @@ AGENTS.md の「ツール使用に関するガイドライン」の詳細版。
 - `preinstall` の `scripts/only-pnpm.mjs` は `npm_config_user_agent` が `pnpm` と確認できる場合だけ install を許可する。値が欠落・空の場合も判定不能として停止するため、パッケージマネージャ経由で実行する。
 - `pnpm-workspace.yaml` の `minimumReleaseAgeExclude` は、指定したパッケージの指定バージョンだけ release-age gate を迂回する。例外を追加するときは対象を限定し、必要性を個別に確認する。
 - `pnpm-workspace.yaml` の `overrides` では Hono を監査済みの修正版 `4.13.13`、Vite `8.1.3` を同一メジャーの修正版 `8.1.6` に固定している。依存元が指定するバージョンより優先されるため、更新時は脆弱性修正を含む版か確認する。
+- Vercel Workflow `4.8.8` の依存が `@vercel/oidc@4.0.4` を要求する一方、registry mirror が同版を提供しない場合に備え、`@vercel/functions@3.10.4` の依存辺だけ `4.0.3` へ限定 override している。`@swc/core` と `cbor-extract` の install scripts は Workflow SDK の導入時も明示的に拒否する。
+- Vitest coverage は SDK が生成する `src/app/.well-known/workflow/**` だけを集計対象から除外する。`src/workflows/**` などアプリ側の Workflow 実装は従来どおり計測する。
 
 ## sudo（非対話環境）
 

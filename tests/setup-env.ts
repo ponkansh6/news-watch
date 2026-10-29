@@ -1,7 +1,8 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
-import { beforeAll, vi } from "vitest";
-import { db } from "../src/lib/db";
+import { createClient } from "@libsql/client";
+import { afterAll, beforeAll, vi } from "vitest";
 
 // Mock next/cache revalidateTag for tests (prevents "static generation store missing" errors)
 vi.mock("next/cache", async (importOriginal) => {
@@ -9,17 +10,9 @@ vi.mock("next/cache", async (importOriginal) => {
   return { ...actual, revalidateTag: vi.fn() };
 });
 
-// Load .env.local so Vitest has the same env as the Next.js dev server,
-// EXCEPT the Turso credentials (by default). The `db` module falls back to an
-// isolated in-memory SQLite when TURSO_DATABASE_URL is unset, which keeps tests
-// deterministic and prevents them from touching the production database
-// (e.g. scoring-polling.test.ts drops/recreates the `articles` table).
-//
-// When RUN_LIVE_TESTS=1, we DO load Turso credentials so live integration
-// tests can read the real feed list from production. Live tests must avoid
-// writing to the database.
-const RUN_LIVE = process.env.RUN_LIVE_TESTS === "1";
-
+// Load application settings but never point the shared test DB at Turso.
+// A file-backed SQLite DB is required because libsql opens a fresh connection
+// after each transaction; separate `:memory:` connections do not share state.
 const envPath = resolve(__dirname, "../.env.local");
 try {
   const content = readFileSync(envPath, "utf-8");
@@ -30,8 +23,9 @@ try {
     if (eqIdx < 0) continue;
     const key = trimmed.slice(0, eqIdx).trim();
     const value = trimmed.slice(eqIdx + 1).trim();
-    // Skip Turso credentials unless running live integration tests.
-    if (!RUN_LIVE && (key === "TURSO_DATABASE_URL" || key === "TURSO_AUTH_TOKEN")) continue;
+    // Test DBs are always local. RUN_LIVE_TESTS only enables explicitly live
+    // HTTP integrations; it must never enable writes to the production DB.
+    if (key === "TURSO_DATABASE_URL" || key === "TURSO_AUTH_TOKEN") continue;
     if (!process.env[key]) {
       process.env[key] = value;
     }
@@ -40,13 +34,17 @@ try {
   // .env.local missing — tests relying on it will be skipped by their guards.
 }
 
+const testDbDirectory = mkdtempSync(join(tmpdir(), "news-watch-vitest-"));
+process.env.TURSO_DATABASE_URL = `file:${join(testDbDirectory, "test.sqlite")}`;
+delete process.env.TURSO_AUTH_TOKEN;
+
 // Route-level fetch-news tests use a deterministic credential only when the
 // caller and .env.local do not provide one.
 if (!process.env.CRON_SECRET) {
   process.env.CRON_SECRET = "test-secret";
 }
 
-// Apply all migrations to the in-memory DB BEFORE any test runs.
+// Apply all migrations to this test worker's local DB BEFORE any test runs.
 // Registered as a global beforeAll so Vitest awaits completion before tests.
 // If a migration is missing (e.g. schema.ts changed but `db:generate` was
 // forgotten), the table won't exist and schema-consistency tests will FAIL —
@@ -54,26 +52,43 @@ if (!process.env.CRON_SECRET) {
 const migrationsDir = resolve(__dirname, "../src/lib/db/migrations");
 
 async function applyMigrations() {
+  // Keep setup independent of the application DB module: importing it can
+  // evaluate queries that depend on next/cache, which test files may mock.
+  // This client targets the same isolated SQLite file as the app client.
+  const databaseUrl = process.env.TURSO_DATABASE_URL;
+  const expectedDatabaseUrl = `file:${join(testDbDirectory, "test.sqlite")}`;
+  if (databaseUrl !== expectedDatabaseUrl) {
+    throw new Error("Refusing to migrate a database outside the isolated Vitest directory");
+  }
+  const client = createClient({ url: expectedDatabaseUrl });
   const files = readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  for (const file of files) {
-    const sql = readFileSync(join(migrationsDir, file), "utf-8");
-    const statements = sql
-      .split(/--> statement-breakpoint|;/)
-      .map((s) => s.trim())
-      .filter((s) => s !== "");
-    for (const stmt of statements) {
-      try {
-        await db.$client.execute(stmt);
-      } catch (e) {
-        console.error(`[setup] Failed to apply migration ${file}: ${stmt}`);
-        throw e;
+  try {
+    for (const file of files) {
+      const sql = readFileSync(join(migrationsDir, file), "utf-8");
+      const statements = sql
+        .split(/--> statement-breakpoint|;/)
+        .map((s) => s.trim())
+        .filter((s) => s !== "");
+      for (const stmt of statements) {
+        try {
+          await client.execute(stmt);
+        } catch (e) {
+          console.error(`[setup] Failed to apply migration ${file}: ${stmt}`);
+          throw e;
+        }
       }
     }
+  } finally {
+    client.close();
   }
 }
 
 beforeAll(async () => {
   await applyMigrations();
+});
+
+afterAll(async () => {
+  rmSync(testDbDirectory, { recursive: true, force: true });
 });

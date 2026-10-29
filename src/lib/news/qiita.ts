@@ -1,4 +1,4 @@
-import { fetchRssText } from "./base/rss-fetcher";
+import { fetchRssText, fetchRssTextStrict, SourceFetchError } from "./base/rss-fetcher";
 import { parseAtomEntries, getText } from "./base/atom-parser";
 
 const FEED_URL = "https://qiita.com/popular-items/feed";
@@ -13,10 +13,20 @@ export interface QiitaFeedItem {
   content: string;
 }
 
-export async function searchQiita(limit?: number): Promise<QiitaFeedItem[]> {
-  const xml = await fetchRssText(FEED_URL, "qiita");
+async function fetchQiita(limit: number | undefined, strict: boolean): Promise<QiitaFeedItem[]> {
+  const xml = strict
+    ? await fetchRssTextStrict(FEED_URL, "qiita")
+    : await fetchRssText(FEED_URL, "qiita");
   if (!xml) return [];
-  const entries = parseAtomEntries(xml);
+  let entries: Record<string, unknown>[];
+  try {
+    entries = parseAtomEntries(xml);
+  } catch (err) {
+    if (strict) {
+      throw new SourceFetchError("qiita", "parse", "Qiita feed parsing failed", { cause: err });
+    }
+    throw err;
+  }
 
   const mapped = entries.map((e: Record<string, unknown>) => ({
     id: getText(e.id),
@@ -29,4 +39,12 @@ export async function searchQiita(limit?: number): Promise<QiitaFeedItem[]> {
   }));
 
   return limit === undefined ? mapped : mapped.slice(0, limit);
+}
+
+export async function searchQiita(limit?: number): Promise<QiitaFeedItem[]> {
+  return fetchQiita(limit, false);
+}
+
+export async function fetchQiitaForWorkflow(limit?: number): Promise<QiitaFeedItem[]> {
+  return fetchQiita(limit, true);
 }

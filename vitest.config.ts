@@ -20,6 +20,7 @@ export default defineConfig({
         "src/lib/db/migrations/**",
         "src/lib/db/index.ts",
         "src/components/ui/**",
+        "src/app/.well-known/workflow/**",
       ],
     },
   },
