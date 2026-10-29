@@ -393,6 +393,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 - **Mechanism**: `tests/db/schema-consistency.test.ts` verifies that all tables defined in `src/lib/db/schema.ts` exist in the database, are present in migration SQL files, and that all defined indexes exist in the database.
 - **Automation**: Executed automatically via `husky` pre-push hook (`pnpm exec vitest run tests/db/schema-consistency.test.ts`) to prevent migration omissions.
 - **Setup**: `tests/setup-env.ts` automatically applies all migrations to the in-memory SQLite database before running any tests.
+- **Safe migration commands**: `drizzle-kit push` is disabled because the local schema is not a complete declaration of every remote table. `pnpm run db:migrate` applies only reviewed additive migrations when the Drizzle ledger matches the local journal. For a divergent shared ledger, `pnpm run db:apply-additive -- <journal-migration-tag>` applies one explicit additive migration atomically and does not modify the shared migration ledger; normal `db:migrate` may continue refusing until that ledger history is reconciled. The allowlist is covered by `tests/db/additive-migrations.test.ts`.
 
 ## 8. Non-Goals
 

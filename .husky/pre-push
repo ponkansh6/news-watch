@@ -293,7 +293,10 @@ if [ "$NEED_DRIFT" = "1" ] && [ -f "$ROOT/.env.local" ]; then
   if [ -n "$TURSO_URL" ] && [ -n "$TURSO_TOKEN" ]; then
     if ! TURSO_DATABASE_URL="$TURSO_URL" TURSO_AUTH_TOKEN="$TURSO_TOKEN" bash scripts/check-prod-schema.sh; then
       printf '\n[warn] 本番スキーマに drift の可能性があります。\n'
-      printf '       デプロイ前に `pnpm exec drizzle-kit push` を検討してください。\n'
+      printf '       `drizzle-kit push` は未宣言テーブルを削除候補にするため実行しないでください。\n'
+      printf '       追加のみの SQL migration をレビュー後、`pnpm run db:migrate` で適用してください。\n'
+      printf '       別履歴の DB では、対象 tag を確認し `pnpm run db:apply-additive -- <tag>` を使ってください。\n'
+      printf '       この操作は共有 migration ledger を変更しません。\n'
       printf '       ネットワーク/認証に依存するため push はブロックしません。\n\n'
     fi
   fi

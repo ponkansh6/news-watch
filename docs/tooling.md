@@ -13,6 +13,14 @@ AGENTS.md の「ツール使用に関するガイドライン」の詳細版。
 - Vitest coverage は SDK が生成する `src/app/.well-known/workflow/**` だけを集計対象から除外する。`src/workflows/**` などアプリ側の Workflow 実装は従来どおり計測する。
 - ESLint も SDK が生成する `src/app/.well-known/workflow/**` を除外する。アプリ側 Workflow 実装はLint対象に含める。
 
+## Turso schema migrations
+
+- `pnpm run db:push` and direct `drizzle-kit push` are intentionally disabled. `drizzle-kit push` diffs the whole remote database against `src/lib/db/schema.ts` and may propose dropping remote tables that are not declared locally.
+- Create an explicit migration with `pnpm run db:generate`, review its SQL, verify the target database, then apply it with `pnpm run db:migrate`. The guarded migration command loads Turso credentials from the environment or `.env.local`, checks only unapplied migrations against an additive-only allowlist (`CREATE TABLE`, `ALTER TABLE ... ADD COLUMN`, and `CREATE INDEX`), and refuses when the remote migration ledger cannot be matched to this repository.
+- When the remote database has a separate migration ledger, `pnpm run db:migrate` correctly refuses to guess. To apply one reviewed additive migration in that case, run `pnpm run db:apply-additive -- <journal-migration-tag>`. This validates and applies only the named SQL file in one transaction; it never changes the shared `__drizzle_migrations` table. Record that the migration was applied separately: normal `db:migrate` may continue refusing until the shared ledger history is reconciled. Do not replay the same file through Drizzle.
+- Direct `drizzle-kit migrate` is also disabled; use the guarded command. Historical migrations may contain destructive SQL, so only pending migrations are checked.
+- The production drift check reports both locally declared tables missing remotely and remote tables absent from the local schema. It never recommends `drizzle-kit push`.
+
 ## sudo（非対話環境）
 
 - 非対話環境のため `sudo` は直接使えない。代わりに `lxqt-sudo` で GUI パスワードポップアップを raise する。使用例: `lxqt-sudo <command>`. チェーンする場合は一時スクリプトにまとめて渡す。

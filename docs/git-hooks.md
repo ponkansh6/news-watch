@@ -31,7 +31,8 @@ AGENTS.md の「Git Hooks の対処ルール」の詳細版。コミット / pus
    - 対処: ビルドエラーや RSC レンダリングエラーを修正する。
    - 注意: `port ... already in use` で失敗した場合は、前回実行から孤児化した `next-server` が `SMOKE_PORT`（既定 3100）を占有している。`lsof -i :3100` で確認し `pkill -f next-server` で掃除してから再実行する（詳細は `docs/tooling.md` のスモークテスト節を参照）。
 6. **本番スキーマ drift 検出**（`.env.local` に Turso 認証情報がある場合のみ実行）— `scripts/check-prod-schema.sh` が本番 Turso DB と `src/lib/db/schema.ts` のスキーマを比較し、未適用のマイグレーションを検出する。
-   - 対処: `pnpm exec drizzle-kit push` で本番スキーマを最新化する。
+   - 対処: 接続先を確認し、`pnpm run db:generate` で作成した SQL migration をレビューしてから、通常は `pnpm run db:migrate` で適用する。このコマンドは未適用 migration にテーブル作成・カラム追加・インデックス作成以外が含まれる場合や、migration ledger を照合できない場合は適用を拒否する。DB の migration ledger が別履歴の場合は、レビュー済みの追加 migration 1件に限り `pnpm run db:apply-additive -- <journal-migration-tag>` で原子的に適用できる。このコマンドは共有 ledger を更新しないため、履歴の不一致を記録しておく。履歴を照合するまで通常の `db:migrate` は引き続き拒否される場合がある。
+   - **禁止**: `drizzle-kit push` はローカル schema に宣言されていない既存テーブルを削除候補にする。`pnpm run db:push` と直接の `drizzle-kit push` は無効化している。直接の `drizzle-kit migrate` も無効化している。
 
 ## pre-commit warning: `spec.md` 未更新
 

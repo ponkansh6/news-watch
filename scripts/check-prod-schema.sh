@@ -40,15 +40,29 @@ async function main() {
   const tablesResult = await client.execute(\"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\");
   const actualTables = new Set(tablesResult.rows.map(r => r.name));
 
+  const expectedTableSet = new Set(expectedTables);
   const missingTables = expectedTables.filter(tt => !actualTables.has(tt));
+  const undeclaredTables = [...actualTables]
+    .filter(tt => !expectedTableSet.has(tt) && !tt.startsWith('sqlite_') && tt !== '__drizzle_migrations')
+    .sort();
 
-  if (missingTables.length > 0) {
+  if (missingTables.length > 0 || undeclaredTables.length > 0) {
     console.log('');
     console.log('❌ Production schema drift detected!');
-    console.log('   The following tables are defined in schema.ts but missing in Turso:');
-    missingTables.forEach(tt => console.log('   - ' + tt));
+    if (missingTables.length > 0) {
+      console.log('   The following tables are defined in schema.ts but missing in Turso:');
+      missingTables.forEach(tt => console.log('   - ' + tt));
+    }
+    if (undeclaredTables.length > 0) {
+      console.log('   The following Turso tables are not declared in schema.ts:');
+      undeclaredTables.forEach(tt => console.log('   - ' + tt));
+      console.log('   `drizzle-kit push` may propose dropping these tables. Do not use it.');
+    }
     console.log('');
-    console.log('   Run: pnpm exec drizzle-kit push');
+    console.log('   Review the database target and create an explicit SQL migration with `pnpm run db:generate`.');
+    console.log('   If migration history matches, `pnpm run db:migrate` applies reviewed additive migrations.');
+    console.log('   For a divergent ledger, apply only one reviewed additive migration with `pnpm run db:apply-additive -- <tag>`.');
+    console.log('   That command does not rewrite the shared migration ledger.');
     console.log('');
     process.exit(1);
   }
@@ -86,7 +100,10 @@ async function main() {
       console.log('   The following columns are in schema.ts but missing in Turso:');
       missingCols.forEach(cc => console.log('   - ' + cc));
       console.log('');
-      console.log('   Run: pnpm exec drizzle-kit push');
+      console.log('   Review the database target and create an explicit SQL migration with `pnpm run db:generate`.');
+      console.log('   If migration history matches, `pnpm run db:migrate` applies reviewed additive migrations.');
+      console.log('   For a divergent ledger, apply only one reviewed additive migration with `pnpm run db:apply-additive -- <tag>`.');
+      console.log('   That command does not rewrite the shared migration ledger.');
       console.log('');
       process.exit(1);
     }

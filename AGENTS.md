@@ -20,7 +20,7 @@ Husky + lint-staged により pre-commit / pre-push フックが強制実行さ�
 1. **`scripts/check-spec-refs.sh`** — spec.md 内の `src/` / `tests/` ファイル参照の実在検証。腐敗した参照があると失敗 → spec.md の参照と実パスを同期する。
 2. **`pnpm exec vitest run tests/db/schema-consistency.test.ts`** — ローカル in-memory DB でのスキーマ整合性 → `src/lib/db/schema.ts` とマイグレーション / テストを同期する。
 3. **カバレッジ段階検証**（`src/` 変更時のみ・約30秒）— spec.md §7.1 のティア別目標（Tier 1: 95% 〜 Tier 6: 65%）達成を検証 → 未達モジュールにテスト追加。ローカル検証: `pnpm exec vitest run --coverage && node scripts/check-coverage-tiers.mjs`
-4. **本番スキーマ drift 検出**（`.env.local` に Turso 認証がある場合のみ）— `scripts/check-prod-schema.sh` が本番 Turso DB と `schema.ts` を比較 → `pnpm exec drizzle-kit push` で本番スキーマを最新化する。
+4. **本番スキーマ drift 検出**（`.env.local` に Turso 認証がある場合のみ）— `scripts/check-prod-schema.sh` が本番 Turso DB と `schema.ts` を比較する。`drizzle-kit push` はローカル schema にない既存テーブルを削除候補にするため使用禁止。接続先を確認し、`pnpm run db:generate` で作成した SQL migration をレビューしてから、履歴が一致する DB は `pnpm run db:migrate` で適用する。別履歴の DB には `pnpm run db:apply-additive -- <journal-migration-tag>` でレビュー済みの追加 migration 1件だけを原子的に適用できる。このコマンドは共有 migration ledger を変更しないため、通常の `db:migrate` は履歴を照合するまで拒否される場合がある。どちらも `CREATE TABLE` / `ALTER TABLE ... ADD COLUMN` / `CREATE INDEX` 以外は拒否する。
 
 ### pre-commit の実行内容
 
