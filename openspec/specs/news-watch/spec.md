@@ -53,6 +53,7 @@ authors: [shunki]
   - AND interactive fetch requests that advertise `Accept: application/x-ndjson` receive newline-delimited progress events over the same POST response, while callers without that header retain the JSON response contract
   - AND streaming progress reports the current fetch/select/score/cleanup stage and monotonically increasing completed/failed scoring counts no more often than needed, with a five-second heartbeat; the final result event preserves the standard fetch result payload
   - AND the dashboard reads progress events from the original request, shows scoring completed/target/failed counts, applies the final result, then awaits `invalidateArticlesAfterFetch` with a short-lived, purpose-limited HMAC capability issued only after an authenticated fetch; the action verifies its signature and expiry before immediately expiring the `articles` cache tag with `updateTag("articles")` and refreshing the dashboard once
+  - AND incoming article IDs or source-filter changes do not clear the active fetch progress state before the API and route refresh finish
   - AND the capability signing key uses `CRON_SECRET` when configured, otherwise derives a 32-byte key from the Basic Auth password with PBKDF2-HMAC-SHA256 and 310,000 iterations using a purpose- and username-specific salt
   - AND malformed or interrupted streams and failed cache invalidation show an error without claiming the refreshed list is current
   - AND a non-success HTTP response or malformed response is shown as a fetch error and does not refresh the dashboard

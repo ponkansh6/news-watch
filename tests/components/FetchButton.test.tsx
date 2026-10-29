@@ -713,6 +713,45 @@ describe("Refresh lifecycle integration", () => {
     useTransitionOverride.current = null;
   });
 
+  it("keeps fetch progress active when a source change supplies new article IDs", async () => {
+    let replaceArticles: ((articles: Article[]) => void) | null = null;
+
+    function RscSimulatorPage() {
+      const [articles, setArticles] = useState<Article[]>(initialMockArticles);
+
+      useEffect(() => {
+        replaceArticles = setArticles;
+      }, []);
+
+      return (
+        <RefreshProvider>
+          <FetchButton selectedSource="qiita" onSourceChange={mockOnSourceChange} />
+          <NewsSection articles={articles} />
+        </RefreshProvider>
+      );
+    }
+
+    vi.spyOn(globalThis, "fetch").mockReturnValue(new Promise<Response>(() => {}));
+    render(<RscSimulatorPage />);
+
+    const fetchButton = screen.getByRole("button", { name: "ニュースを取得してスコアリング" });
+    await act(async () => {
+      fireEvent.click(fetchButton);
+    });
+
+    expect(screen.getByText("記事取得中...")).toBeInTheDocument();
+    expect(fetchButton).toBeDisabled();
+
+    await act(async () => {
+      replaceArticles?.([...initialMockArticles, newScoredArticle]);
+    });
+
+    expect(screen.getByText("スコアリング済み新着記事")).toBeInTheDocument();
+    expect(screen.getByText("記事取得中...")).toBeInTheDocument();
+    expect(screen.getByText("(更新中...)")).toBeInTheDocument();
+    expect(fetchButton).toBeDisabled();
+  });
+
   it("clears refreshing when API returns saved=0 and no new article IDs appear", async () => {
     // This test reproduces the "never fires" bug:
     // When saved=0, RSC returns the same articles (no new IDs),

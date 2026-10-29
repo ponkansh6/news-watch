@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { Newspaper } from "lucide-react";
 import { useRefresh } from "@/app/refresh-context";
 import { ArticleList, type Article } from "@/components/article/article-list";
@@ -13,22 +12,7 @@ export function NewsSection({
   articles: Article[];
   emptyMessage?: string;
 }) {
-  const { isRefreshing, setRefreshing, isFiltering } = useRefresh();
-  const prevIdsRef = useRef<Set<number>>(new Set(articles.map((a) => a.id)));
-
-  // Detect when NEW scored articles arrive after refresh and clear refreshing.
-  // Uses article ID comparison instead of reference equality to avoid
-  // premature clearing on RSC re-renders that return the same data.
-  useEffect(() => {
-    if (isRefreshing) {
-      const currentIds = new Set(articles.map((a) => a.id));
-      const hasNewIds = [...currentIds].some((id) => !prevIdsRef.current.has(id));
-      if (hasNewIds) {
-        setRefreshing(false);
-      }
-      prevIdsRef.current = currentIds;
-    }
-  }, [articles, isRefreshing, setRefreshing]);
+  const { isRefreshing, isFiltering } = useRefresh();
 
   const headerSuffix = isRefreshing ? "(更新中...)" : `(${articles.length}件)`;
 
