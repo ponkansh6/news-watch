@@ -134,6 +134,7 @@ authors: [shunki]
   - AND `buildFavoritesBlock` and `buildNotForMeBlock` retain separate prompt placeholders while sharing the private item formatter in `src/lib/llm/preference.ts`
   - AND the resulting profile is stored in `preference_profiles` (append-only)
   - AND analysis is rate-limited to once per hour (cooldown), and skipped entirely when favorites and NFM states are unchanged (previous result reused via `favoriteCount`, `favoriteMaxId`, `notForMeCount`, `notForMeMaxId`)
+  - AND analysis claims the shared refresh slot before calling the LLM, returning 409 when another refresh or analysis owns it, and releases the slot after analysis and profile persistence finish
   - AND subsequent scoring injects the profile into the prompt, utilizing NFM as explicit negative examples for disliking and scoring guidance (FR-002)
 
 #### FR-009: Aggregate View and Background Refresh
@@ -146,15 +147,18 @@ authors: [shunki]
   - Selecting `総合` starts or joins an authenticated job through `POST /api/refresh-jobs`. `GET /api/refresh-jobs` restores the active aggregate job after navigation or reload, and `GET /api/refresh-jobs/{jobId}` returns its status without exposing the execution token.
   - Job status is shared among callers using the existing Basic Auth or cron bearer credential; the current application does not have per-user identities.
   - The singleton `refresh_job_slot` serializes an aggregate job against individual `/api/fetch-news` requests. A conflicting request returns a structured `409` and includes the active aggregate `jobId` when available. The interactive client attaches to that job's status rather than starting another fetch.
-  - Each job stores a registry-ordered snapshot of source IDs. The Workflow invokes one source at a time; it records the adapter invocation start and does not start the next source until at least 70 seconds after that start. The wait is a durable Workflow sleep and continues when the browser is closed.
-  - The SDK-generated Workflow run ID is bound to the job using the stored execution-token hash. Each source has durable claim, execution, save, cache-invalidation, completion, failure, and unknown-outcome checkpoints. A redelivered saved source reuses its checkpoint and proceeds to cache invalidation without fetching again.
+  - Each job stores a registry-ordered snapshot of source IDs. The Workflow collects each source sequentially, persists the selected candidates and provenance, then freezes immutable batches of up to 50 candidates across source boundaries. A final batch of 1–49 candidates is flushed after all sources finish. Article content stays in the database; Workflow event inputs contain identifiers and bounded metadata only.
+  - Each immutable scoring batch runs as its own durable Workflow step with a persisted status and membership. A completed result is stored by candidate ID before article rows are updated. A replay resumes from the persisted result without repeating the Gemini request. Unknown source fetches use persisted attempt generations to reject stale completions and retry at most twice; the retry limit is persisted and terminal failures are reported as partial results.
+  - Unknown in-flight Gemini batch results recover automatically with the same fixed batch ID, a persisted attempt generation, and a maximum of two scoring attempts. `result_ready` results resume article persistence without another Gemini request. Rate-limit waits release the per-attempt owner, use durable Workflow sleep, and reacquire/recheck before sending. At most three wait cycles are allowed; exhaustion records a terminal failed batch and partial job. The job cannot report success while a batch remains running or unknown.
+  - A single shared Gemini sender owner serializes every actual request attempt across all models and entry points. The owner is held through the HTTP attempt and its outcome record; success, provider errors, and timeouts all count toward the rolling limit of 15 attempts in 60 seconds. The attempt record and normal owner release are atomic. New owners with a recognized execution marker and deployment ID may be recovered after their enforced runtime limit plus a 60-second margin: a started attempt is recorded as ambiguous at the database time, then that exact owner is released atomically before the rolling limit is checked again. The Workflow step duration is pinned to 300 seconds by the postbuild check; explicitly bounded request handlers use their declared 60-second limit. Legacy, unknown, or unmarked owners remain fail-closed and require proof that the old sender is fenced. Favorites analysis also holds the shared refresh slot for its full analyze-and-save operation.
+  - The SDK-generated Workflow run ID is bound to the job using the stored execution-token hash. Each source and candidate batch has durable claim, execution, save, cache-invalidation, completion, failure, and unknown-outcome checkpoints. A redelivered saved source reuses its checkpoint and proceeds without fetching again. An uncertain source attempt is reset only through a compare-and-swap on its persisted attempt generation; at most two automatic attempts are made.
   - Source-scoped fetch, parse, or scoring failures are recorded and reported as partial or failed results; they are not presented as a successful empty feed. A source with saved data has its cache invalidated even if its result also reports a partial scoring error.
   - After saved data is recorded, a separate Workflow step expires the `articles` cache tag with `revalidateTag("articles", { expire: 0 })`. The job revision advances after invalidation so a connected dashboard refreshes its list.
-  - The client polls status only for display. Unmounting stops polling but does not cancel the server job. A `needs_reconciliation` job remains visible, blocks another refresh, and requires operator attention; the system does not retry an enqueue whose outcome is unknown.
-  - An authenticated operator can call `POST /api/refresh-jobs/{jobId}/reconcile` only for a `needs_reconciliation` job with a known Workflow run. The endpoint confirms that run is terminal, rejects unsafe `executing` or `unknown` source checkpoints, revalidates the article cache for already-saved sources without fetching or scoring them again, and conditionally reconciles the job and matching slot in one write batch.
-  - Reconciliation does not release a slot when the run ID is missing or unverifiable, the run is still active, the Workflow API is unavailable, the slot/job ownership changed, or any source outcome is unknown. A crashed single-source request has no run ID or per-source checkpoint and cannot be recovered automatically; operators follow `docs/refresh-job-recovery.md` and do not clear slots by age.
-  - Vercel Workflows runs on the Hobby project. The current fixture verification confirmed a 70-second durable sleep/resume, 14 events and no step retries per test run, and cache revalidation from a Workflow step. The shared Usage snapshot showed Queue sends/receives/deletes/notifications of 22/16/16/16; those are team totals and cannot be attributed solely to the test runs. Workflow Data Written is not present in the supplied Overview and remains unverified.
-  - The user has waived pre-implementation processing-time measurement. This requirement does not claim measured Gemini, Turso, or per-source end-to-end durations; the existing fetch route's configured execution limit still applies.
+  - The client polls status only for display. Unmounting stops polling but does not cancel the server job. A `needs_reconciliation` job remains visible and blocks another refresh only when sender ownership cannot safely be released or another non-retryable outcome needs repair. Source GET uncertainty and unknown Gemini batch outcomes are retried automatically within persisted bounds; exhausted retries end as failed or partial.
+  - `/api/refresh-jobs` GET/POST each make one bounded automatic reconciliation attempt for an active `needs_reconciliation` job with a known Workflow run ID. Reconciliation requires Workflow status `completed`, `failed`, or `cancelled`, a safe source checkpoint, and no candidate batch in `pending`, `running`, `result_ready`, or `unknown`. It revalidates the article cache for saved sources without fetching/scoring again, then conditionally reconciles the job and matching slot atomically. If the run is missing, unreadable, nonterminal, or any checkpoint/batch is unsafe, the job remains held. A terminal run with a `result_ready` batch is not resumed by this outer recovery path. The authenticated operator endpoint has the same terminal-run and checkpoint guards.
+  - Lease expiry is recoverable only when a new owner carries a recognized execution marker and deployment ID. Workflow sender owners use the pinned 300-second step duration plus a 60-second margin (360 seconds); explicitly bounded 60-second request owners use 120 seconds. Old deployment owners with missing metadata, unknown lease kinds, missing deployment IDs, or handlers without a verified runtime cap are never released by age. Recovery uses the shared database clock and assumes its forward drift during one maximum invocation remains within the configured 60-second margin. A crashed single-source request with unknown metadata remains fail-closed; no age-only release occurs.
+  - `maxDuration = 60` on the refresh-job API limits only the enqueue request, not the full Workflow. Step-duration SLA is not a product requirement. The 45-second scoring deadline is an application-level limit for a synchronous scoring run; the aggregate Workflow resumes at persisted batch checkpoints. A synchronous source refresh leaves articles that did not receive a score unscored and eligible for a later request.
+  - Workflow validation covers timeout/redelivery at candidate collection, after Gemini returns but before result persistence, during article persistence, and while waiting for the shared rate limit. The Workflow must not report a job complete while any candidate batch is pending, running, result-ready, or unknown. Unknown batches recover or reach a persisted terminal failed state after the bounded retry/wait limits; retries and sleeps cannot loop indefinitely.
 
 ## 4. Non-Functional Requirements
 
@@ -235,7 +239,7 @@ Vector embeddings and `keyword_embeddings` table have been completely removed.
 
 ### refresh_job_slot, refresh_jobs, refresh_job_sources (SQLite via Drizzle ORM)
 
-- `refresh_job_slot` contains the singleton lock owner (`single` or `job`), owner ID, hashed owner token, and acquisition time. A held slot is not reclaimed by elapsed time alone.
+- `refresh_job_slot` contains the singleton lock owner (`single` or `job`), owner ID, hashed owner token, execution marker/deployment ID, recovery deadline, and acquisition time. Only a recognized, new, bounded execution owner is reclaimed after its verified runtime limit plus margin; legacy or unknown owners remain held until fenced.
 - `refresh_jobs` stores the shared owner, hashed execution token, ordered source snapshot, Workflow run ID, job status, current source, progress revision, next eligible time, sanitized error code, and lifecycle timestamps. Statuses include `enqueue_unknown` and `needs_reconciliation` so an uncertain start is not silently restarted.
 - `refresh_job_sources` stores one ordered checkpoint per job/source: pending, executing, saved, invalidated, failed, or unknown, together with adapter start, save/cache timestamps, result count, and sanitized error code.
 - These job tables do not store article bodies or LLM output. The Workflow receives job ID and execution capability only.
@@ -302,19 +306,20 @@ Supporting utilities:
 External feeds and APIs (Zenn, Qiita, Tech Blog, @IT, CodeZine, ZDNet Japan, 日経クロステック, クラウド Watch, Hatena Bookmark IT hotentry/entrylist)
   → src/lib/news/ (source adapters; strict Workflow path distinguishes fetch/parse failures from empty results)
     → src/lib/news/fetch-service.ts (fetchSource shared by the individual API and Workflow)
-      → src/lib/score-pipeline.ts (scoreAndSaveTagged: parallel LLM batching via p-limit)
+      → aggregate: persistent refresh_job_candidates / refresh_job_batches → ID-based scoring batches in separate durable Workflow steps
+      → individual: src/lib/score-pipeline.ts (sequential LLM batches)
         → src/lib/llm/index.ts (LLM batch scoring: relevance + usefulness + topic + summary)
           → src/lib/db (article persistence)
             → individual: src/app/api/fetch-news/route.ts (auth, JSON/NDJSON, single-refresh slot)
-            → aggregate: POST /api/refresh-jobs → src/workflows/aggregate-refresh.ts (durable source order/sleep/checkpoints/cache invalidation)
-              → refresh_job_slot / refresh_jobs / refresh_job_sources
+            → aggregate: POST /api/refresh-jobs → src/workflows/aggregate-refresh.ts (durable candidate and scoring-batch checkpoints/cache invalidation)
+              → refresh_job_slot / refresh_jobs / refresh_job_sources / refresh_job_candidates / refresh_job_batches / gemini_request_slot / gemini_request_attempts
             → SQLite Database (articles, not_for_me, preference_profiles)
               → src/app/page.tsx (RSC: getScoredArticles → taggedCache; individual source or all SOURCE_IDS; selection restored from URL/cookie)
                 → src/components/news/news-section.tsx (Client: isRefreshing → ArticleList dimmed via aria-busy + opacity-60)
                   → src/components/article/article-list.tsx (Client: Rendering + Popover breakdown, 5-tap favorites, 5-swipe NFM via /api/not-for-me/toggle)
               → src/app/bookmarks/page.tsx (RSC: getFavoriteArticlesCached + getLatestPreferenceProfileCached)
                 → src/app/bookmarks/analyze-button.tsx (Client: POST /api/favorites/analyze)
-              → src/app/api/favorites/analyze/route.ts (min 5件 + cooldown + reuse with favorites & NFM states)
+              → src/app/api/favorites/analyze/route.ts (min 5件 + cooldown + reuse with favorites & NFM states + shared refresh slot)
                 → src/lib/llm/preference.ts (analyzeFavorites with buildNotForMeBlock)
                   → src/lib/db (preference_profiles)
                     → src/lib/score-pipeline.ts (scoreAndSaveTagged: injects profile → LLM scoring prompt)
@@ -393,7 +398,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 - **Mechanism**: `tests/db/schema-consistency.test.ts` verifies that all tables defined in `src/lib/db/schema.ts` exist in the database, are present in migration SQL files, and that all defined indexes exist in the database.
 - **Automation**: Executed automatically via `husky` pre-push hook (`pnpm exec vitest run tests/db/schema-consistency.test.ts`) to prevent migration omissions.
 - **Setup**: `tests/setup-env.ts` automatically applies all migrations to the in-memory SQLite database before running any tests.
-- **Safe migration commands**: `drizzle-kit push` is disabled because the local schema is not a complete declaration of every remote table. `pnpm run db:migrate` applies only reviewed additive migrations when the Drizzle ledger matches the local journal. For a divergent shared ledger, `pnpm run db:apply-additive -- <journal-migration-tag>` applies one explicit additive migration atomically and does not modify the shared migration ledger; normal `db:migrate` may continue refusing until that ledger history is reconciled. The allowlist is covered by `tests/db/additive-migrations.test.ts`.
+- **Safe migration commands**: `drizzle-kit push` is disabled because the local schema is not a complete declaration of every remote table. The read-only production drift check permits only its fixed inventory of known unrelated tables on `news-watch-ponkansh.aws-ap-northeast-1.turso.io`; unknown tables or those names on another host remain drift errors. `pnpm run db:migrate` applies only reviewed additive migrations when the Drizzle ledger matches the local journal. For a divergent shared ledger, `pnpm run db:apply-additive -- <journal-migration-tag>` applies one explicit additive migration atomically and does not modify the shared migration ledger; normal `db:migrate` may continue refusing until that ledger history is reconciled. The allowlist is covered by `tests/db/additive-migrations.test.ts`.
 
 ## 8. Non-Goals
 
@@ -431,14 +436,15 @@ Articles are evaluated using LLM-based relevance (NTT Group relevance) and usefu
 ### 10.4 Processing Limits & Parallelization
 
 - **Fetch & Scoring Scope**: Fetches all available articles from RSS/API feeds without arbitrary caps. Scoring and selection are governed by `SCORING_BUDGET` (default 40 articles per request, ordered by `publishedAt` descending, with already-scored and unchanged articles skipped).
-- **LLM Batching**: Articles are scored in batches per LLM request.
+- **LLM Batching**: Articles are scored in sequential batches per LLM request across all entry points.
   - Default batch size: 20 articles per request.
   - **Japanese-optimized batching**: When >50% of articles in a batch contain Japanese characters, batch size is dynamically reduced to 8.
   - `maxOutputTokens`: 500 (single), 16000 (batch).
   - **Timeout**: 30s (single), 25s (batch).
-  - **Parallelization**: Concurrency **5**, using `Promise.allSettled` and a 45s overall deadline (`SCORING_DEADLINE_MS`).
-  - **Retries**: Batch-specific single retry (`LLM_BATCH_MAX_RETRIES`).
-  - **Fallback**: On batch parsing failure, falls back to individual `scoreArticle()` calls.
+  - **Shared rate limit**: Every Gemini HTTP attempt, including application retries and favorites analysis, uses the shared database owner and attempt history. At most 15 attempts are allowed in any rolling 60-second window. Failed and ambiguous attempts count. A new owner with a recognized marker and deployment ID is recovered after its enforced runtime limit plus margin, with started requests counted as ambiguous before atomic release. Unknown and legacy owners remain fail-closed, as documented in `docs/gemini-rate-limit-recovery.md`.
+  - **Timeout**: Synchronous scoring retains the application-level 45-second deadline; timed-out or failed articles are not persisted as scored and remain eligible for a later request. Aggregate scoring is split into durable, bounded batch steps with persisted result and retry state; Workflow `sleep()` handles shared-rate-limit waits.
+  - **Retries**: Batch-specific retries remain bounded (`LLM_BATCH_MAX_RETRIES`). The ID-based aggregate scorer retries the whole batch and validates the exact candidate ID set; it does not fall back to per-article requests.
+  - **Fallback**: The legacy synchronous scorer may fall back to individual `scoreArticle()` calls, but those calls also pass through the shared sender and are sequential.
 
 ### 10.5 Skipping Scored Articles & Tombstone Retention
 

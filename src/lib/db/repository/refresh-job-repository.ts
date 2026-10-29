@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { and, asc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import { SOURCE_IDS, type SourceId } from "@/lib/news/registry";
 import { db } from "../index";
 import { refreshJobSlot, refreshJobs, refreshJobSources } from "../schema";
@@ -25,7 +25,6 @@ export type RefreshJobSourceRow = typeof refreshJobSources.$inferSelect;
 
 const ACTIVE_SLOT_ID = 1;
 const SHARED_ADMIN_OWNER = "shared-admin";
-const MIN_SOURCE_START_GAP_MS = 70_000;
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -72,7 +71,8 @@ export async function startAggregateJob(): Promise<StartAggregateResult> {
     },
     {
       sql: `UPDATE refresh_job_slot
-            SET owner_kind = 'job', owner_id = ?, owner_token_hash = ?, acquired_at = ?
+            SET owner_kind = 'job', owner_id = ?, owner_token_hash = ?, acquired_at = ?,
+                lease_kind = NULL, deployment_id = NULL, recovery_after = NULL
             WHERE id = ? AND owner_id IS NULL`,
       args: [id, ownerTokenHash, now, ACTIVE_SLOT_ID],
     },
@@ -126,12 +126,23 @@ export interface SingleRefreshClaim {
   ownerToken?: string;
 }
 
+export type SingleRefreshLeaseEvidence =
+  | { kind: "request-60-v1"; deploymentId: string }
+  | { kind: "unknown" };
+
 /** Claims the same singleton slot for an existing single-source caller. */
-export async function claimSingleRefresh(): Promise<SingleRefreshClaim> {
+export async function claimSingleRefresh(
+  lease: SingleRefreshLeaseEvidence = { kind: "unknown" },
+): Promise<SingleRefreshClaim> {
   const ownerId = `single:${randomUUID()}`;
   const ownerToken = makeToken();
   const ownerTokenHash = hashToken(ownerToken);
-  const now = nowIso();
+  const knownLease = lease.kind === "request-60-v1" && lease.deploymentId.trim().length > 0;
+  const leaseKind = knownLease ? lease.kind : "unknown";
+  const deploymentId = knownLease ? lease.deploymentId : null;
+  const recoveryAfter = knownLease
+    ? "strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+120 seconds')"
+    : "NULL";
 
   const result = await db.$client.batch(
     [
@@ -140,10 +151,25 @@ export async function claimSingleRefresh(): Promise<SingleRefreshClaim> {
         args: [ACTIVE_SLOT_ID],
       },
       {
+        // Only a positively identified Vercel 60s request lease can expire.
+        // Null/legacy evidence is intentionally permanent until its owner releases it.
         sql: `UPDATE refresh_job_slot
-              SET owner_kind = 'single', owner_id = ?, owner_token_hash = ?, acquired_at = ?
+              SET owner_kind = NULL, owner_id = NULL, owner_token_hash = NULL,
+                  acquired_at = NULL, lease_kind = NULL, deployment_id = NULL, recovery_after = NULL
+              WHERE id = ? AND owner_kind = 'single' AND owner_id IS NOT NULL
+                AND lease_kind = 'request-60-v1'
+                AND deployment_id IS NOT NULL AND length(deployment_id) > 0
+                AND recovery_after IS NOT NULL
+                AND julianday(recovery_after) <= julianday('now')`,
+        args: [ACTIVE_SLOT_ID],
+      },
+      {
+        sql: `UPDATE refresh_job_slot
+              SET owner_kind = 'single', owner_id = ?, owner_token_hash = ?,
+                  acquired_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                  lease_kind = ?, deployment_id = ?, recovery_after = ${recoveryAfter}
               WHERE id = ? AND owner_id IS NULL`,
-        args: [ownerId, ownerTokenHash, now, ACTIVE_SLOT_ID],
+        args: [ownerId, ownerTokenHash, leaseKind, deploymentId, ACTIVE_SLOT_ID],
       },
       {
         sql: "SELECT owner_kind, owner_id, owner_token_hash FROM refresh_job_slot WHERE id = ?",
@@ -152,7 +178,7 @@ export async function claimSingleRefresh(): Promise<SingleRefreshClaim> {
     ],
     "write",
   );
-  const rawRow: unknown = result[2]?.rows[0];
+  const rawRow: unknown = result[3]?.rows[0];
   const row = rawRow as
     | { owner_kind: string | null; owner_id: string | null; owner_token_hash: string | null }
     | undefined;
@@ -167,7 +193,15 @@ export async function claimSingleRefresh(): Promise<SingleRefreshClaim> {
 export async function releaseSingleRefresh(ownerId: string, ownerToken: string): Promise<boolean> {
   const changed = await db
     .update(refreshJobSlot)
-    .set({ ownerKind: null, ownerId: null, ownerTokenHash: null, acquiredAt: null })
+    .set({
+      ownerKind: null,
+      ownerId: null,
+      ownerTokenHash: null,
+      acquiredAt: null,
+      leaseKind: null,
+      deploymentId: null,
+      recoveryAfter: null,
+    })
     .where(
       and(
         eq(refreshJobSlot.id, ACTIVE_SLOT_ID),
@@ -331,7 +365,11 @@ export async function claimRefreshSource(
 
     const claimed = await tx
       .update(refreshJobSources)
-      .set({ status: "executing", updatedAt: now })
+      .set({
+        status: "executing",
+        attemptCount: sql`${refreshJobSources.attemptCount} + 1`,
+        updatedAt: now,
+      })
       .where(
         and(
           eq(refreshJobSources.jobId, jobId),
@@ -350,11 +388,102 @@ export async function claimRefreshSource(
   });
 }
 
+export type RecoverRefreshSourceResult =
+  | { kind: "retry"; attemptCount: number }
+  | { kind: "failed"; attemptCount: number }
+  | { kind: "unchanged" };
+
+/**
+ * Reopens an uncertain, read-only adapter fetch a bounded number of times.
+ * Candidate persistence is idempotent and atomic with the saved checkpoint,
+ * so a late duplicate fetch cannot overwrite a completed source.
+ */
+export async function recoverRefreshSource(
+  jobId: string,
+  executionToken: string,
+  sourceId: SourceId,
+  expectedAttemptCount: number,
+  maxAttempts = 2,
+): Promise<RecoverRefreshSourceResult> {
+  const now = nowIso();
+  const tokenHash = hashToken(executionToken);
+  return db.transaction(async (tx) => {
+    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+    if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") {
+      return { kind: "unchanged" };
+    }
+    const [slot] = await tx
+      .select()
+      .from(refreshJobSlot)
+      .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
+    if (slot?.ownerId !== jobId || slot.ownerTokenHash !== tokenHash || slot.ownerKind !== "job") {
+      return { kind: "unchanged" };
+    }
+    const [source] = await tx
+      .select()
+      .from(refreshJobSources)
+      .where(and(eq(refreshJobSources.jobId, jobId), eq(refreshJobSources.sourceId, sourceId)));
+    if (
+      !source ||
+      source.attemptCount !== expectedAttemptCount ||
+      (source.status !== "executing" && source.status !== "unknown")
+    ) {
+      return { kind: "unchanged" };
+    }
+
+    if (source.attemptCount >= maxAttempts) {
+      const changed = await tx
+        .update(refreshJobSources)
+        .set({
+          status: "failed",
+          errorCode: "source_retry_exhausted",
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(refreshJobSources.jobId, jobId),
+            eq(refreshJobSources.sourceId, sourceId),
+            eq(refreshJobSources.attemptCount, expectedAttemptCount),
+            or(eq(refreshJobSources.status, "executing"), eq(refreshJobSources.status, "unknown")),
+          ),
+        )
+        .returning({ sourceId: refreshJobSources.sourceId });
+      if (changed.length !== 1) return { kind: "unchanged" };
+      await tx
+        .update(refreshJobs)
+        .set({ revision: job.revision + 1, updatedAt: now })
+        .where(and(eq(refreshJobs.id, jobId), eq(refreshJobs.ownerTokenHash, tokenHash)));
+      return { kind: "failed", attemptCount: source.attemptCount };
+    }
+
+    const changed = await tx
+      .update(refreshJobSources)
+      .set({ status: "pending", adapterStartedAt: null, errorCode: null, updatedAt: now })
+      .where(
+        and(
+          eq(refreshJobSources.jobId, jobId),
+          eq(refreshJobSources.sourceId, sourceId),
+          eq(refreshJobSources.attemptCount, expectedAttemptCount),
+          or(eq(refreshJobSources.status, "executing"), eq(refreshJobSources.status, "unknown")),
+        ),
+      )
+      .returning({ sourceId: refreshJobSources.sourceId });
+    if (changed.length !== 1) return { kind: "unchanged" };
+    await tx
+      .update(refreshJobs)
+      .set({ revision: job.revision + 1, updatedAt: now })
+      .where(and(eq(refreshJobs.id, jobId), eq(refreshJobs.ownerTokenHash, tokenHash)));
+    return { kind: "retry", attemptCount: source.attemptCount };
+  });
+}
+
 /** Persists the true adapter-call boundary timestamp before calling an adapter. */
 export async function recordAdapterStart(
   jobId: string,
   executionToken: string,
   sourceId: SourceId,
+  sourceAttemptCount: number,
   startedAt = nowIso(),
 ): Promise<boolean> {
   const tokenHash = hashToken(executionToken);
@@ -366,7 +495,6 @@ export async function recordAdapterStart(
       .from(refreshJobSlot)
       .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
     if (slot?.ownerId !== jobId || slot.ownerTokenHash !== tokenHash) return false;
-    if (job.nextEligibleAt && Date.parse(startedAt) < Date.parse(job.nextEligibleAt)) return false;
     const changed = await tx
       .update(refreshJobSources)
       .set({ adapterStartedAt: startedAt, updatedAt: startedAt })
@@ -375,6 +503,7 @@ export async function recordAdapterStart(
           eq(refreshJobSources.jobId, jobId),
           eq(refreshJobSources.sourceId, sourceId),
           eq(refreshJobSources.status, "executing"),
+          eq(refreshJobSources.attemptCount, sourceAttemptCount),
           isNull(refreshJobSources.adapterStartedAt),
         ),
       )
@@ -388,18 +517,18 @@ export async function recordAdapterStart(
   });
 }
 
-/** Checks ownership and the durable start gate immediately before adapter invocation. */
+/** Checks ownership and source state immediately before adapter invocation. */
 export async function canStartRefreshSource(
   jobId: string,
   executionToken: string,
   sourceId: SourceId,
-  now = nowIso(),
+  sourceAttemptCount: number,
+  _now?: string,
 ): Promise<boolean> {
   const tokenHash = hashToken(executionToken);
   return db.transaction(async (tx) => {
     const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
     if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") return false;
-    if (job.nextEligibleAt && Date.parse(now) < Date.parse(job.nextEligibleAt)) return false;
     const [slot] = await tx
       .select()
       .from(refreshJobSlot)
@@ -415,6 +544,7 @@ export async function canStartRefreshSource(
           eq(refreshJobSources.jobId, jobId),
           eq(refreshJobSources.sourceId, sourceId),
           eq(refreshJobSources.status, "executing"),
+          eq(refreshJobSources.attemptCount, sourceAttemptCount),
           isNull(refreshJobSources.adapterStartedAt),
         ),
       );
@@ -427,11 +557,12 @@ export async function markRefreshSourceSaved(
   jobId: string,
   executionToken: string,
   sourceId: SourceId,
+  sourceAttemptCount: number,
   resultCount: number,
   savedAt = nowIso(),
   errorCode?: string,
 ): Promise<boolean> {
-  return updateOwnedSource(jobId, executionToken, sourceId, "executing", {
+  return updateOwnedSource(jobId, executionToken, sourceId, sourceAttemptCount, "executing", {
     status: "saved",
     resultCount,
     errorCode: errorCode ? sanitizeErrorCode(errorCode) : null,
@@ -469,9 +600,10 @@ export async function markRefreshSourceInvalidated(
   jobId: string,
   executionToken: string,
   sourceId: SourceId,
+  sourceAttemptCount: number,
   invalidatedAt = nowIso(),
 ): Promise<boolean> {
-  return updateOwnedSource(jobId, executionToken, sourceId, "saved", {
+  return updateOwnedSource(jobId, executionToken, sourceId, sourceAttemptCount, "saved", {
     status: "invalidated",
     cacheInvalidatedAt: invalidatedAt,
     updatedAt: invalidatedAt,
@@ -484,9 +616,10 @@ export async function markRefreshSourceFailed(
   executionToken: string,
   sourceId: SourceId,
   errorCode: string,
+  sourceAttemptCount: number,
 ): Promise<boolean> {
   const at = nowIso();
-  return updateOwnedSource(jobId, executionToken, sourceId, "executing", {
+  return updateOwnedSource(jobId, executionToken, sourceId, sourceAttemptCount, "executing", {
     status: "failed",
     errorCode,
     completedAt: at,
@@ -500,9 +633,10 @@ export async function markRefreshSourceUnknown(
   executionToken: string,
   sourceId: SourceId,
   errorCode: string,
+  sourceAttemptCount: number,
 ): Promise<boolean> {
   const at = nowIso();
-  return updateOwnedSource(jobId, executionToken, sourceId, "executing", {
+  return updateOwnedSource(jobId, executionToken, sourceId, sourceAttemptCount, "executing", {
     status: "unknown",
     errorCode,
     updatedAt: at,
@@ -513,6 +647,7 @@ async function updateOwnedSource(
   jobId: string,
   executionToken: string,
   sourceId: SourceId,
+  sourceAttemptCount: number,
   expectedStatus: RefreshSourceStatus,
   patch: Partial<typeof refreshJobSources.$inferInsert>,
 ): Promise<boolean> {
@@ -532,6 +667,7 @@ async function updateOwnedSource(
         and(
           eq(refreshJobSources.jobId, jobId),
           eq(refreshJobSources.sourceId, sourceId),
+          eq(refreshJobSources.attemptCount, sourceAttemptCount),
           eq(refreshJobSources.status, expectedStatus),
         ),
       )
@@ -551,55 +687,6 @@ export async function getRefreshJobSources(jobId: string): Promise<RefreshJobSou
     .from(refreshJobSources)
     .where(eq(refreshJobSources.jobId, jobId))
     .orderBy(asc(refreshJobSources.ordinal));
-}
-
-/** Sets a future start gate based on the last actual adapter invocation. */
-export async function setNextEligibleAt(
-  jobId: string,
-  executionToken: string,
-  nextEligibleAt: string,
-): Promise<boolean> {
-  const tokenHash = hashToken(executionToken);
-  const now = nowIso();
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") return false;
-    const [slot] = await tx
-      .select()
-      .from(refreshJobSlot)
-      .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
-    if (slot?.ownerId !== jobId || slot.ownerTokenHash !== tokenHash) return false;
-    const sources = await tx
-      .select()
-      .from(refreshJobSources)
-      .where(eq(refreshJobSources.jobId, jobId))
-      .orderBy(asc(refreshJobSources.ordinal));
-    const latestStart = sources.reduce<string | null>(
-      (latest, source) =>
-        source.adapterStartedAt && (!latest || source.adapterStartedAt > latest)
-          ? source.adapterStartedAt
-          : latest,
-      null,
-    );
-    if (
-      !latestStart ||
-      Date.parse(nextEligibleAt) < Date.parse(latestStart) + MIN_SOURCE_START_GAP_MS
-    ) {
-      return false;
-    }
-    const updated = await tx
-      .update(refreshJobs)
-      .set({ nextEligibleAt, revision: job.revision + 1, updatedAt: now })
-      .where(
-        and(
-          eq(refreshJobs.id, jobId),
-          eq(refreshJobs.ownerTokenHash, tokenHash),
-          eq(refreshJobs.revision, job.revision),
-        ),
-      )
-      .returning({ id: refreshJobs.id });
-    return updated.length === 1;
-  });
 }
 
 /** Terminal job state and slot release happen in one transaction, never by TTL. */
@@ -658,7 +745,15 @@ export async function finishRefreshJob(
 
     await tx
       .update(refreshJobSlot)
-      .set({ ownerKind: null, ownerId: null, ownerTokenHash: null, acquiredAt: null })
+      .set({
+        ownerKind: null,
+        ownerId: null,
+        ownerTokenHash: null,
+        acquiredAt: null,
+        leaseKind: null,
+        deploymentId: null,
+        recoveryAfter: null,
+      })
       .where(
         and(
           eq(refreshJobSlot.id, ACTIVE_SLOT_ID),

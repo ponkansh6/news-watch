@@ -16,8 +16,8 @@ import {
   markRefreshSourceSaved,
   markRefreshSourceUnknown,
   recordAdapterStart,
+  recoverRefreshSource,
   releaseSingleRefresh,
-  setNextEligibleAt,
   startAggregateJob,
 } from "@/lib/db/repository/refresh-job-repository";
 import { refreshJobSlot, refreshJobs } from "@/lib/db/schema";
@@ -104,6 +104,47 @@ describe("refresh job repository", () => {
     expect(await claimSingleRefresh()).toEqual({ kind: "busy" });
   });
 
+  test("recovers only an expired, identified Vercel request owner with an atomic token fence", async () => {
+    const original = await claimSingleRefresh({ kind: "request-60-v1", deploymentId: "dpl-test" });
+    expect(original.kind).toBe("claimed");
+    await db
+      .update(refreshJobSlot)
+      .set({ recoveryAfter: new Date(Date.now() - 1_000).toISOString() })
+      .where(eq(refreshJobSlot.id, 1));
+
+    const recovered = await claimSingleRefresh({ kind: "request-60-v1", deploymentId: "dpl-test" });
+    expect(recovered.kind).toBe("claimed");
+    expect(recovered.ownerId).not.toBe(original.ownerId);
+    expect(await releaseSingleRefresh(original.ownerId!, original.ownerToken!)).toBe(false);
+    expect((await getActiveRefreshSlot())?.ownerId).toBe(recovered.ownerId);
+    expect(await releaseSingleRefresh(recovered.ownerId!, recovered.ownerToken!)).toBe(true);
+  });
+
+  test("does not recover unknown legacy owners or aggregate job owners", async () => {
+    const legacy = await claimSingleRefresh();
+    expect(legacy.kind).toBe("claimed");
+    await db
+      .update(refreshJobSlot)
+      .set({ acquiredAt: new Date(Date.now() - 60 * 60 * 1000).toISOString() })
+      .where(eq(refreshJobSlot.id, 1));
+    expect(await claimSingleRefresh({ kind: "request-60-v1", deploymentId: "dpl-test" })).toEqual({
+      kind: "busy",
+    });
+    await releaseSingleRefresh(legacy.ownerId!, legacy.ownerToken!);
+
+    const aggregate = await startAggregateJob();
+    expect(aggregate.kind).toBe("created");
+    createdJobs.push(aggregate.job!.id);
+    await db
+      .update(refreshJobSlot)
+      .set({ acquiredAt: new Date(Date.now() - 60 * 60 * 1000).toISOString() })
+      .where(eq(refreshJobSlot.id, 1));
+    expect(await claimSingleRefresh({ kind: "request-60-v1", deploymentId: "dpl-test" })).toEqual({
+      kind: "busy",
+    });
+    expect((await getActiveRefreshSlot())?.ownerKind).toBe("job");
+  });
+
   test("only the owner can bind a Workflow run and a job never adopts another run", async () => {
     const job = await startAggregateJob();
     expect(job.job).not.toBeNull();
@@ -146,20 +187,40 @@ describe("refresh job repository", () => {
 
     const firstStart = new Date().toISOString();
     expect(
-      await recordAdapterStart(job.job!.id, job.executionToken!, firstSource, firstStart),
+      await recordAdapterStart(
+        job.job!.id,
+        job.executionToken!,
+        firstSource,
+        claim!.attemptCount,
+        firstStart,
+      ),
     ).toBe(true);
-    expect(await recordAdapterStart(job.job!.id, "wrong-token", firstSource, firstStart)).toBe(
-      false,
-    );
-    expect(await markRefreshSourceInvalidated(job.job!.id, job.executionToken!, firstSource)).toBe(
-      false,
-    );
-    expect(await markRefreshSourceSaved(job.job!.id, "wrong-token", firstSource, 3)).toBe(false);
+    expect(
+      await recordAdapterStart(
+        job.job!.id,
+        "wrong-token",
+        firstSource,
+        claim!.attemptCount,
+        firstStart,
+      ),
+    ).toBe(false);
+    expect(
+      await markRefreshSourceInvalidated(
+        job.job!.id,
+        job.executionToken!,
+        firstSource,
+        claim!.attemptCount,
+      ),
+    ).toBe(false);
+    expect(
+      await markRefreshSourceSaved(job.job!.id, "wrong-token", firstSource, claim!.attemptCount, 3),
+    ).toBe(false);
     expect(
       await markRefreshSourceSaved(
         job.job!.id,
         job.executionToken!,
         firstSource,
+        claim!.attemptCount,
         3,
         undefined,
         "Partial_Source_Result",
@@ -174,68 +235,142 @@ describe("refresh job repository", () => {
     expect(await isRefreshCacheInvalidationPending(job.job!.id, "wrong-token", firstSource)).toBe(
       false,
     );
-    expect(await markRefreshSourceInvalidated(job.job!.id, job.executionToken!, firstSource)).toBe(
-      true,
-    );
+    expect(
+      await markRefreshSourceInvalidated(
+        job.job!.id,
+        job.executionToken!,
+        firstSource,
+        claim!.attemptCount,
+      ),
+    ).toBe(true);
     expect((await getRefreshJobSources(job.job!.id))[0]?.errorCode).toBe("partial_source_result");
     expect(await claimRefreshSource(job.job!.id, job.executionToken!, firstSource)).toBeNull();
     expect(
       await isRefreshCacheInvalidationPending(job.job!.id, job.executionToken!, firstSource),
     ).toBe(false);
-    expect(await markRefreshSourceInvalidated(job.job!.id, job.executionToken!, firstSource)).toBe(
-      false,
-    );
-
-    const nextStart = new Date(Date.parse(firstStart) + 70_000).toISOString();
-    const nextEligibleAt = new Date(Date.parse(firstStart) + 70_001).toISOString();
-    expect(await setNextEligibleAt(job.job!.id, job.executionToken!, nextEligibleAt)).toBe(true);
-    const secondSource = SOURCE_IDS[1]!;
-    expect(await claimRefreshSource(job.job!.id, job.executionToken!, secondSource)).not.toBeNull();
     expect(
-      await recordAdapterStart(job.job!.id, job.executionToken!, secondSource, nextStart),
+      await markRefreshSourceInvalidated(
+        job.job!.id,
+        job.executionToken!,
+        firstSource,
+        claim!.attemptCount,
+      ),
     ).toBe(false);
+
+    const nextStart = new Date(Date.parse(firstStart) + 1).toISOString();
+    const secondSource = SOURCE_IDS[1]!;
+    const nextClaim = await claimRefreshSource(job.job!.id, job.executionToken!, secondSource);
+    expect(nextClaim).not.toBeNull();
     expect(
-      await recordAdapterStart(job.job!.id, job.executionToken!, secondSource, nextEligibleAt),
+      await recordAdapterStart(
+        job.job!.id,
+        job.executionToken!,
+        secondSource,
+        nextClaim!.attemptCount,
+        nextStart,
+      ),
     ).toBe(true);
   });
 
   test("ambiguous source completion is retained and never releases the active slot", async () => {
     const job = await newBoundJob();
     const sourceId = SOURCE_IDS[0]!;
-    expect(await claimRefreshSource(job.job!.id, job.executionToken!, sourceId)).not.toBeNull();
+    const claim = await claimRefreshSource(job.job!.id, job.executionToken!, sourceId);
+    expect(claim).not.toBeNull();
     expect(
-      await markRefreshSourceUnknown(job.job!.id, job.executionToken!, sourceId, "outcome_unknown"),
+      await markRefreshSourceUnknown(
+        job.job!.id,
+        job.executionToken!,
+        sourceId,
+        "outcome_unknown",
+        claim!.attemptCount,
+      ),
     ).toBe(true);
     expect(await claimRefreshSource(job.job!.id, job.executionToken!, sourceId)).toBeNull();
     expect(await finishRefreshJob(job.job!.id, job.executionToken!, "failed")).toBe(false);
     expect((await getActiveRefreshSlot())?.ownerId).toBe(job.job!.id);
   });
 
+  test("automatically retries an uncertain read-only source at most twice and fences late workers", async () => {
+    const job = await newBoundJob();
+    const sourceId = SOURCE_IDS[0]!;
+    const first = await claimRefreshSource(job.job!.id, job.executionToken!, sourceId);
+    expect(first?.attemptCount).toBe(1);
+    expect(
+      await recordAdapterStart(job.job!.id, job.executionToken!, sourceId, first!.attemptCount),
+    ).toBe(true);
+    expect(
+      await markRefreshSourceUnknown(
+        job.job!.id,
+        job.executionToken!,
+        sourceId,
+        "fetch_outcome_unknown",
+        first!.attemptCount,
+      ),
+    ).toBe(true);
+
+    expect(
+      await recoverRefreshSource(job.job!.id, job.executionToken!, sourceId, first!.attemptCount),
+    ).toEqual({ kind: "retry", attemptCount: 1 });
+    const second = await claimRefreshSource(job.job!.id, job.executionToken!, sourceId);
+    expect(second?.attemptCount).toBe(2);
+    expect(
+      await recordAdapterStart(job.job!.id, job.executionToken!, sourceId, first!.attemptCount),
+    ).toBe(false);
+    expect(
+      await recordAdapterStart(job.job!.id, job.executionToken!, sourceId, second!.attemptCount),
+    ).toBe(true);
+
+    expect(
+      await markRefreshSourceUnknown(
+        job.job!.id,
+        job.executionToken!,
+        sourceId,
+        "fetch_outcome_unknown",
+        second!.attemptCount,
+      ),
+    ).toBe(true);
+    expect(
+      await recoverRefreshSource(job.job!.id, job.executionToken!, sourceId, second!.attemptCount),
+    ).toEqual({ kind: "failed", attemptCount: 2 });
+    expect((await getRefreshJobSources(job.job!.id))[0]?.status).toBe("failed");
+    expect((await getRefreshJobSources(job.job!.id))[0]?.errorCode).toBe("source_retry_exhausted");
+  });
+
   test("job terminalization releases the slot only with proven source completion", async () => {
     const job = await newBoundJob();
     let nextStart = Date.now();
-    for (const [index, sourceId] of SOURCE_IDS.entries()) {
-      expect(await claimRefreshSource(job.job!.id, job.executionToken!, sourceId)).not.toBeNull();
+    for (const sourceId of SOURCE_IDS) {
+      const sourceClaim = await claimRefreshSource(job.job!.id, job.executionToken!, sourceId);
+      expect(sourceClaim).not.toBeNull();
       const startedAt = new Date(nextStart).toISOString();
-      expect(await recordAdapterStart(job.job!.id, job.executionToken!, sourceId, startedAt)).toBe(
-        true,
-      );
-      expect(await markRefreshSourceSaved(job.job!.id, job.executionToken!, sourceId, 0)).toBe(
-        true,
-      );
-      expect(await markRefreshSourceInvalidated(job.job!.id, job.executionToken!, sourceId)).toBe(
-        true,
-      );
-      if (index < SOURCE_IDS.length - 1) {
-        nextStart += 70_000;
-        expect(
-          await setNextEligibleAt(
-            job.job!.id,
-            job.executionToken!,
-            new Date(nextStart).toISOString(),
-          ),
-        ).toBe(true);
-      }
+      expect(
+        await recordAdapterStart(
+          job.job!.id,
+          job.executionToken!,
+          sourceId,
+          sourceClaim!.attemptCount,
+          startedAt,
+        ),
+      ).toBe(true);
+      expect(
+        await markRefreshSourceSaved(
+          job.job!.id,
+          job.executionToken!,
+          sourceId,
+          sourceClaim!.attemptCount,
+          0,
+        ),
+      ).toBe(true);
+      expect(
+        await markRefreshSourceInvalidated(
+          job.job!.id,
+          job.executionToken!,
+          sourceId,
+          sourceClaim!.attemptCount,
+        ),
+      ).toBe(true);
+      nextStart += 1;
     }
     expect(await finishRefreshJob(job.job!.id, job.executionToken!, "completed")).toBe(true);
     expect(await getActiveRefreshSlot()).toMatchObject({ id: 1, ownerId: null });

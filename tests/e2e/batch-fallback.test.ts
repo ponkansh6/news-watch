@@ -93,4 +93,56 @@ describe("batch-fallback e2e/integration test", () => {
     expect(results[0]).toBeNull();
     expect(results[1]).toBeNull();
   });
+
+  it("runs fallback scoring sequentially and stops when the shared deadline expires", async () => {
+    let finishFirstFallback!: (result: { response: { text: () => string } }) => void;
+    const firstFallback = new Promise<{ response: { text: () => string } }>((resolve) => {
+      finishFirstFallback = resolve;
+    });
+    let firstFallbackTimeout = 0;
+    mockGenerateContent.mockImplementation((_prompt, options) => {
+      const callNumber = mockGenerateContent.mock.calls.length;
+      if (callNumber <= 3) {
+        return Promise.resolve({ response: { text: () => `invalid json batch ${callNumber}` } });
+      }
+      if (callNumber === 4) {
+        firstFallbackTimeout = options.timeout;
+        return firstFallback;
+      }
+      return Promise.resolve({ response: { text: () => "{}" } });
+    });
+
+    const now = Date.now();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
+    const scoring = scoreArticles(
+      [
+        { title: "Article 1", description: "Desc 1" },
+        { title: "Article 2", description: "Desc 2" },
+      ],
+      "",
+      { timeoutMs: 1000, retries: 0 },
+    );
+    await vi.waitFor(() => expect(mockGenerateContent).toHaveBeenCalledTimes(4));
+    expect(firstFallbackTimeout).toBeLessThanOrEqual(1000);
+
+    nowSpy.mockReturnValue(now + 1001);
+    finishFirstFallback({
+      response: {
+        text: () =>
+          JSON.stringify({
+            summary: "個別スコアリングのサマリーです (20文字以上)",
+            usefulness: 8,
+            reason: "個別成功",
+            ntt_relevance: 8,
+          }),
+      },
+    });
+    const results = await scoring;
+    nowSpy.mockRestore();
+
+    expect(mockGenerateContent).toHaveBeenCalledTimes(4);
+    expect(results).toHaveLength(2);
+    expect(results[0]?.usefulness).toBe(8);
+    expect(results[1]).toBeNull();
+  });
 });

@@ -15,7 +15,17 @@ const refreshJobMocks = vi.hoisted(() => ({
   getOwnedRefreshJob: vi.fn().mockResolvedValue(null),
 }));
 
+const geminiRateLimitMocks = vi.hoisted(() => ({
+  claimGeminiAttempt: vi.fn().mockResolvedValue({
+    kind: "claimed",
+    owner: { ownerId: "test-owner", ownerToken: "test-token" },
+  }),
+  beginGeminiAttempt: vi.fn().mockResolvedValue("test-attempt"),
+  completeGeminiAttempt: vi.fn().mockResolvedValue(true),
+}));
+
 vi.mock("@/lib/db/repository/refresh-job-repository", () => refreshJobMocks);
+vi.mock("@/lib/db/repository/gemini-rate-limit-repository", () => geminiRateLimitMocks);
 
 const mockScoreArticles = vi.fn();
 const mockUpsertArticle = vi.fn();
@@ -69,6 +79,12 @@ vi.mock("@/lib/db", () => ({
 describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    geminiRateLimitMocks.claimGeminiAttempt.mockResolvedValue({
+      kind: "claimed",
+      owner: { ownerId: "test-owner", ownerToken: "test-token" },
+    });
+    geminiRateLimitMocks.beginGeminiAttempt.mockResolvedValue("test-attempt");
+    geminiRateLimitMocks.completeGeminiAttempt.mockResolvedValue(true);
     mockScoreArticles.mockImplementation(
       (articles: { title: string; description: string | null }[]) =>
         Promise.resolve(articles.map(() => null)),
@@ -85,8 +101,11 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     mockDeleteStaleLowScored.mockResolvedValue(undefined);
   });
 
-  test("should report scored=0 when LLM returns null for all articles", async () => {
-    mockScoreArticles.mockResolvedValue(MOCK_TOPICS.map(() => null));
+  test("keeps LLM failures unscored so the articles remain eligible for retry", async () => {
+    mockScoreArticles.mockImplementation(
+      (articles: { title: string; description: string | null }[]) =>
+        Promise.resolve(articles.map(() => null)),
+    );
 
     const { POST } = await import("@/app/api/fetch-news/route");
 
@@ -113,6 +132,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
     }
 
     expect(totalFetched).toBeGreaterThan(0);
+    expect(mockUpsertArticle).not.toHaveBeenCalled();
   });
 
   test("should score all articles when LLM works correctly", async () => {
@@ -153,6 +173,11 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       expect(result.fetched).toBeGreaterThan(0);
     }
     expect(totalFetched).toBeGreaterThan(0);
+    const upserted = mockUpsertArticle.mock.calls.flatMap(([articles]) => articles);
+    expect(upserted.length).toBeLessThan(totalFetched);
+    expect(upserted.every((article: { score: number | null }) => article.score !== null)).toBe(
+      true,
+    );
   });
 
   test("should report partial scoring when LLM sometimes fails", async () => {

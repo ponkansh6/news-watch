@@ -1,6 +1,7 @@
 export { LLM_MODEL } from "./client";
 export { scoreArticle } from "./single";
-export { scoreArticles } from "./batch";
+export { scoreArticles, scoreArticlesById } from "./batch";
+export type { IdentifiedArticleInput, IdentifiedArticleScore } from "./batch";
 export {
   analyzeFavorites,
   buildPreferencePromptSection,

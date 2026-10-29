@@ -1,6 +1,7 @@
 import { PREFERENCE_ANALYSIS_PROMPT, PREFERENCE_SECTION_TEMPLATE } from "./prompts";
 import { parseWithRetry } from "./parser";
 import { callGemini } from "./client";
+import type { GeminiLeaseEvidence } from "@/lib/db/repository/gemini-rate-limit-repository";
 import { PreferenceAnalysisSchema, type FavoriteInput, type PreferenceAnalysis } from "./schemas";
 import {
   PREFERENCE_MAX_FAVORITES_IN_PROMPT,
@@ -96,6 +97,7 @@ export function isUsablePreferenceAnalysis(a: PreferenceAnalysis): boolean {
 export async function analyzeFavorites(
   items: FavoriteInput[],
   notForMeItems: FavoriteInput[] = [],
+  options?: { leaseEvidence?: GeminiLeaseEvidence },
 ): Promise<PreferenceAnalysis | null> {
   if (items.length === 0) return null;
 
@@ -104,7 +106,17 @@ export async function analyzeFavorites(
     .replace("{{notForMe}}", () => buildNotForMeBlock(notForMeItems));
 
   return parseWithRetry(
-    () => callGemini(prompt, LLM_PREFERENCE_MAX_TOKENS, LLM_PREFERENCE_TIMEOUT_MS),
+    () =>
+      callGemini(
+        prompt,
+        LLM_PREFERENCE_MAX_TOKENS,
+        LLM_PREFERENCE_TIMEOUT_MS,
+        undefined,
+        undefined,
+        {
+          leaseEvidence: options?.leaseEvidence,
+        },
+      ),
     PreferenceAnalysisSchema,
     "Preference analysis",
     clampPreferencePayload,

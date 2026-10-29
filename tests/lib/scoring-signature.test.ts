@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { computeContentHash, computeScoringSignature } from "@/lib/scoring-signature";
+import {
+  computeContentHash,
+  computeIdentifiedScoringSignature,
+  computeScoringSignature,
+} from "@/lib/scoring-signature";
 
 describe("scoring-signature", () => {
   test("computeContentHash is deterministic and handles null/empty description", () => {
@@ -24,5 +28,14 @@ describe("scoring-signature", () => {
     expect(s1).toBe(s2);
     expect(s1).not.toBe(s3);
     expect(s1.length).toBe(16);
+  });
+
+  test("identified scorer signature is stable and isolated from the legacy response contract", () => {
+    const identified = computeIdentifiedScoringSignature("tech");
+
+    expect(identified).toBe(computeIdentifiedScoringSignature("tech"));
+    expect(identified).not.toBe(computeScoringSignature("tech"));
+    expect(identified).not.toBe(computeIdentifiedScoringSignature("business"));
+    expect(identified).toHaveLength(16);
   });
 });

@@ -21,6 +21,11 @@ import {
 } from "@/lib/constants";
 import { AnalyzeFavoritesBodySchema } from "./schema";
 import type { FavoriteInput } from "@/lib/llm";
+import {
+  claimSingleRefresh,
+  releaseSingleRefresh,
+} from "@/lib/db/repository/refresh-job-repository";
+import { geminiLeaseEvidence } from "@/lib/llm/client";
 
 export const maxDuration = 60;
 
@@ -101,35 +106,54 @@ export async function POST(request: Request) {
       score: a.score,
     }));
 
-    const analysis = await analyzeFavorites(items, nfmItems);
-
-    if (!analysis || !isUsablePreferenceAnalysis(analysis)) {
-      console.warn("[api] favorites/analyze analysis not usable:", analysis);
-      return NextResponse.json({ error: "Analysis failed" }, { status: 502 });
+    const leaseEvidence = geminiLeaseEvidence("request-60-v1");
+    const slotLeaseEvidence =
+      leaseEvidence?.kind === "request-60-v1" && leaseEvidence.deploymentId
+        ? { kind: "request-60-v1" as const, deploymentId: leaseEvidence.deploymentId }
+        : { kind: "unknown" as const };
+    const claim = await claimSingleRefresh(slotLeaseEvidence);
+    if (claim.kind !== "claimed" || !claim.ownerId || !claim.ownerToken) {
+      return NextResponse.json(
+        { type: "busy", error: "refresh already running", jobId: null, status: null },
+        { status: 409 },
+      );
     }
 
-    const promptSection = buildPreferencePromptSection(analysis);
-    await savePreferenceProfile({
-      analysis,
-      promptSection,
-      favoriteCount: count,
-      favoriteMaxId: maxId,
-      notForMeCount: nfmStats.count,
-      notForMeMaxId: nfmStats.maxId,
-      model: LLM_MODEL,
-    });
+    try {
+      const analysis = await analyzeFavorites(items, nfmItems, {
+        leaseEvidence: geminiLeaseEvidence("request-60-v1"),
+      });
 
-    revalidateTag("preference-profile", "max");
+      if (!analysis || !isUsablePreferenceAnalysis(analysis)) {
+        console.warn("[api] favorites/analyze analysis not usable:", analysis);
+        return NextResponse.json({ error: "Analysis failed" }, { status: 502 });
+      }
 
-    return NextResponse.json({
-      reused: false,
-      profile: {
-        summary: analysis.summary,
-        themes: analysis.themes,
-        createdAt: new Date().toISOString(),
+      const promptSection = buildPreferencePromptSection(analysis);
+      await savePreferenceProfile({
+        analysis,
+        promptSection,
         favoriteCount: count,
-      },
-    });
+        favoriteMaxId: maxId,
+        notForMeCount: nfmStats.count,
+        notForMeMaxId: nfmStats.maxId,
+        model: LLM_MODEL,
+      });
+
+      revalidateTag("preference-profile", "max");
+
+      return NextResponse.json({
+        reused: false,
+        profile: {
+          summary: analysis.summary,
+          themes: analysis.themes,
+          createdAt: new Date().toISOString(),
+          favoriteCount: count,
+        },
+      });
+    } finally {
+      await releaseSingleRefresh(claim.ownerId, claim.ownerToken);
+    }
   } catch (err) {
     console.error("[api] favorites/analyze error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

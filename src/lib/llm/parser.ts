@@ -7,9 +7,11 @@ export async function parseWithRetry<T>(
   schema: z.ZodType<T>,
   contextName: string,
   transform?: (parsed: unknown) => unknown,
+  options?: { deadlineAt?: number; maxRetries?: number },
 ): Promise<T | null> {
-  const maxParseRetries = LLM_MAX_PARSE_RETRIES;
+  const maxParseRetries = options?.maxRetries ?? LLM_MAX_PARSE_RETRIES;
   for (let attempt = 0; attempt <= maxParseRetries; attempt++) {
+    if (options?.deadlineAt !== undefined && Date.now() >= options.deadlineAt) return null;
     let text: string | null;
     try {
       text = await fetcher();
@@ -30,7 +32,9 @@ export async function parseWithRetry<T>(
         text.slice(0, DEBUG_LOG_TRUNCATE_LENGTH),
       );
       if (attempt < maxParseRetries) {
-        await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+        const delayMs = getRetryDelay(attempt, options?.deadlineAt);
+        if (delayMs <= 0) return null;
+        await new Promise((r) => setTimeout(r, delayMs));
         continue;
       }
       return null;
@@ -41,7 +45,9 @@ export async function parseWithRetry<T>(
         parsed = transform(parsed);
       } catch {
         if (attempt < maxParseRetries) {
-          await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+          const delayMs = getRetryDelay(attempt, options?.deadlineAt);
+          if (delayMs <= 0) return null;
+          await new Promise((r) => setTimeout(r, delayMs));
           continue;
         }
         return null;
@@ -58,11 +64,20 @@ export async function parseWithRetry<T>(
         );
       }
       if (attempt < maxParseRetries) {
-        await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+        const delayMs = getRetryDelay(attempt, options?.deadlineAt);
+        if (delayMs <= 0) return null;
+        await new Promise((r) => setTimeout(r, delayMs));
         continue;
       }
       return null;
     }
   }
   return null;
+}
+
+function getRetryDelay(attempt: number, deadlineAt?: number): number {
+  const delayMs = backoffMs(attempt);
+  return deadlineAt === undefined
+    ? delayMs
+    : Math.min(delayMs, Math.max(0, deadlineAt - Date.now()));
 }

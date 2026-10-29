@@ -12,17 +12,56 @@ const mocks = vi.hoisted(() => ({
   markNeedsReconciliation: vi.fn(),
   markRefreshSourceFailed: vi.fn(),
   markRefreshSourceInvalidated: vi.fn(),
-  markRefreshSourceSaved: vi.fn(),
   markRefreshSourceUnknown: vi.fn(),
+  recoverRefreshSource: vi.fn(),
   recordAdapterStart: vi.fn(),
-  setNextEligibleAt: vi.fn(),
-  fetchSource: vi.fn(),
+  collectRefreshCandidates: vi.fn(),
+  persistIdentifiedCandidateBatch: vi.fn(),
+  refreshStagedSourceRecency: vi.fn(),
+  gcStaleArticles: vi.fn(),
+  scoreArticlesById: vi.fn(),
+  claimCandidateBatch: vi.fn(),
+  deferCandidateBatchForRateLimit: vi.fn(),
+  freezeNextCandidateBatch: vi.fn(),
+  getBatchCandidates: vi.fn(),
+  getCandidateBatch: vi.fn(),
+  listCandidateBatches: vi.fn(),
+  listRefreshJobCandidates: vi.fn(),
+  markCandidateBatchFailed: vi.fn(),
+  markCandidateBatchSaved: vi.fn(),
+  markCandidateBatchUnknown: vi.fn(),
+  recoverUnknownCandidateBatch: vi.fn(),
+  retryFailedCandidateBatch: vi.fn(),
+  storeCandidateBatchResult: vi.fn(),
   revalidateTag: vi.fn(),
   sleep: vi.fn(),
 }));
 
 vi.mock("@/lib/db/repository/refresh-job-repository", () => mocks);
-vi.mock("@/lib/news/fetch-service", () => ({ fetchSource: mocks.fetchSource }));
+vi.mock("@/lib/db/repository/refresh-candidate-repository", () => mocks);
+vi.mock("@/lib/news/fetch-service", () => ({
+  collectRefreshCandidates: mocks.collectRefreshCandidates,
+  persistIdentifiedCandidateBatch: mocks.persistIdentifiedCandidateBatch,
+  refreshStagedSourceRecency: mocks.refreshStagedSourceRecency,
+}));
+vi.mock("@/app/api/fetch-news/pipeline/maintenance", () => ({
+  gcStaleArticles: mocks.gcStaleArticles,
+}));
+vi.mock("@/lib/llm", () => ({ scoreArticlesById: mocks.scoreArticlesById }));
+vi.mock("@/lib/llm/client", () => ({
+  geminiLeaseEvidence: (kind: string) => ({ kind, deploymentId: "test-deployment" }),
+  GeminiSlotWaitError: class GeminiSlotWaitError extends Error {
+    recoverable: boolean;
+    retryAfterMs: number | undefined;
+    attemptsSent: number;
+    constructor(recoverable: boolean, retryAfterMs?: number, attemptsSent = 0) {
+      super("wait for Gemini slot");
+      this.retryAfterMs = retryAfterMs;
+      this.attemptsSent = attemptsSent;
+      this.recoverable = recoverable;
+    }
+  },
+}));
 vi.mock("next/cache", () => ({
   revalidateTag: mocks.revalidateTag,
   unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
@@ -34,33 +73,26 @@ vi.mock("workflow", () => ({
 }));
 
 import { SourceFetchError } from "@/lib/news/base/rss-fetcher";
+import { GeminiSlotWaitError } from "@/lib/llm/client";
 import { aggregateRefreshWorkflow } from "@/workflows/aggregate-refresh";
 
-function makeSourceRows(): Array<{
-  sourceId: SourceId;
-  status: "pending" | "executing" | "saved" | "invalidated" | "failed" | "unknown";
-  adapterStartedAt: string | null;
-  resultCount: number | null;
-  errorCode: string | null;
-}> {
+function makeSourceRows() {
   return SOURCE_IDS.map((sourceId) => ({
     sourceId,
-    status: "pending" as const,
-    adapterStartedAt: null,
-    resultCount: null,
-    errorCode: null,
+    status: "pending" as "pending" | "executing" | "saved" | "invalidated" | "failed" | "unknown",
+    adapterStartedAt: null as string | null,
+    resultCount: null as number | null,
+    errorCode: null as string | null,
+    attemptCount: 0,
   }));
 }
 
 describe("aggregate refresh workflow", () => {
   let sourceRows: ReturnType<typeof makeSourceRows>;
-  let nowMs: number;
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.clearAllMocks();
-    nowMs = Date.parse("2026-01-01T00:00:00.000Z");
-    vi.spyOn(Date, "now").mockImplementation(() => nowMs);
+    vi.resetAllMocks();
     sourceRows = makeSourceRows();
     mocks.bindWorkflowRun.mockResolvedValue(true);
     mocks.canStartRefreshSource.mockResolvedValue(true);
@@ -73,46 +105,45 @@ describe("aggregate refresh workflow", () => {
         const row = sourceRows.find((item) => item.sourceId === sourceId)!;
         if (row.status !== "pending") return null;
         row.status = "executing";
+        row.attemptCount += 1;
         return { ...row };
       },
     );
     mocks.recordAdapterStart.mockImplementation(
-      async (_jobId: string, _token: string, sourceId: SourceId, at: string) => {
-        sourceRows.find((row) => row.sourceId === sourceId)!.adapterStartedAt = at;
-        return true;
-      },
-    );
-    mocks.fetchSource.mockImplementation(
-      async (
-        sourceId: SourceId,
-        _onProgress: unknown,
-        options: {
-          beforeAdapterStart: () => Promise<boolean>;
-          onAdapterStart: (startedAt: string) => Promise<boolean>;
-        },
-      ) => {
-        if (!(await options.beforeAdapterStart())) throw new Error("start gate rejected");
-        await options.onAdapterStart(new Date(nowMs).toISOString());
-        return { results: [{ saved: 2, sourceId }] };
-      },
-    );
-    mocks.markRefreshSourceSaved.mockImplementation(
       async (
         _jobId: string,
         _token: string,
         sourceId: SourceId,
-        count: number,
-        _savedAt: string,
-        errorCode?: string,
+        _attemptCount: number,
+        at: string,
       ) => {
-        const row = sourceRows.find((item) => item.sourceId === sourceId)!;
-        row.status = "saved";
-        row.resultCount = count;
-        row.errorCode = errorCode ?? null;
+        sourceRows.find((row) => row.sourceId === sourceId)!.adapterStartedAt = at;
         return true;
       },
     );
+    mocks.collectRefreshCandidates.mockImplementation(
+      async (
+        sourceId: SourceId,
+        _jobId: string,
+        _token: string,
+        options: {
+          beforeAdapterStart: () => Promise<boolean>;
+          onAdapterStart: (startedAt: string) => Promise<boolean>;
+          sourceAttemptCount: number;
+        },
+      ) => {
+        if (!(await options.beforeAdapterStart())) throw new Error("start checkpoint rejected");
+        await options.onAdapterStart(new Date().toISOString());
+        const row = sourceRows.find((item) => item.sourceId === sourceId)!;
+        row.status = "saved";
+        row.resultCount = 0;
+        row.attemptCount = options.sourceAttemptCount;
+        row.errorCode = null;
+        return { fetched: 2, selected: 0, deferred: 0, signature: "sig" };
+      },
+    );
     mocks.isRefreshCacheInvalidationPending.mockResolvedValue(true);
+    mocks.refreshStagedSourceRecency.mockResolvedValue(0);
     mocks.markRefreshSourceInvalidated.mockImplementation(
       async (_jobId: string, _token: string, sourceId: SourceId) => {
         sourceRows.find((row) => row.sourceId === sourceId)!.status = "invalidated";
@@ -126,195 +157,563 @@ describe("aggregate refresh workflow", () => {
       },
     );
     mocks.markRefreshSourceUnknown.mockResolvedValue(true);
-    mocks.markNeedsReconciliation.mockResolvedValue(true);
-    mocks.setNextEligibleAt.mockResolvedValue(true);
-    mocks.finishRefreshJob.mockResolvedValue(true);
-    mocks.sleep.mockImplementation(async (durationMs: number) => {
-      nowMs += durationMs;
-    });
-  });
-
-  it.each([
-    { processingMs: 40_000, expectedSleepMs: 30_000 },
-    { processingMs: 80_000, expectedSleepMs: 0 },
-  ])(
-    "gates each adapter at its prior actual start plus 70 seconds with $processingMs ms processing",
-    async ({ processingMs, expectedSleepMs }) => {
-      mocks.fetchSource.mockImplementation(
-        async (
-          sourceId: SourceId,
-          _onProgress: unknown,
-          options: {
-            beforeAdapterStart: () => Promise<boolean>;
-            onAdapterStart: (startedAt: string) => Promise<boolean>;
-          },
-        ) => {
-          if (!(await options.beforeAdapterStart())) throw new Error("start gate rejected");
-          const startedAt = new Date(nowMs).toISOString();
-          await options.onAdapterStart(startedAt);
-          nowMs += processingMs;
-          return { results: [{ saved: 2, sourceId }] };
-        },
-      );
-
-      const result = await aggregateRefreshWorkflow("job-id", "execution-token");
-
-      expect(result).toEqual({ status: "completed", failedSources: 0 });
-      expect(mocks.bindWorkflowRun).toHaveBeenCalledWith("job-id", "execution-token", "wrun_test");
-      expect(mocks.fetchSource.mock.calls.map((call) => call[0])).toEqual(SOURCE_IDS);
-      expect(
-        mocks.fetchSource.mock.calls.every((call) => call[2].strictAdapterErrors === true),
-      ).toBe(true);
-      expect(
-        mocks.fetchSource.mock.calls.every((call) => typeof call[2].onAdapterStart === "function"),
-      ).toBe(true);
-      expect(
-        mocks.fetchSource.mock.calls.every(
-          (call) => typeof call[2].beforeAdapterStart === "function",
-        ),
-      ).toBe(true);
-      expect(mocks.revalidateTag).toHaveBeenCalledTimes(SOURCE_IDS.length);
-      expect(mocks.sleep).toHaveBeenCalledTimes(expectedSleepMs === 0 ? 0 : SOURCE_IDS.length - 1);
-      const adapterStarts = mocks.recordAdapterStart.mock.calls.map((call) => Date.parse(call[3]));
-      const sleepDurations = mocks.sleep.mock.calls.map((call) => call[0] as number);
-      if (expectedSleepMs > 0) {
-        expect(sleepDurations[0]).toBe(expectedSleepMs);
-      }
-      for (let index = 1; index < adapterStarts.length; index++) {
-        expect(adapterStarts[index]).toBeGreaterThanOrEqual(adapterStarts[index - 1]! + 70_000);
-      }
-      expect(mocks.finishRefreshJob).toHaveBeenCalledWith("job-id", "execution-token", "completed");
-    },
-  );
-
-  it("does not sleep again when a durable sleep resumes after the gate", async () => {
-    const callTimes: number[] = [];
-    mocks.fetchSource.mockImplementation(
+    mocks.recoverRefreshSource.mockImplementation(
       async (
+        _jobId: string,
+        _token: string,
         sourceId: SourceId,
-        _onProgress: unknown,
-        options: {
-          beforeAdapterStart: () => Promise<boolean>;
-          onAdapterStart: (startedAt: string) => Promise<boolean>;
-        },
+        expectedAttemptCount: number,
+        maxAttempts: number,
       ) => {
-        if (!(await options.beforeAdapterStart())) throw new Error("start gate rejected");
-        callTimes.push(nowMs);
-        await options.onAdapterStart(new Date(nowMs).toISOString());
-        return { results: [{ saved: 1, sourceId }] };
+        const row = sourceRows.find((item) => item.sourceId === sourceId)!;
+        if (row.attemptCount !== expectedAttemptCount) return { kind: "unchanged" };
+        if (
+          (row.status === "unknown" || row.status === "executing") &&
+          row.attemptCount < maxAttempts
+        ) {
+          row.status = "pending";
+          return { kind: "retry", attemptCount: row.attemptCount };
+        }
+        if (row.status === "unknown" || row.status === "executing") {
+          row.status = "failed";
+          row.errorCode = "source-retry-exhausted";
+          return { kind: "failed", attemptCount: row.attemptCount };
+        }
+        return { kind: "unchanged" };
       },
     );
-    mocks.sleep.mockImplementationOnce(async (durationMs: number) => {
-      nowMs += durationMs + 15_000;
-    });
+    mocks.markNeedsReconciliation.mockResolvedValue(true);
+    mocks.finishRefreshJob.mockResolvedValue(true);
+    mocks.gcStaleArticles.mockResolvedValue({ deleted: 0 });
+    mocks.listCandidateBatches.mockResolvedValue([]);
+    mocks.listRefreshJobCandidates.mockResolvedValue([]);
+    mocks.freezeNextCandidateBatch.mockResolvedValue(null);
+    mocks.retryFailedCandidateBatch.mockResolvedValue(false);
+    mocks.sleep.mockResolvedValue(undefined);
+  });
+
+  it("collects sources sequentially without the obsolete 70-second source gate", async () => {
+    const result = await aggregateRefreshWorkflow("job-id", "execution-token");
+    expect(result).toEqual({ status: "completed", failedSources: 0 });
+    expect(mocks.collectRefreshCandidates.mock.calls.map((call) => call[0])).toEqual(SOURCE_IDS);
+    expect(
+      mocks.collectRefreshCandidates.mock.calls.every((call) => call[3].strictAdapterErrors),
+    ).toBe(true);
+    expect(mocks.refreshStagedSourceRecency.mock.calls.map((call) => call[2])).toEqual(SOURCE_IDS);
+    expect(mocks.sleep).not.toHaveBeenCalled();
+    expect(mocks.revalidateTag).toHaveBeenCalledTimes(SOURCE_IDS.length);
+    expect(mocks.finishRefreshJob).toHaveBeenCalledWith("job-id", "execution-token", "completed");
+  });
+
+  it("replays recency refresh for an already saved source without fetching again", async () => {
+    sourceRows[0]!.status = "saved";
+    sourceRows[0]!.resultCount = 3;
 
     await aggregateRefreshWorkflow("job-id", "execution-token");
 
-    expect(mocks.sleep).toHaveBeenCalledTimes(SOURCE_IDS.length - 1);
-    expect(callTimes[1]).toBeGreaterThanOrEqual(callTimes[0]! + 70_000);
+    expect(mocks.collectRefreshCandidates.mock.calls.map((call) => call[0])).toEqual(
+      SOURCE_IDS.slice(1),
+    );
+    expect(mocks.refreshStagedSourceRecency.mock.calls.map((call) => call[2])).toEqual(SOURCE_IDS);
   });
 
-  it("continues after a source-scoped failure and marks the final job partial", async () => {
+  it("does not complete when durable recency refresh fails", async () => {
+    mocks.refreshStagedSourceRecency.mockRejectedValueOnce(
+      new Error("recency database unavailable"),
+    );
+
+    await expect(aggregateRefreshWorkflow("job-id", "execution-token")).rejects.toThrow();
+
+    expect(mocks.markNeedsReconciliation).toHaveBeenCalledWith(
+      "job-id",
+      "execution-token",
+      "workflow-requires-reconciliation",
+    );
+    expect(mocks.finishRefreshJob).not.toHaveBeenCalled();
+  });
+
+  it("collects a failed source as partial and continues to the remaining sources", async () => {
     const failedSource = SOURCE_IDS[0];
-    mocks.fetchSource.mockImplementation(async (sourceId: SourceId) => {
+    mocks.collectRefreshCandidates.mockImplementation(async (sourceId: SourceId) => {
       if (sourceId === failedSource) throw new SourceFetchError(sourceId, "http", "HTTP 503");
-      return { results: [{ saved: 1 }] };
+      return { fetched: 1, selected: 0, deferred: 0, signature: "sig" };
     });
-
     const result = await aggregateRefreshWorkflow("job-id", "execution-token");
-
     expect(result).toEqual({ status: "partial", failedSources: 1 });
     expect(mocks.markRefreshSourceFailed).toHaveBeenCalledWith(
       "job-id",
       "execution-token",
       failedSource,
       "source-http",
+      1,
     );
-    expect(mocks.fetchSource).toHaveBeenCalledTimes(SOURCE_IDS.length);
-    expect(mocks.finishRefreshJob).toHaveBeenCalledWith("job-id", "execution-token", "partial");
+    expect(mocks.collectRefreshCandidates).toHaveBeenCalledTimes(SOURCE_IDS.length);
   });
 
-  it("records scoring errors as partial even when the service returns a normal response", async () => {
-    const partialSource = SOURCE_IDS[0];
-    mocks.fetchSource.mockImplementation(
+  it("rereads the atomic source checkpoint after an ambiguous staging response", async () => {
+    const sourceId = SOURCE_IDS[0]!;
+    mocks.collectRefreshCandidates.mockImplementationOnce(async () => {
+      const row = sourceRows.find((item) => item.sourceId === sourceId)!;
+      row.status = "saved";
+      row.resultCount = 4;
+      throw new Error("database response lost after commit");
+    });
+
+    const result = await aggregateRefreshWorkflow("job-id", "execution-token");
+
+    expect(result).toEqual({ status: "completed", failedSources: 0 });
+    expect(mocks.collectRefreshCandidates).toHaveBeenCalledTimes(SOURCE_IDS.length);
+    expect(mocks.markRefreshSourceUnknown).not.toHaveBeenCalled();
+    expect(mocks.markNeedsReconciliation).not.toHaveBeenCalled();
+  });
+
+  it("automatically retries an uncertain source once and completes without reconciliation", async () => {
+    const sourceId = SOURCE_IDS[0]!;
+    let calls = 0;
+    mocks.collectRefreshCandidates.mockImplementation(
       async (
-        sourceId: SourceId,
-        _onProgress: unknown,
-        options: { onAdapterStart: (startedAt: string) => Promise<boolean> },
+        id: SourceId,
+        _jobId: string,
+        _token: string,
+        options: {
+          beforeAdapterStart: () => Promise<boolean>;
+          onAdapterStart: (startedAt: string) => Promise<boolean>;
+          sourceAttemptCount: number;
+        },
       ) => {
-        await options.onAdapterStart(new Date().toISOString());
-        return {
-          results: [
-            {
-              saved: sourceId === partialSource ? 1 : 2,
-              errors: sourceId === partialSource ? ["provider message"] : [],
-              scoringErrors: sourceId === partialSource ? ["model message"] : [],
-            },
-          ],
-        };
+        calls += 1;
+        const row = sourceRows.find((item) => item.sourceId === id)!;
+        if (id === sourceId && calls === 1) {
+          row.status = "unknown";
+          row.errorCode = "source-outcome-unknown";
+          throw new Error("source response outcome lost");
+        }
+        row.status = "saved";
+        row.resultCount = 1;
+        row.attemptCount = options.sourceAttemptCount;
+        row.errorCode = null;
+        return { fetched: 1, selected: 0, deferred: 0, signature: "sig" };
       },
     );
 
     const result = await aggregateRefreshWorkflow("job-id", "execution-token");
 
-    expect(result).toEqual({ status: "partial", failedSources: 1 });
-    expect(mocks.markRefreshSourceSaved).toHaveBeenCalledWith(
+    expect(result).toEqual({ status: "completed", failedSources: 0 });
+    expect(
+      mocks.collectRefreshCandidates.mock.calls.filter((call) => call[0] === sourceId),
+    ).toHaveLength(2);
+    expect(mocks.recoverRefreshSource).toHaveBeenCalledWith(
       "job-id",
       "execution-token",
-      partialSource,
+      sourceId,
       1,
-      expect.any(String),
-      "source-processing-partial",
+      2,
     );
-    expect(mocks.markRefreshSourceInvalidated).toHaveBeenCalledWith(
+    expect(mocks.sleep).toHaveBeenCalledWith(1_000);
+    expect(mocks.markNeedsReconciliation).not.toHaveBeenCalled();
+  });
+
+  it("stops uncertain-source recovery after the persistent attempt limit", async () => {
+    const sourceId = SOURCE_IDS[0]!;
+    sourceRows[0]!.status = "unknown";
+    sourceRows[0]!.attemptCount = 2;
+
+    const result = await aggregateRefreshWorkflow("job-id", "execution-token");
+
+    expect(result).toEqual({ status: "partial", failedSources: 1 });
+    expect(mocks.collectRefreshCandidates.mock.calls.some((call) => call[0] === sourceId)).toBe(
+      false,
+    );
+    expect(sourceRows[0]!.status).toBe("failed");
+    expect(mocks.markNeedsReconciliation).not.toHaveBeenCalled();
+  });
+
+  it("freezes full batches first and flushes the final tail", async () => {
+    const fullCandidates = Array.from({ length: 50 }, (_, index) => ({
+      id: `c${index}`,
+      scoringSignature: "sig",
+    }));
+    const tailCandidates = [{ id: "tail-candidate", scoringSignature: "sig" }];
+    const fullBatch = { id: "full", status: "pending" };
+    const tailBatch = { id: "tail", status: "pending" };
+    mocks.listRefreshJobCandidates
+      .mockResolvedValueOnce(fullCandidates)
+      .mockResolvedValueOnce(fullCandidates)
+      .mockResolvedValueOnce(tailCandidates)
+      .mockResolvedValueOnce([]);
+    mocks.freezeNextCandidateBatch
+      .mockResolvedValueOnce(fullBatch)
+      .mockResolvedValueOnce(tailBatch)
+      .mockResolvedValueOnce(null);
+    mocks.listCandidateBatches.mockResolvedValue([]);
+    mocks.getCandidateBatch.mockImplementation(
+      async (_jobId: string, _token: string, id: string) => ({
+        id,
+        status: "saved",
+        resultJson: null,
+        errorCode: null,
+      }),
+    );
+
+    await aggregateRefreshWorkflow("job-id", "execution-token");
+
+    expect(mocks.freezeNextCandidateBatch.mock.calls.map((call) => call[3])).toEqual([false, true]);
+  });
+
+  it("durably sleeps and retries the same batch when the shared Gemini slot is busy", async () => {
+    const batch = {
+      id: "batch-1",
+      status: "pending",
+      attemptCount: 0,
+      resultJson: null,
+      errorCode: null,
+    };
+    const candidate = { id: "c1", scoringSignature: "sig" };
+    mocks.listRefreshJobCandidates
+      .mockResolvedValueOnce([candidate])
+      .mockResolvedValueOnce([candidate])
+      .mockResolvedValueOnce([]);
+    mocks.freezeNextCandidateBatch.mockResolvedValueOnce(batch).mockResolvedValue(null);
+    mocks.getCandidateBatch.mockImplementation(async () => ({ ...batch }));
+    mocks.claimCandidateBatch.mockResolvedValue({ ...batch, status: "running", attemptCount: 1 });
+    mocks.getBatchCandidates.mockResolvedValue([
+      {
+        id: "c1",
+        payloadJson: JSON.stringify({
+          title: "title",
+          description: "description",
+          preferenceSection: "",
+        }),
+      },
+    ]);
+    mocks.scoreArticlesById
+      .mockRejectedValueOnce(new GeminiSlotWaitError(true, 1_500))
+      .mockResolvedValueOnce([
+        { id: "c1", score: { summary: "s", usefulness: 2, ntt_relevance: 3, reason: "r" } },
+      ]);
+    mocks.deferCandidateBatchForRateLimit.mockResolvedValue(true);
+    mocks.storeCandidateBatchResult.mockResolvedValue(true);
+    mocks.persistIdentifiedCandidateBatch.mockResolvedValue(1);
+    mocks.markCandidateBatchSaved.mockResolvedValue(true);
+    mocks.getCandidateBatch.mockImplementation(
+      async (_jobId: string, _token: string, _id: string) => ({
+        ...batch,
+        status: mocks.storeCandidateBatchResult.mock.calls.length ? "result_ready" : "pending",
+        resultJson: JSON.stringify({
+          c1: { summary: "s", usefulness: 2, ntt_relevance: 3, reason: "r" },
+        }),
+      }),
+    );
+    mocks.sleep.mockResolvedValue(undefined);
+
+    const result = await aggregateRefreshWorkflow("job-id", "execution-token");
+
+    expect(result.status).toBe("completed");
+    expect(mocks.deferCandidateBatchForRateLimit).toHaveBeenCalledWith(
       "job-id",
       "execution-token",
-      partialSource,
+      "batch-1",
+      false,
+    );
+    expect(mocks.sleep).toHaveBeenCalledWith(1_500);
+    expect(mocks.scoreArticlesById).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails the batch after a bounded number of durable rate-limit waits", async () => {
+    const batch = {
+      id: "stuck-slot",
+      status: "pending",
+      attemptCount: 0,
+      resultJson: null,
+      errorCode: null,
+    };
+    const candidate = { id: "c1", scoringSignature: "sig" };
+    mocks.listRefreshJobCandidates
+      .mockResolvedValueOnce([candidate])
+      .mockResolvedValueOnce([candidate])
+      .mockResolvedValueOnce([]);
+    mocks.freezeNextCandidateBatch.mockResolvedValueOnce(batch).mockResolvedValue(null);
+    mocks.listCandidateBatches.mockResolvedValue([]);
+    mocks.getCandidateBatch.mockResolvedValue({ ...batch });
+    mocks.claimCandidateBatch.mockResolvedValue({ ...batch, status: "running", attemptCount: 1 });
+    mocks.getBatchCandidates.mockResolvedValue([
+      {
+        id: "c1",
+        payloadJson: JSON.stringify({
+          title: "title",
+          description: "description",
+          preferenceSection: "",
+        }),
+      },
+    ]);
+    mocks.scoreArticlesById.mockRejectedValue(new GeminiSlotWaitError(true, 1_500));
+    mocks.deferCandidateBatchForRateLimit.mockResolvedValue(true);
+    mocks.markCandidateBatchFailed.mockResolvedValue(true);
+
+    const result = await aggregateRefreshWorkflow("job-id", "execution-token");
+
+    expect(result).toEqual({ status: "partial", failedSources: 1 });
+    expect(mocks.sleep).toHaveBeenCalledTimes(2);
+    expect(mocks.scoreArticlesById).toHaveBeenCalledTimes(3);
+    expect(mocks.markCandidateBatchFailed).toHaveBeenCalledWith(
+      "job-id",
+      "execution-token",
+      "stuck-slot",
+      "gemini-rate-limit-wait-exhausted",
     );
     expect(mocks.finishRefreshJob).toHaveBeenCalledWith("job-id", "execution-token", "partial");
   });
 
-  it("reuses a saved checkpoint after a workflow step result was not recorded", async () => {
-    const savedSource = SOURCE_IDS[0];
-    mocks.claimRefreshSource.mockImplementationOnce(async () => {
-      // Simulate the prior service write and DB checkpoint winning just before
-      // this workflow delivery tries to claim the source.
-      sourceRows[0] = {
-        sourceId: savedSource,
-        status: "saved",
-        adapterStartedAt: new Date(nowMs).toISOString(),
-        resultCount: 3,
-        errorCode: "source-processing-partial",
-      };
-      return null;
+  it("fails immediately when a busy slot has no automatic recovery deadline", async () => {
+    const batch = {
+      id: "unknown-owner",
+      status: "pending",
+      attemptCount: 0,
+      resultJson: null,
+      errorCode: null,
+    };
+    const candidate = { id: "c1", scoringSignature: "sig" };
+    mocks.listRefreshJobCandidates
+      .mockResolvedValueOnce([candidate])
+      .mockResolvedValueOnce([candidate])
+      .mockResolvedValueOnce([]);
+    mocks.freezeNextCandidateBatch.mockResolvedValueOnce(batch).mockResolvedValue(null);
+    mocks.listCandidateBatches.mockResolvedValue([]);
+    mocks.getCandidateBatch.mockResolvedValue({ ...batch });
+    mocks.claimCandidateBatch.mockResolvedValue({ ...batch, status: "running", attemptCount: 1 });
+    mocks.getBatchCandidates.mockResolvedValue([
+      {
+        id: "c1",
+        payloadJson: JSON.stringify({
+          title: "title",
+          description: "description",
+          preferenceSection: "",
+        }),
+      },
+    ]);
+    mocks.scoreArticlesById.mockRejectedValue(new GeminiSlotWaitError(false));
+    mocks.markCandidateBatchFailed.mockResolvedValue(true);
+
+    const result = await aggregateRefreshWorkflow("job-id", "execution-token");
+
+    expect(result).toEqual({ status: "partial", failedSources: 1 });
+    expect(mocks.sleep).not.toHaveBeenCalled();
+    expect(mocks.deferCandidateBatchForRateLimit).not.toHaveBeenCalled();
+    expect(mocks.markCandidateBatchFailed).toHaveBeenCalledWith(
+      "job-id",
+      "execution-token",
+      "unknown-owner",
+      "gemini-owner-unrecoverable",
+      1,
+    );
+  });
+
+  it("automatically marks an ambiguous replay failed after the bounded retry budget", async () => {
+    mocks.listCandidateBatches.mockResolvedValue([{ id: "uncertain", status: "running" }]);
+    let status = "running";
+    mocks.getCandidateBatch.mockImplementation(async () => ({
+      id: "uncertain",
+      status,
+      resultJson: null,
+      attemptCount: 2,
+    }));
+    mocks.markCandidateBatchUnknown.mockResolvedValue(true);
+    mocks.recoverUnknownCandidateBatch.mockImplementation(async () => {
+      status = "failed";
+      return "failed";
+    });
+    const result = await aggregateRefreshWorkflow("job-id", "execution-token");
+    expect(result).toEqual({ status: "partial", failedSources: 1 });
+    expect(mocks.markCandidateBatchUnknown).toHaveBeenCalledWith(
+      "job-id",
+      "execution-token",
+      "uncertain",
+      "batch-replay-ambiguous",
+      2,
+    );
+    expect(mocks.recoverUnknownCandidateBatch).toHaveBeenCalledWith(
+      "job-id",
+      "execution-token",
+      "uncertain",
+      2,
+    );
+    expect(mocks.scoreArticlesById).not.toHaveBeenCalled();
+    expect(mocks.finishRefreshJob).toHaveBeenCalledWith("job-id", "execution-token", "partial");
+  });
+
+  it("automatically retries one ambiguous batch result and persists the recovered result", async () => {
+    let status = "unknown";
+    let attemptCount = 1;
+    const storedResult = {
+      c1: { summary: "summary", usefulness: 3, ntt_relevance: 2, reason: "reason" },
+    };
+    mocks.listCandidateBatches.mockResolvedValue([{ id: "uncertain", status: "unknown" }]);
+    mocks.getCandidateBatch.mockImplementation(async () => ({
+      id: "uncertain",
+      status,
+      attemptCount,
+      resultJson: status === "result_ready" ? JSON.stringify(storedResult) : null,
+      errorCode: null,
+    }));
+    mocks.recoverUnknownCandidateBatch.mockImplementation(async () => {
+      status = "pending";
+      return "retry";
+    });
+    mocks.claimCandidateBatch.mockImplementation(async () => {
+      status = "running";
+      attemptCount = 2;
+      return { id: "uncertain", status, attemptCount };
+    });
+    mocks.getBatchCandidates.mockResolvedValue([
+      {
+        id: "c1",
+        payloadJson: JSON.stringify({
+          title: "title",
+          description: "description",
+          preferenceSection: "",
+        }),
+      },
+    ]);
+    mocks.scoreArticlesById.mockResolvedValue([{ id: "c1", score: storedResult.c1 }]);
+    mocks.storeCandidateBatchResult.mockImplementation(async () => {
+      status = "result_ready";
+      return true;
+    });
+    mocks.persistIdentifiedCandidateBatch.mockResolvedValue(1);
+    mocks.markCandidateBatchSaved.mockImplementation(async () => {
+      status = "saved";
+      return true;
     });
 
     const result = await aggregateRefreshWorkflow("job-id", "execution-token");
 
-    expect(result.status).toBe("partial");
-    expect(mocks.fetchSource.mock.calls.map((call) => call[0])).not.toContain(savedSource);
-    expect(mocks.fetchSource).toHaveBeenCalledTimes(SOURCE_IDS.length - 1);
-    expect(mocks.sleep.mock.calls[0]?.[0]).toBe(70_000);
-    expect(mocks.markRefreshSourceInvalidated).toHaveBeenCalledWith(
+    expect(result).toEqual({ status: "completed", failedSources: 0 });
+    expect(mocks.recoverUnknownCandidateBatch).toHaveBeenCalledTimes(1);
+    expect(mocks.sleep).toHaveBeenCalledWith(1_000);
+    expect(mocks.scoreArticlesById).toHaveBeenCalledTimes(1);
+    expect(mocks.finishRefreshJob).toHaveBeenCalledWith("job-id", "execution-token", "completed");
+  });
+
+  it("marks the job partial when candidate batches fail instead of finishing cleanly", async () => {
+    mocks.listCandidateBatches.mockResolvedValue([{ id: "failed", status: "failed" }]);
+    mocks.getCandidateBatch.mockResolvedValue({
+      id: "failed",
+      status: "failed",
+      resultJson: null,
+      errorCode: "scoring-failed",
+    });
+    mocks.retryFailedCandidateBatch.mockResolvedValue(false);
+
+    const result = await aggregateRefreshWorkflow("job-id", "execution-token");
+
+    expect(result).toEqual({ status: "partial", failedSources: 1 });
+    expect(mocks.finishRefreshJob).toHaveBeenCalledWith("job-id", "execution-token", "partial");
+  });
+
+  it("replays a persisted batch result without another Gemini request", async () => {
+    let batchStatus = "result_ready";
+    const storedResult = JSON.stringify({
+      c1: { summary: "summary", usefulness: 2, ntt_relevance: 3, reason: "reason" },
+    });
+    mocks.listCandidateBatches.mockImplementation(async () => [
+      { id: "ready", status: batchStatus },
+    ]);
+    mocks.getCandidateBatch.mockImplementation(async () => ({
+      id: "ready",
+      status: batchStatus,
+      resultJson: storedResult,
+      errorCode: null,
+    }));
+    mocks.getBatchCandidates.mockResolvedValue([
+      {
+        id: "c1",
+        payloadJson: JSON.stringify({
+          title: "title",
+          description: "description",
+          url: "https://example.com/article",
+          publishedAt: "2026-01-01T00:00:00.000Z",
+          sourceName: "Example",
+        }),
+        contentHash: "hash",
+        scoringSignature: "signature",
+        representativeSourceId: SOURCE_IDS[0],
+      },
+    ]);
+    mocks.persistIdentifiedCandidateBatch.mockResolvedValue(1);
+    mocks.markCandidateBatchSaved.mockImplementation(async () => {
+      batchStatus = "saved";
+      return true;
+    });
+
+    const result = await aggregateRefreshWorkflow("job-id", "execution-token");
+
+    expect(result.status).toBe("completed");
+    expect(mocks.scoreArticlesById).not.toHaveBeenCalled();
+    expect(mocks.persistIdentifiedCandidateBatch).toHaveBeenCalledWith(
       "job-id",
       "execution-token",
-      savedSource,
+      "ready",
+      [
+        {
+          id: "c1",
+          score: { summary: "summary", usefulness: 2, ntt_relevance: 3, reason: "reason" },
+        },
+      ],
+    );
+    expect(mocks.persistIdentifiedCandidateBatch.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.gcStaleArticles.mock.invocationCallOrder[0]!,
     );
   });
 
-  it("retains an ambiguous source outcome and fails closed", async () => {
-    mocks.fetchSource.mockRejectedValue(new Error("database unavailable"));
+  it("does not finish the job when saving a model result has an ambiguous outcome", async () => {
+    const candidate = { id: "c1", scoringSignature: "sig" };
+    mocks.listRefreshJobCandidates
+      .mockResolvedValueOnce([candidate])
+      .mockResolvedValueOnce([candidate])
+      .mockResolvedValueOnce([]);
+    mocks.freezeNextCandidateBatch
+      .mockResolvedValueOnce({ id: "ambiguous", status: "pending" })
+      .mockResolvedValue(null);
+    mocks.listCandidateBatches.mockResolvedValue([]);
+    mocks.getCandidateBatch.mockResolvedValue({
+      id: "ambiguous",
+      status: "pending",
+      resultJson: null,
+    });
+    mocks.claimCandidateBatch.mockResolvedValue({
+      id: "ambiguous",
+      status: "running",
+      attemptCount: 1,
+    });
+    mocks.getBatchCandidates.mockResolvedValue([
+      {
+        id: "c1",
+        payloadJson: JSON.stringify({
+          title: "title",
+          description: "description",
+          preferenceSection: "",
+        }),
+      },
+    ]);
+    mocks.scoreArticlesById.mockResolvedValue([
+      { id: "c1", score: { summary: "s", usefulness: 2, ntt_relevance: 3, reason: "r" } },
+    ]);
+    mocks.storeCandidateBatchResult.mockRejectedValue(new Error("database response lost"));
+    mocks.getCandidateBatch
+      .mockResolvedValueOnce({ id: "ambiguous", status: "pending", resultJson: null })
+      .mockResolvedValueOnce({ id: "ambiguous", status: "running", resultJson: null });
+    mocks.markCandidateBatchUnknown.mockResolvedValue(true);
 
-    await expect(aggregateRefreshWorkflow("job-id", "execution-token")).rejects.toThrow(
-      "Refresh source outcome needs reconciliation: zenn",
-    );
-    expect(mocks.markRefreshSourceUnknown).toHaveBeenCalledWith(
+    mocks.recoverUnknownCandidateBatch.mockResolvedValue("failed");
+    const result = await aggregateRefreshWorkflow("job-id", "execution-token");
+    expect(result).toEqual({ status: "partial", failedSources: 1 });
+    expect(mocks.markCandidateBatchUnknown).toHaveBeenCalledWith(
       "job-id",
       "execution-token",
-      SOURCE_IDS[0],
-      "source-outcome-unknown",
+      "ambiguous",
+      "candidate-result-checkpoint-unknown",
+      1,
     );
-    expect(mocks.markNeedsReconciliation).toHaveBeenCalled();
-    expect(mocks.finishRefreshJob).not.toHaveBeenCalled();
+    expect(mocks.finishRefreshJob).toHaveBeenCalledWith("job-id", "execution-token", "partial");
   });
 });

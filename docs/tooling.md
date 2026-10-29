@@ -12,6 +12,9 @@ AGENTS.md の「ツール使用に関するガイドライン」の詳細版。
 - Workflow SDK の本番依存で検出された脆弱性を修正するため、`undici` 7、`nanoid` 5、`zod` 4、`body-parser` 2、`qs` 6 はパッチ済み版へmajor範囲内で固定し、`devalue` は `5.9.3` に固定する。nanoid 3 など別majorの利用箇所には適用しない。
 - Vitest coverage は SDK が生成する `src/app/.well-known/workflow/**` だけを集計対象から除外する。`src/workflows/**` などアプリ側の Workflow 実装は従来どおり計測する。
 - ESLint も SDK が生成する `src/app/.well-known/workflow/**` を除外する。アプリ側 Workflow 実装はLint対象に含める。
+- `pnpm run build` 後の `postbuild` は Workflow SDK `4.8.8` が生成する `src/app/.well-known/workflow/v1/config.json` の `steps.maxDuration` を300秒に固定する。Vercel adapter はこの値を step 関数の `maxDuration` として優先するため、送信枠の自動回収期限が実行上限を超えないようにする。SDK版・生成設定・Vercel adapterの読み込み契約が変わった場合は、スクリプトがビルドを失敗させる。上限を変更する場合は、Workflow step 関数の生成成果物で反映を検証してから pin 値と送信枠回収期限を一緒に更新する。
+- Gemini送信所有権はWorkflow stepの300秒上限+60秒margin（360秒）、明示的に60秒制限されたrequest経路は60秒+60秒margin（120秒）後に限り、認識済みmarkerとVercel deployment IDを持つ所有者を次の処理が回収できる。DB時刻による回収期限のため、実行中のDB時計の前進が60秒以内であることを前提とする。旧形式・unknown・marker/deployment ID欠落の所有者は時間だけでは解放しない。`docs/gemini-rate-limit-recovery.md` に詳細と運用上の限界を記載する。
+- `/api/refresh-jobs` のGET/POSTは、held jobが既知のWorkflow run IDを持つ `needs_reconciliation` 状態なら、一回だけterminal-run自動reconcileを試す。Workflowの終端状態を確認し、sourceに `executing`/`unknown` がなく、candidate batchに `pending`/`running`/`result_ready`/`unknown` がない場合だけ完了化する。候補処理の再実行はせず、terminal runでも未終端candidate batchや結果不明checkpointが残ればslotを保留する。run IDのない `enqueue_unknown` 等も自動回復しない。
 
 ## Turso schema migrations
 
@@ -19,7 +22,7 @@ AGENTS.md の「ツール使用に関するガイドライン」の詳細版。
 - Create an explicit migration with `pnpm run db:generate`, review its SQL, verify the target database, then apply it with `pnpm run db:migrate`. The guarded migration command loads Turso credentials from the environment or `.env.local`, checks only unapplied migrations against an additive-only allowlist (`CREATE TABLE`, `ALTER TABLE ... ADD COLUMN`, and `CREATE INDEX`), and refuses when the remote migration ledger cannot be matched to this repository.
 - When the remote database has a separate migration ledger, `pnpm run db:migrate` correctly refuses to guess. To apply one reviewed additive migration in that case, run `pnpm run db:apply-additive -- <journal-migration-tag>`. This validates and applies only the named SQL file in one transaction; it never changes the shared `__drizzle_migrations` table. Record that the migration was applied separately: normal `db:migrate` may continue refusing until the shared ledger history is reconciled. Do not replay the same file through Drizzle.
 - Direct `drizzle-kit migrate` is also disabled; use the guarded command. Historical migrations may contain destructive SQL, so only pending migrations are checked.
-- The production drift check reports both locally declared tables missing remotely and remote tables absent from the local schema. It never recommends `drizzle-kit push`.
+- The production drift check reports both locally declared tables missing remotely and remote tables absent from the local schema. It is read-only, skips when either Turso credential is missing, and passes its Node.js code through a quoted heredoc so shell metacharacters in the script cannot trigger command substitution. On `news-watch-ponkansh.aws-ap-northeast-1.turso.io` only, a fixed reviewed inventory of unrelated existing tables is allowed; unknown tables and the same names on any other host remain drift. It never recommends `drizzle-kit push`.
 
 ## sudo（非対話環境）
 

@@ -28,6 +28,14 @@ export const LLMBatchItemSchema = z.object({
 
 export const LLMBatchResponseSchema = z.array(LLMBatchItemSchema);
 
+export const LLMIdentifiedBatchItemSchema = LLMBatchItemSchema.extend({
+  id: z.string().min(1).max(200),
+});
+
+export const LLMIdentifiedBatchResponseSchema = z.object({
+  results: z.array(LLMIdentifiedBatchItemSchema),
+});
+
 export type LLMResponse = z.infer<typeof LLMResponseSchema>;
 
 export interface ArticleInput {

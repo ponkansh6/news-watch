@@ -14,10 +14,12 @@ echo "🔍 Checking production schema consistency..."
 
 # Run a small Node.js script that uses @libsql/client to compare schemas
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-node -e "
+export PROJECT_ROOT
+node <<'NODE'
 const { createClient } = require('@libsql/client');
 const fs = require('fs');
 const path = require('path');
+const { findUndeclaredTables } = require(path.join(process.env.PROJECT_ROOT, 'scripts/prod-schema-policy.cjs'));
 
 async function main() {
   const client = createClient({
@@ -25,26 +27,24 @@ async function main() {
     authToken: process.env.TURSO_AUTH_TOKEN,
   });
 
-  const schemaPath = path.join('$PROJECT_ROOT', 'src/lib/db/schema.ts');
+  const schemaPath = path.join(process.env.PROJECT_ROOT, 'src/lib/db/schema.ts');
   const schemaContent = fs.readFileSync(schemaPath, 'utf-8');
 
   // ----- Step 1: Check all tables exist in production -----
   // Extract all table names defined via sqliteTable in schema.ts
-  const tableRegex = /export const \w+ = sqliteTable\s*\(\s*\"(\w+)\"/g;
+  const tableRegex = /export const \w+ = sqliteTable\s*\(\s*"(\w+)"/g;
   const expectedTables = [];
   let t;
   while ((t = tableRegex.exec(schemaContent)) !== null) {
     expectedTables.push(t[1]);
   }
 
-  const tablesResult = await client.execute(\"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\");
+  const tablesResult = await client.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
   const actualTables = new Set(tablesResult.rows.map(r => r.name));
 
-  const expectedTableSet = new Set(expectedTables);
   const missingTables = expectedTables.filter(tt => !actualTables.has(tt));
-  const undeclaredTables = [...actualTables]
-    .filter(tt => !expectedTableSet.has(tt) && !tt.startsWith('sqlite_') && tt !== '__drizzle_migrations')
-    .sort();
+  const targetHost = new URL(process.env.TURSO_DATABASE_URL).hostname;
+  const undeclaredTables = findUndeclaredTables(actualTables, expectedTables, targetHost);
 
   if (missingTables.length > 0 || undeclaredTables.length > 0) {
     console.log('');
@@ -73,11 +73,11 @@ async function main() {
   // id: integer(\"id\").primaryKey({ autoIncrement: true }), truncating the
   // block to just the 'id' field. That made this check a silent no-op from
   // the day it was introduced (id always exists, so it always \"passed\").
-  const match = schemaContent.match(/export const articles = sqliteTable\(\s*\"articles\"\s*,\s*\{([\s\S]*?)\},\s*\(table\)/);
+  const match = schemaContent.match(/export const articles = sqliteTable\(\s*"articles"\s*,\s*\{([\s\S]*?)\},\s*\(table\)/);
   if (match) {
     const colBlock = match[1];
 
-    const colRegex = /\"(\w+)\"/g;
+    const colRegex = /"(\w+)"/g;
     const expectedCols = new Set();
     let c;
     while ((c = colRegex.exec(colBlock)) !== null) {
@@ -117,4 +117,4 @@ main().catch(err => {
   console.error('Schema check failed:', err.message);
   process.exit(1);
 });
-" 2>&1
+NODE

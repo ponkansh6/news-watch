@@ -11,6 +11,7 @@ import {
   startAggregateJob,
 } from "@/lib/db/repository/refresh-job-repository";
 import { isNewsApiAuthorized } from "@/lib/news/api-auth";
+import { tryRecoverActiveRefreshJob } from "@/lib/refresh-job-auto-recovery";
 
 export const maxDuration = 60;
 
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
     );
   }
 
+  await tryRecoverActiveRefreshJob();
   const slot = await getActiveRefreshSlot();
   const job =
     slot?.ownerKind === "job" && slot.ownerId ? await getOwnedRefreshJob(slot.ownerId) : null;
@@ -44,7 +46,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await startAggregateJob();
+  let result = await startAggregateJob();
+  if (
+    (result.kind === "busy" || result.job?.status === "needs_reconciliation") &&
+    (await tryRecoverActiveRefreshJob())
+  ) {
+    // The recovery helper makes one attempt; retry the slot claim once only.
+    result = await startAggregateJob();
+  }
   if (!result.job) {
     return NextResponse.json({ error: "refresh already running", jobId: null }, { status: 409 });
   }

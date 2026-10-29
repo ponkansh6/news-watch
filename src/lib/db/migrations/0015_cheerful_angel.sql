@@ -1,0 +1,1 @@
+ALTER TABLE `refresh_job_sources` ADD `attempt_count` integer DEFAULT 0 NOT NULL;

@@ -19,6 +19,7 @@ import { screen, render } from "../lib/test-utils";
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { ArticleList } from "@/components/article/article-list";
+import { CREATE_ARTICLES_TABLE_SQL } from "../helpers/db-setup";
 
 // --- Mock LLM scoring ---
 const { mockGenerateContent } = vi.hoisted(() => ({
@@ -54,34 +55,32 @@ beforeEach(() => {
   });
 });
 
-const CREATE_SQL = `
-  CREATE TABLE IF NOT EXISTS articles (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    description TEXT,
-    url TEXT NOT NULL UNIQUE,
-    url_to_image TEXT,
-    published_at TEXT NOT NULL,
-    source_name TEXT,
-    source_id TEXT,
-    author TEXT,
-    keyword TEXT,
-    summary TEXT,
-    relevance REAL,
-    usefulness REAL,
-    recency REAL,
-    recency_refreshed_at TEXT,
-    reason TEXT,
-    scored_at TEXT,
-    score REAL,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-  )
-`;
+const CREATE_GEMINI_REQUEST_TABLES_SQL = [
+  `CREATE TABLE IF NOT EXISTS gemini_request_slot (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT,
+    owner_token_hash TEXT,
+    acquired_at TEXT,
+    lease_kind TEXT,
+    deployment_id TEXT,
+    recovery_after TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS gemini_request_attempts (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    outcome TEXT NOT NULL DEFAULT 'started'
+  )`,
+];
 
 const ARTICLE_COUNT = 20;
 
 beforeAll(async () => {
-  await (dbMod as any).__client.execute(CREATE_SQL);
+  await (dbMod as any).__client.execute(CREATE_ARTICLES_TABLE_SQL);
+  for (const sql of CREATE_GEMINI_REQUEST_TABLES_SQL) {
+    await (dbMod as any).__client.execute(sql);
+  }
 });
 
 beforeEach(async () => {

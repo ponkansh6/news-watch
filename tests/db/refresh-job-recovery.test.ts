@@ -8,7 +8,7 @@ import {
   startAggregateJob,
 } from "@/lib/db/repository/refresh-job-repository";
 import { reconcileTerminalRefreshJob } from "@/lib/db/repository/refresh-job-recovery";
-import { refreshJobSlot, refreshJobSources, refreshJobs } from "@/lib/db/schema";
+import { refreshJobBatches, refreshJobSlot, refreshJobSources, refreshJobs } from "@/lib/db/schema";
 
 const createdJobs: string[] = [];
 
@@ -114,4 +114,42 @@ describe("refresh job recovery repository", () => {
       (await db.select().from(refreshJobs).where(eq(refreshJobs.id, job.jobId)))[0]?.status,
     ).toBe("needs_reconciliation");
   });
+
+  test.each(["pending", "running", "result_ready", "unknown"] as const)(
+    "does not finalize or release the slot while a candidate batch is %s",
+    async (status) => {
+      const job = await heldJob();
+      await markAllSourcesInvalidated(job.jobId);
+      const now = new Date().toISOString();
+      await db.insert(refreshJobBatches).values({
+        id: `batch-${job.jobId}`,
+        jobId: job.jobId,
+        ordinal: 0,
+        candidateIdsJson: "[]",
+        scoringSignature: "signature-v1",
+        status,
+        resultJson: status === "result_ready" ? "[]" : null,
+        attemptCount: 0,
+        errorCode: null,
+        createdAt: now,
+        updatedAt: now,
+        completedAt: null,
+      });
+
+      const result = await reconcileTerminalRefreshJob(job.jobId, job.runId, "completed");
+
+      expect(result).toEqual({ kind: "unsafe_candidate_batch" });
+      expect(
+        (await db.select().from(refreshJobs).where(eq(refreshJobs.id, job.jobId)))[0]?.status,
+      ).toBe("needs_reconciliation");
+      expect(
+        (await db.select().from(refreshJobSlot).where(eq(refreshJobSlot.id, 1)))[0]?.ownerId,
+      ).toBe(job.jobId);
+      expect(
+        (
+          await db.select().from(refreshJobSources).where(eq(refreshJobSources.jobId, job.jobId))
+        ).every((source) => source.status === "invalidated"),
+      ).toBe(true);
+    },
+  );
 });

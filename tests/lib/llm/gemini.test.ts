@@ -2,8 +2,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { LLM_MODEL, scoreArticle, scoreArticles } from "../../../src/lib/llm";
 
 // Mock @google/generative-ai
-const { mockGenerateContent } = vi.hoisted(() => ({
+const {
+  mockGenerateContent,
+  mockClaimGeminiAttempt,
+  mockBeginGeminiAttempt,
+  mockCompleteGeminiAttempt,
+} = vi.hoisted(() => ({
   mockGenerateContent: vi.fn(),
+  mockClaimGeminiAttempt: vi.fn(),
+  mockBeginGeminiAttempt: vi.fn(),
+  mockCompleteGeminiAttempt: vi.fn(),
+}));
+
+vi.mock("@/lib/db/repository/gemini-rate-limit-repository", () => ({
+  claimGeminiAttempt: mockClaimGeminiAttempt,
+  beginGeminiAttempt: mockBeginGeminiAttempt,
+  completeGeminiAttempt: mockCompleteGeminiAttempt,
 }));
 
 vi.mock("@google/generative-ai", () => {
@@ -19,6 +33,14 @@ vi.mock("@google/generative-ai", () => {
 describe("gemini llm module", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mockClaimGeminiAttempt.mockResolvedValue({
+      kind: "claimed",
+      owner: { ownerId: "test-owner", ownerToken: "test-token" },
+    });
+    mockBeginGeminiAttempt.mockImplementation(
+      async (_owner, attemptIndex = 0) => `attempt-${attemptIndex}`,
+    );
+    mockCompleteGeminiAttempt.mockResolvedValue(true);
     process.env.GOOGLE_API_KEY = "test-api-key";
     vi.stubGlobal(
       "setTimeout",
@@ -204,8 +226,11 @@ describe("gemini llm module", () => {
 
       expect(mockGenerateContent).toHaveBeenCalledWith(
         expect.any(String),
-        expect.objectContaining({ timeout: 25_000 }),
+        expect.objectContaining({ timeout: expect.any(Number) }),
       );
+      const timeout = mockGenerateContent.mock.calls[0]?.[1]?.timeout;
+      expect(timeout).toBeGreaterThan(0);
+      expect(timeout).toBeLessThanOrEqual(25_000);
     });
 
     it("falls back to individual scoring when batch returns empty array", async () => {

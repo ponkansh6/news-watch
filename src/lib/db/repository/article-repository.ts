@@ -173,6 +173,7 @@ export async function deleteStaleLowScored(minScore: number, retentionDays: numb
 export async function refreshRecencyForSources(
   sourceIds: string[],
   excludeUrls: string[],
+  options: { strict?: boolean } = {},
 ): Promise<number> {
   try {
     const targetArticles = await db
@@ -257,10 +258,14 @@ export async function refreshRecencyForSources(
           console.error(`[db] failed to update article "${u.url}":`, e);
         }
       }
+      if (options.strict && successCount !== updates.length) {
+        throw new Error("recency_refresh_incomplete");
+      }
       return successCount;
     }
   } catch (err) {
     console.error(`[db] refreshRecencyForSources error:`, err);
+    if (options.strict) throw err;
     return 0;
   }
 }

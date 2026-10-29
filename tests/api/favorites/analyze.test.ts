@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { POST } from "@/app/api/favorites/analyze/route";
 import {
   getFavoriteStats,
@@ -14,6 +14,15 @@ import {
   buildPreferencePromptSection,
 } from "@/lib/llm";
 import { revalidateTag } from "next/cache";
+import {
+  claimSingleRefresh,
+  releaseSingleRefresh,
+} from "@/lib/db/repository/refresh-job-repository";
+
+vi.mock("@/lib/db/repository/refresh-job-repository", () => ({
+  claimSingleRefresh: vi.fn(),
+  releaseSingleRefresh: vi.fn(),
+}));
 
 vi.mock("@/lib/db", () => ({
   getFavoriteStats: vi.fn(),
@@ -32,8 +41,18 @@ vi.mock("@/lib/llm", () => ({
 }));
 
 describe("POST /api/favorites/analyze", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(claimSingleRefresh).mockResolvedValue({
+      kind: "claimed",
+      ownerId: "single:test",
+      ownerToken: "test-token",
+    });
+    vi.mocked(releaseSingleRefresh).mockResolvedValue(true);
     vi.mocked(getNotForMeStats).mockResolvedValue({ count: 0, maxId: 0 });
     vi.mocked(getNotForMeArticles).mockResolvedValue([]);
   });
@@ -211,6 +230,27 @@ describe("POST /api/favorites/analyze", () => {
       model: "test-model",
     });
     expect(revalidateTag).toHaveBeenCalledWith("preference-profile", "max");
+    expect(claimSingleRefresh).toHaveBeenCalledOnce();
+    expect(releaseSingleRefresh).toHaveBeenCalledWith("single:test", "test-token");
+  });
+
+  it("共有更新枠が使用中なら409でLLMを呼ばない", async () => {
+    vi.mocked(getFavoriteStats).mockResolvedValueOnce({ count: 5, maxId: 10 });
+    vi.mocked(getLatestPreferenceProfile).mockResolvedValueOnce(null);
+    vi.mocked(getFavoriteArticles).mockResolvedValueOnce([]);
+    vi.mocked(claimSingleRefresh).mockResolvedValueOnce({ kind: "busy" });
+
+    const req = new Request("http://localhost/api/favorites/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(409);
+    expect(analyzeFavorites).not.toHaveBeenCalled();
+    expect(releaseSingleRefresh).not.toHaveBeenCalled();
   });
 
   it("分析 null → 502（保存なし）", async () => {
@@ -232,6 +272,7 @@ describe("POST /api/favorites/analyze", () => {
     expect(res.status).toBe(502);
     expect(json).toEqual({ error: "Analysis failed" });
     expect(savePreferenceProfile).not.toHaveBeenCalled();
+    expect(releaseSingleRefresh).toHaveBeenCalledWith("single:test", "test-token");
   });
 
   it("NFM だけが増えた場合は再分析が走る（reused: false）", async () => {
@@ -280,6 +321,7 @@ describe("POST /api/favorites/analyze", () => {
     vi.mocked(analyzeFavorites).mockResolvedValueOnce(mockAnalysis);
     vi.mocked(isUsablePreferenceAnalysis).mockReturnValueOnce(true);
     vi.mocked(buildPreferencePromptSection).mockReturnValueOnce("new prompt");
+    vi.stubEnv("VERCEL_DEPLOYMENT_ID", "deployment-test");
 
     const req = new Request("http://localhost/api/favorites/analyze", {
       method: "POST",
@@ -292,7 +334,9 @@ describe("POST /api/favorites/analyze", () => {
 
     expect(res.status).toBe(200);
     expect(json.reused).toBe(false);
-    expect(analyzeFavorites).toHaveBeenCalledWith(expect.any(Array), expect.any(Array));
+    expect(analyzeFavorites).toHaveBeenCalledWith(expect.any(Array), expect.any(Array), {
+      leaseEvidence: expect.objectContaining({ kind: "request-60-v1" }),
+    });
   });
 
   it("DB throw → 500", async () => {

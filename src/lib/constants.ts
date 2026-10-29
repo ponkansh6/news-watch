@@ -26,9 +26,11 @@ export const JAPANESE_LARGE_BATCH = 8;
 export const LLM_BATCH_CONCURRENCY = 5; // 既存値 3 を 5 に変更
 export const LLM_BATCH_TIMEOUT_MS = 25_000; // 既存値 55_000 を 25_000 に変更
 export const LLM_BATCH_MAX_RETRIES = 1; // 新規（batch専用）
-export const SCORING_BUDGET = 40; // 新規 = 並列5 × 日本語バッチ8 = 1ウェーブ
+export const SCORING_BUDGET = 40; // 1リクエストあたりの採点上限。バッチは順次実行
 export const SCORING_DEADLINE_MS = 45_000; // 新規（maxDuration=60s に対する全体上限）
 export const SCORING_MIN_SLICE_MS = 5_000; // 新規（残り時間がこれ未満なら着手しない）
+export const WORKFLOW_STEP_MAX_DURATION_SECONDS = 300;
+export const WORKFLOW_STEP_OWNER_FENCE_AFTER_SECONDS = 360;
 export const DISPLAY_MIN_SCORE = 5; // 新規（表示下限）
 export const TOMBSTONE_RETENTION_DAYS = 30; // 新規（GC 閾値）
 export const SCORING_PROMPT_VERSION = 1; // 新規（プロンプト本文変更時に bump）

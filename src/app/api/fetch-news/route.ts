@@ -11,6 +11,7 @@ import { type NormalizedArticle } from "@/lib/types";
 import { issueArticlesInvalidationToken } from "@/lib/cache-invalidation-token";
 import { fetchSource, type FetchProgress } from "@/lib/news/fetch-service";
 import { isNewsApiAuthorized } from "@/lib/news/api-auth";
+import { geminiLeaseEvidence } from "@/lib/llm/client";
 import {
   claimSingleRefresh,
   getActiveRefreshSlot,
@@ -30,8 +31,11 @@ async function executeFetch(
   selectedSource: SourceId,
   onProgress?: (progress: FetchProgress) => void,
   invalidateArticleCache = true,
+  leaseEvidence?: ReturnType<typeof geminiLeaseEvidence>,
 ) {
-  const response = await fetchSource(selectedSource, onProgress);
+  const response = await fetchSource(selectedSource, onProgress, {
+    geminiLeaseEvidence: leaseEvidence,
+  });
   if (invalidateArticleCache) revalidateTag("articles", { expire: 0 });
   return response;
 }
@@ -57,7 +61,12 @@ export async function POST(request: Request) {
     );
   }
   const selectedSource = parsed.data.source;
-  const claim = await claimSingleRefresh();
+  const leaseEvidence = geminiLeaseEvidence("request-60-v1");
+  const slotLeaseEvidence =
+    leaseEvidence?.kind === "request-60-v1" && leaseEvidence.deploymentId
+      ? { kind: "request-60-v1" as const, deploymentId: leaseEvidence.deploymentId }
+      : { kind: "unknown" as const };
+  const claim = await claimSingleRefresh(slotLeaseEvidence);
   if (claim.kind !== "claimed" || !claim.ownerId || !claim.ownerToken) {
     const slot = await getActiveRefreshSlot();
     const job =
@@ -81,7 +90,9 @@ export async function POST(request: Request) {
   }
   if (!request.headers.get("accept")?.includes("application/x-ndjson")) {
     try {
-      return NextResponse.json(await executeFetch(selectedSource));
+      return NextResponse.json(
+        await executeFetch(selectedSource, undefined, true, geminiLeaseEvidence("request-60-v1")),
+      );
     } finally {
       await releaseSingleRefresh(claim.ownerId, claim.ownerToken);
     }
@@ -119,6 +130,7 @@ export async function POST(request: Request) {
           if (stageChanged) publishProgress();
         },
         false,
+        geminiLeaseEvidence("request-60-v1"),
       )
         .then((result) => {
           const cacheInvalidationToken = issueArticlesInvalidationToken();

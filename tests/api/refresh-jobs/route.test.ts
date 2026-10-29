@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   getActiveRefreshSlot: vi.fn(),
   getOwnedRefreshJob: vi.fn(),
   getRefreshJobSources: vi.fn(),
+  tryRecoverActiveRefreshJob: vi.fn(),
 }));
 
 vi.mock("@/lib/news/api-auth", () => ({ isNewsApiAuthorized: mocks.isNewsApiAuthorized }));
@@ -23,6 +24,9 @@ vi.mock("@/lib/db/repository/refresh-job-repository", () => ({
   getActiveRefreshSlot: mocks.getActiveRefreshSlot,
   getOwnedRefreshJob: mocks.getOwnedRefreshJob,
   getRefreshJobSources: mocks.getRefreshJobSources,
+}));
+vi.mock("@/lib/refresh-job-auto-recovery", () => ({
+  tryRecoverActiveRefreshJob: mocks.tryRecoverActiveRefreshJob,
 }));
 
 import { GET, POST } from "@/app/api/refresh-jobs/route";
@@ -66,6 +70,7 @@ describe("refresh job APIs", () => {
     mocks.getActiveRefreshSlot.mockResolvedValue({ ownerKind: "job", ownerId: job.id });
     mocks.getOwnedRefreshJob.mockResolvedValue(job);
     mocks.getRefreshJobSources.mockResolvedValue([source]);
+    mocks.tryRecoverActiveRefreshJob.mockResolvedValue(false);
   });
 
   test("starts one workflow and does not disclose its execution token", async () => {
@@ -102,6 +107,22 @@ describe("refresh job APIs", () => {
     expect(mocks.start).not.toHaveBeenCalled();
   });
 
+  test("retries a needs-reconciliation job claim after safe automatic recovery", async () => {
+    mocks.startAggregateJob
+      .mockResolvedValueOnce({ kind: "joined", job: { ...job, status: "needs_reconciliation" } })
+      .mockResolvedValueOnce({ kind: "created", job, executionToken: "secret-token" });
+    mocks.tryRecoverActiveRefreshJob.mockResolvedValue(true);
+
+    const response = await POST(
+      new Request("https://news.test/api/refresh-jobs", { method: "POST" }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(mocks.tryRecoverActiveRefreshJob).toHaveBeenCalledOnce();
+    expect(mocks.startAggregateJob).toHaveBeenCalledTimes(2);
+    expect(mocks.start).toHaveBeenCalledOnce();
+  });
+
   test("keeps an uncertain enqueue for reconciliation rather than retrying it", async () => {
     mocks.start.mockRejectedValue(new Error("enqueue outcome unknown"));
     mocks.getOwnedRefreshJob.mockResolvedValue({ ...job, status: "needs_reconciliation" });
@@ -125,6 +146,7 @@ describe("refresh job APIs", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ job: null });
+    expect(mocks.tryRecoverActiveRefreshJob).toHaveBeenCalledOnce();
   });
 
   test("returns only the shared owner's status and source checkpoints", async () => {

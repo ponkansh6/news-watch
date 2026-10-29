@@ -1,6 +1,6 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "../index";
-import { refreshJobs, refreshJobSources } from "../schema";
+import { refreshJobBatches, refreshJobs, refreshJobSources } from "../schema";
 
 export type TerminalWorkflowStatus = "completed" | "failed" | "cancelled";
 
@@ -11,7 +11,14 @@ export type ReconcileRefreshJobResult =
       invalidatedCount: number;
       skippedCount: number;
     }
-  | { kind: "not_found" | "wrong_state" | "unsafe_checkpoint" | "changed" };
+  | {
+      kind:
+        | "not_found"
+        | "wrong_state"
+        | "unsafe_checkpoint"
+        | "unsafe_candidate_batch"
+        | "changed";
+    };
 
 /**
  * Finalizes a held job only after the caller has independently confirmed the
@@ -39,6 +46,16 @@ export async function reconcileTerminalRefreshJob(
     .from(refreshJobSources)
     .where(eq(refreshJobSources.jobId, jobId))
     .orderBy(asc(refreshJobSources.ordinal));
+  const unfinishedBatches = await db
+    .select({ id: refreshJobBatches.id })
+    .from(refreshJobBatches)
+    .where(
+      and(
+        eq(refreshJobBatches.jobId, jobId),
+        inArray(refreshJobBatches.status, ["pending", "running", "result_ready", "unknown"]),
+      ),
+    );
+  if (unfinishedBatches.length > 0) return { kind: "unsafe_candidate_batch" };
   let snapshot: unknown;
   try {
     snapshot = JSON.parse(job.sourceIds);
@@ -99,6 +116,11 @@ export async function reconcileTerminalRefreshJob(
       SELECT 1 FROM refresh_job_sources AS source
       WHERE source.job_id = refresh_jobs.id
         AND source.status IN ('executing', 'unknown')
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM refresh_job_batches AS batch
+      WHERE batch.job_id = refresh_jobs.id
+        AND batch.status IN ('pending', 'running', 'result_ready', 'unknown')
     )`;
   const jobConditionArgs = [
     jobId,
@@ -169,8 +191,12 @@ export async function reconcileTerminalRefreshJob(
                 AND NOT EXISTS (
                   SELECT 1 FROM refresh_job_sources
                   WHERE job_id = ? AND status IN ('saved', 'executing', 'unknown', 'pending')
+                )
+                AND NOT EXISTS (
+                  SELECT 1 FROM refresh_job_batches
+                  WHERE job_id = ? AND status IN ('pending', 'running', 'result_ready', 'unknown')
                 )`,
-        args: [jobId, jobId, expectedWorkflowRunId, jobId],
+        args: [jobId, jobId, expectedWorkflowRunId, jobId, jobId],
       },
     ],
     "write",

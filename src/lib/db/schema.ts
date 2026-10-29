@@ -116,6 +116,9 @@ export const refreshJobSlot = sqliteTable("refresh_job_slot", {
   ownerId: text("owner_id"),
   ownerTokenHash: text("owner_token_hash"),
   acquiredAt: text("acquired_at"),
+  leaseKind: text("lease_kind"),
+  deploymentId: text("deployment_id"),
+  recoveryAfter: text("recovery_after"),
 });
 
 /** Durable aggregate/single refresh job metadata. Tokens are stored hashed. */
@@ -169,6 +172,7 @@ export const refreshJobSources = sqliteTable(
       .notNull()
       .default("pending"),
     adapterStartedAt: text("adapter_started_at"),
+    attemptCount: integer("attempt_count").notNull().default(0),
     savedAt: text("saved_at"),
     cacheInvalidatedAt: text("cache_invalidated_at"),
     completedAt: text("completed_at"),
@@ -179,5 +183,107 @@ export const refreshJobSources = sqliteTable(
   (table) => ({
     pk: uniqueIndex("refresh_job_sources_job_source_unique").on(table.jobId, table.sourceId),
     orderIndex: index("idx_refresh_job_sources_order").on(table.jobId, table.ordinal),
+  }),
+);
+
+/** Article candidates retained between aggregate Workflow steps. */
+export const refreshJobCandidates = sqliteTable(
+  "refresh_job_candidates",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => refreshJobs.id, { onDelete: "cascade" }),
+    normalizedUrl: text("normalized_url").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    contentHash: text("content_hash").notNull(),
+    scoringSignature: text("scoring_signature").notNull(),
+    representativeSourceId: text("representative_source_id").notNull(),
+    sourceIdsJson: text("source_ids_json").notNull(),
+    ordinal: integer("ordinal").notNull(),
+    status: text("status", { enum: ["pending", "batched", "saved", "failed"] })
+      .notNull()
+      .default("pending"),
+    batchId: text("batch_id"),
+    errorCode: text("error_code"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => ({
+    jobUrl: uniqueIndex("refresh_job_candidates_job_url_unique").on(
+      table.jobId,
+      table.normalizedUrl,
+    ),
+    jobState: index("idx_refresh_job_candidates_job_state_order").on(
+      table.jobId,
+      table.status,
+      table.ordinal,
+    ),
+    batch: index("idx_refresh_job_candidates_batch").on(table.batchId),
+  }),
+);
+
+/** Immutable candidate membership for a durable aggregate scoring step. */
+export const refreshJobBatches = sqliteTable(
+  "refresh_job_batches",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => refreshJobs.id, { onDelete: "cascade" }),
+    ordinal: integer("ordinal").notNull(),
+    candidateIdsJson: text("candidate_ids_json").notNull(),
+    scoringSignature: text("scoring_signature").notNull(),
+    status: text("status", {
+      enum: ["pending", "running", "result_ready", "saved", "failed", "unknown"],
+    })
+      .notNull()
+      .default("pending"),
+    resultJson: text("result_json"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    errorCode: text("error_code"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    completedAt: text("completed_at"),
+  },
+  (table) => ({
+    jobOrdinal: uniqueIndex("refresh_job_batches_job_ordinal_unique").on(
+      table.jobId,
+      table.ordinal,
+    ),
+    jobState: index("idx_refresh_job_batches_job_state_order").on(
+      table.jobId,
+      table.status,
+      table.ordinal,
+    ),
+  }),
+);
+
+/** Shared send lock held across one Gemini HTTP attempt. */
+export const geminiRequestSlot = sqliteTable("gemini_request_slot", {
+  id: integer("id").primaryKey(),
+  ownerId: text("owner_id"),
+  ownerTokenHash: text("owner_token_hash"),
+  acquiredAt: text("acquired_at"),
+  leaseKind: text("lease_kind"),
+  deploymentId: text("deployment_id"),
+  recoveryAfter: text("recovery_after"),
+});
+
+/** Durable accounting for every Gemini HTTP attempt, including ambiguous sends. */
+export const geminiRequestAttempts = sqliteTable(
+  "gemini_request_attempts",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    startedAt: text("started_at").notNull(),
+    completedAt: text("completed_at"),
+    outcome: text("outcome", { enum: ["started", "succeeded", "failed", "ambiguous"] })
+      .notNull()
+      .default("started"),
+  },
+  (table) => ({
+    completedAtIndex: index("idx_gemini_request_attempts_completed_at").on(table.completedAt),
+    owner: index("idx_gemini_request_attempts_owner").on(table.ownerId),
   }),
 );

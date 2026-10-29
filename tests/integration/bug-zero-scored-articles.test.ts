@@ -12,9 +12,10 @@ vi.mock("@/lib/db", async (importOriginal) => {
 
 // ── Mock LLM (configurable per test via vi.mocked) ─────────────────
 const mockScoreArticles = vi.fn();
-vi.mock("@/lib/llm", () => ({
-  scoreArticles: (...args: any[]) => mockScoreArticles(...args),
-}));
+vi.mock("@/lib/llm", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, any>;
+  return { ...actual, scoreArticles: (...args: any[]) => mockScoreArticles(...args) };
+});
 
 // ── Imports (after mocks) ──────────────────────────────────────────
 import * as dbMod from "@/lib/db";
@@ -101,8 +102,8 @@ describe("Scenario 1: LLM returns valid scores (happy path)", () => {
   });
 });
 
-describe("Scenario 2: LLM fails (returns null array) → score=null", () => {
-  it("getScoredArticles returns 0 when all LLM scores are null", async () => {
+describe("Scenario 2: LLM fails (returns null array)", () => {
+  it("does not persist failed articles as scored, leaving them eligible for retry", async () => {
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) => items.map(() => null),
     );
@@ -113,15 +114,15 @@ describe("Scenario 2: LLM fails (returns null array) → score=null", () => {
     expect(savedCount).toBe(0);
 
     const allRows = await (dbMod as any).__client.execute("SELECT COUNT(*) as cnt FROM articles");
-    expect(allRows.rows[0].cnt).toBe(ARTICLE_COUNT);
+    expect(allRows.rows[0].cnt).toBe(0);
 
     const scored = await getScoredArticles(100);
     expect(scored.length).toBe(0);
 
-    const nullScoreRows = await (dbMod as any).__client.execute(
-      "SELECT COUNT(*) as cnt FROM articles WHERE score IS NULL",
+    const unscoredRows = await (dbMod as any).__client.execute(
+      "SELECT COUNT(*) as cnt FROM articles WHERE scored_at IS NULL OR scoring_signature IS NULL",
     );
-    expect(nullScoreRows.rows[0].cnt).toBe(ARTICLE_COUNT);
+    expect(unscoredRows.rows[0].cnt).toBe(0);
   });
 });
 
@@ -203,7 +204,7 @@ describe("Scenario 4: LLM returns partial results", () => {
     expect(savedCount).toBe(10);
 
     const allRows = await (dbMod as any).__client.execute("SELECT COUNT(*) as cnt FROM articles");
-    expect(allRows.rows[0].cnt).toBe(ARTICLE_COUNT);
+    expect(allRows.rows[0].cnt).toBe(10);
 
     const scored = await getScoredArticles(100);
     expect(scored.length).toBe(10);
@@ -260,7 +261,7 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
     }
   });
 
-  it("BUG REPRO: mimics route.ts with LLM failure → saved=20 but scored=0", async () => {
+  it("mimics route.ts with LLM failure and leaves the failed articles retryable", async () => {
     mockScoreArticles.mockImplementation(
       async (items: { title: string; description: string | null }[]) => items.map(() => null),
     );
@@ -274,10 +275,8 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
     expect(saved).toBe(0);
     expect(scored.length).toBe(0);
 
-    const allRows = await (dbMod as any).__client.execute(
-      "SELECT COUNT(*) as cnt FROM articles WHERE score IS NULL",
-    );
-    expect(allRows.rows[0].cnt).toBe(ARTICLE_COUNT);
+    const allRows = await (dbMod as any).__client.execute("SELECT COUNT(*) as cnt FROM articles");
+    expect(allRows.rows[0].cnt).toBe(0);
   });
 });
 
