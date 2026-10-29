@@ -10,6 +10,7 @@ AGENTS.md の「ツール使用に関するガイドライン」の詳細版。
 - `pnpm-workspace.yaml` の `overrides` では Hono を監査済みの修正版 `4.13.13`、Vite `8.1.3` を同一メジャーの修正版 `8.1.6` に固定している。依存元が指定するバージョンより優先されるため、更新時は脆弱性修正を含む版か確認する。
 - Vercel Workflow `4.8.8` の依存が `@vercel/oidc@4.0.4` を要求する一方、registry mirror が同版を提供しない場合に備え、`@vercel/functions@3.10.4` の依存辺だけ `4.0.3` へ限定 override している。`@swc/core` と `cbor-extract` の install scripts は Workflow SDK の導入時も明示的に拒否する。
 - Vitest coverage は SDK が生成する `src/app/.well-known/workflow/**` だけを集計対象から除外する。`src/workflows/**` などアプリ側の Workflow 実装は従来どおり計測する。
+- ESLint も SDK が生成する `src/app/.well-known/workflow/**` を除外する。アプリ側 Workflow 実装はLint対象に含める。
 
 ## sudo（非対話環境）
 

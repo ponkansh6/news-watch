@@ -6,7 +6,13 @@ import nextUseClientBoundary from "@sbougerel/eslint-plugin-next-use-client-boun
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "src/app/.well-known/workflow/**",
+  ]),
 
   // ── Type-aware linting (required by props-must-be-serializable) ──
   {

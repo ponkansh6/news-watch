@@ -25,7 +25,7 @@ AGENTS.md の「Git Hooks の対処ルール」の詳細版。コミット / pus
    - 対処: `src/lib/db/schema.ts` とマイグレーション / テストの同期を確認する。
 3. **カバレッジ段階検証**（`src/` 変更時のみ実行・約30秒）— `vitest run --coverage` 後に `node scripts/check-coverage-tiers.mjs` を実行し、spec.md §7.1 のティア別目標（Tier 1: 95% 〜 Tier 6: 65%）を達成しているか検証する。Vitest は SDK 生成の `src/app/.well-known/workflow/**` だけを除外し、アプリ側 Workflow 実装は計測対象に含める。
    - 対処: 未達のモジュールにテストを追加する。検証コマンド: `pnpm exec vitest run --coverage && node scripts/check-coverage-tiers.mjs`
-4. **`pnpm exec eslint src/`** — Server Action 境界の静的検査（`@sbougerel/next-use-client-boundary/props-must-be-serializable` が RSC→Client 境界の非シリアライズ可能 props を検出）。
+4. **`pnpm exec eslint src/`** — Server Action 境界の静的検査（`@sbougerel/next-use-client-boundary/props-must-be-serializable` が RSC→Client 境界の非シリアライズ可能 props を検出）。SDK 生成の `src/app/.well-known/workflow/**` は除外し、アプリ側 Workflow 実装は検査する。
    - 対処: エラーを修正するか、意図的な場合は eslint-disable コメントに理由を添える。
 5. **`bash scripts/smoke-test.sh`**（`src/` 変更時のみ・約30秒）— `pnpm run build`（Webpack）と `pnpm start` の後に `/` を curl し、本文に RSC エラーダイジェスト（`E{"digest"`）や `Cookies can only be modified` が無いことを検証。HTTP 200 は成功判定に使わない（壊れた状態でも 200 が返るため）。
    - 対処: ビルドエラーや RSC レンダリングエラーを修正する。
