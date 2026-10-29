@@ -222,7 +222,7 @@ export async function POST(request: Request) {
           scoring: { completed: latest.completed, total: latest.total, failed: latest.failed },
         });
       publishProgress();
-      heartbeatTimer = setInterval(publishProgress, 5_000);
+      heartbeatTimer = setInterval(publishProgress, 2_000);
       void executeFetch(
         selectedSource,
         (progress) => {

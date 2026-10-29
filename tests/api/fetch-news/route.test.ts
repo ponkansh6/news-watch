@@ -157,7 +157,7 @@ describe("POST /api/fetch-news", () => {
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
-  test("NDJSON stream emits a five-second heartbeat while source fetching is still pending", async () => {
+  test("NDJSON stream emits a two-second heartbeat while source fetching is still pending", async () => {
     vi.stubEnv("CRON_SECRET", "test-secret");
     vi.useFakeTimers();
     const { searchZenn } = await import("@/lib/news/zenn");
@@ -188,7 +188,13 @@ describe("POST /api/fetch-news", () => {
       });
 
       const heartbeatPromise = reader.read();
-      await vi.advanceTimersByTimeAsync(5_000);
+      let heartbeatReceived = false;
+      void heartbeatPromise.then(() => {
+        heartbeatReceived = true;
+      });
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(heartbeatReceived).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
       const heartbeat = await heartbeatPromise;
       expect(JSON.parse(decoder.decode(heartbeat.value))).toMatchObject({
         type: "progress",
