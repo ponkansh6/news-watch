@@ -130,6 +130,7 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
         return;
       }
       let data: unknown;
+      let cacheInvalidationToken: string | null = null;
       let receivedProgressStream = false;
       if (res.headers.get("content-type")?.includes("application/x-ndjson")) {
         receivedProgressStream = true;
@@ -151,8 +152,13 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
             });
           } else if (typeof event === "object" && event !== null && "type" in event) {
             const terminal = event as Record<string, unknown>;
-            if (terminal.type === "result") data = terminal;
-            else if (terminal.type === "error") streamError = true;
+            if (terminal.type === "result") {
+              data = terminal;
+              cacheInvalidationToken =
+                typeof terminal.cacheInvalidationToken === "string"
+                  ? terminal.cacheInvalidationToken
+                  : null;
+            } else if (terminal.type === "error") streamError = true;
             else throw new Error("Invalid fetch progress event");
           } else {
             throw new Error("Invalid fetch progress event");
@@ -209,7 +215,8 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
 
         if (receivedProgressStream) {
           try {
-            await invalidateArticlesAfterFetch();
+            if (!cacheInvalidationToken) throw new Error("Missing cache invalidation token");
+            await invalidateArticlesAfterFetch(cacheInvalidationToken);
           } catch {
             setFetchError("一覧の更新を確認できませんでした。ページを再読み込みしてください。");
             setRefreshing(false);

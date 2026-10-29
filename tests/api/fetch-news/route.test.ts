@@ -150,7 +150,10 @@ describe("POST /api/fetch-news", () => {
       type: "result",
       ok: true,
       results: [{ fetched: expect.any(Number), saved: expect.any(Number) }],
+      cacheInvalidationToken: expect.any(String),
     });
+    const { verifyArticlesInvalidationToken } = await import("@/lib/cache-invalidation-token");
+    expect(verifyArticlesInvalidationToken(events.at(-1).cacheInvalidationToken)).toBe(true);
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 

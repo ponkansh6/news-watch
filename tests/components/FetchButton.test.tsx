@@ -302,6 +302,7 @@ describe("FetchButton", () => {
         message: "Scoring queued",
         results: [{ fetched: 2, saved: 1, errors: [] }],
         perSource: [{ source: "zenn", fetched: 2 }],
+        cacheInvalidationToken: "signed-short-lived-token",
       }) + "\n";
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -340,6 +341,7 @@ describe("FetchButton", () => {
     await act(async () => releaseResult());
 
     await waitFor(() => expect(screen.getByText("1件 スコアリング完了")).toBeInTheDocument());
+    expect(mockInvalidateArticlesAfterFetch).toHaveBeenCalledWith("signed-short-lived-token");
     expect(mockInvalidateArticlesAfterFetch).toHaveBeenCalledTimes(1);
     expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
@@ -356,6 +358,7 @@ describe("FetchButton", () => {
         type: "result",
         ok: true,
         results: [{ fetched: 1, saved: 1, errors: [] }],
+        cacheInvalidationToken: "signed-short-lived-token",
       }) + "\n";
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(encoder.encode(resultLine), {
@@ -386,6 +389,7 @@ describe("FetchButton", () => {
           type: "result",
           ok: true,
           results: [{ fetched: 1, saved: 1, errors: [] }],
+          cacheInvalidationToken: "signed-short-lived-token",
         })}\n`,
         { headers: { "Content-Type": "application/x-ndjson" } },
       ),

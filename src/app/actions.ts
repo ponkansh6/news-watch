@@ -1,38 +1,12 @@
 "use server";
 
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { updateTag } from "next/cache";
-import { timingSafeEqual } from "node:crypto";
-
-function isAuthenticated(authorization: string | null): boolean {
-  const configuredUser = process.env.ADMIN_BASIC_AUTH_USER;
-  const configuredPassword = process.env.ADMIN_BASIC_AUTH_PASSWORD;
-  if (!configuredUser || !configuredPassword || !authorization?.startsWith("Basic ")) return false;
-
-  try {
-    const decoded = Buffer.from(authorization.slice(6), "base64").toString("utf8");
-    const separator = decoded.indexOf(":");
-    if (separator < 0) return false;
-
-    const user = Buffer.from(decoded.slice(0, separator));
-    const password = Buffer.from(decoded.slice(separator + 1));
-    const expectedUser = Buffer.from(configuredUser);
-    const expectedPassword = Buffer.from(configuredPassword);
-    return (
-      user.length === expectedUser.length &&
-      timingSafeEqual(user, expectedUser) &&
-      password.length === expectedPassword.length &&
-      timingSafeEqual(password, expectedPassword)
-    );
-  } catch {
-    return false;
-  }
-}
+import { verifyArticlesInvalidationToken } from "@/lib/cache-invalidation-token";
 
 /** Invalidate the article list after an authenticated interactive fetch. */
-export async function invalidateArticlesAfterFetch(): Promise<{ ok: true }> {
-  const requestHeaders = await headers();
-  if (!isAuthenticated(requestHeaders.get("authorization"))) {
+export async function invalidateArticlesAfterFetch(token: string): Promise<{ ok: true }> {
+  if (!verifyArticlesInvalidationToken(token)) {
     throw new Error("Unauthorized");
   }
   updateTag("articles");

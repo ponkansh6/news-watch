@@ -158,9 +158,25 @@ async function main() {
   }
 
   const fixtureLoader = join(root, "scripts/fixtures/first-fetch-refresh.mjs");
+  const adminUser = "plan22-smoke-admin";
+  const adminPassword = "plan22-smoke-admin-password";
   const nodeOptions = [process.env.NODE_OPTIONS, `--import=${fixtureLoader}`]
     .filter(Boolean)
     .join(" ");
+  const serverEnv = {
+    ...process.env,
+    NODE_OPTIONS: nodeOptions,
+    PLAN22_REFERENCE_TIMESTAMP: referenceTimestamp,
+    PLAN22_FIXTURE_B_RELEVANCE: String(fixtureBScoring.relevance),
+    PLAN22_FIXTURE_B_USEFULNESS: String(fixtureBScoring.usefulness),
+    TURSO_DATABASE_URL: dbUrl,
+    TURSO_AUTH_TOKEN: "",
+    GOOGLE_API_KEY: "plan22-fixture-key",
+    ADMIN_BASIC_AUTH_USER: adminUser,
+    ADMIN_BASIC_AUTH_PASSWORD: adminPassword,
+  };
+  if (mode === "action") delete serverEnv.CRON_SECRET;
+  else serverEnv.CRON_SECRET = secret;
   mkdirSync(dirname(recordPath), { recursive: true });
   writeFileSync(serverStdoutPath, "");
   writeFileSync(serverStderrPath, "");
@@ -176,19 +192,7 @@ async function main() {
     ],
     {
       cwd: nextRoot,
-      env: {
-        ...process.env,
-        NODE_OPTIONS: nodeOptions,
-        PLAN22_REFERENCE_TIMESTAMP: referenceTimestamp,
-        PLAN22_FIXTURE_B_RELEVANCE: String(fixtureBScoring.relevance),
-        PLAN22_FIXTURE_B_USEFULNESS: String(fixtureBScoring.usefulness),
-        TURSO_DATABASE_URL: dbUrl,
-        TURSO_AUTH_TOKEN: "",
-        GOOGLE_API_KEY: "plan22-fixture-key",
-        CRON_SECRET: secret,
-        ADMIN_BASIC_AUTH_USER: "plan22-smoke-admin",
-        ADMIN_BASIC_AUTH_PASSWORD: "plan22-smoke-admin-password",
-      },
+      env: serverEnv,
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -212,7 +216,10 @@ async function main() {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${secret}`,
+        authorization:
+          mode === "action"
+            ? `Basic ${Buffer.from(`${adminUser}:${adminPassword}`).toString("base64")}`
+            : `Bearer ${secret}`,
         ...(mode === "action" ? { accept: "application/x-ndjson" } : {}),
       },
       body: JSON.stringify({ source: "yamadashy" }),
@@ -264,8 +271,7 @@ async function main() {
     if (!actionEntry)
       throw new Error("Could not find invalidateArticlesAfterFetch in the Server Action manifest");
     const [actionId] = actionEntry;
-    const adminUser = "plan22-smoke-admin";
-    const adminPassword = "plan22-smoke-admin-password";
+    const cacheInvalidationToken = postBody?.cacheInvalidationToken;
     const actionResponse = await fetch(`${origin}/`, {
       method: "POST",
       headers: {
@@ -276,9 +282,8 @@ async function main() {
         "next-router-state-tree": encodeURIComponent(
           JSON.stringify(["", { children: ["__PAGE__", {}] }]),
         ),
-        authorization: `Basic ${Buffer.from(`${adminUser}:${adminPassword}`).toString("base64")}`,
       },
-      body: "[]",
+      body: JSON.stringify([cacheInvalidationToken]),
     });
     const actionText = await actionResponse.text();
     cacheInvalidationAction = {
@@ -289,6 +294,11 @@ async function main() {
       response: actionText.slice(0, 4_000),
     };
   }
+  const sanitizedPostBody = postBody
+    ? Object.fromEntries(
+        Object.entries(postBody).filter(([key]) => key !== "cacheInvalidationToken"),
+      )
+    : null;
 
   // This is the first list request after POST. Do not retry or read another list until recorded.
   const firstListStartedAt = performance.now();
@@ -305,7 +315,7 @@ async function main() {
     postStatus: postResponse?.status ?? null,
     postElapsedMs,
     postTransportError: postTransportError ?? null,
-    pipelineResponse: postBody ?? null,
+    pipelineResponse: sanitizedPostBody,
     cacheInvalidationAction,
     databaseArticles: { a: articleA, b: articleB },
     dbVerifierElapsedMs,
@@ -375,6 +385,8 @@ async function main() {
       mode !== "action" ||
       (cacheInvalidationAction.status === 200 &&
         cacheInvalidationAction.revalidatedHeader !== null),
+    cacheInvalidationTokenIssued:
+      mode !== "action" || typeof postBody?.cacheInvalidationToken === "string",
     firstListMatchesExpectation:
       mode === "action" || expected === "fresh"
         ? firstResult.firstListHasB

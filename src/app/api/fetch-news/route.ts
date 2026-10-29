@@ -11,6 +11,7 @@ import { getLatestPreferenceProfile } from "@/lib/db";
 import { buildPreferencePromptSection } from "@/lib/llm";
 import { computeScoringSignature } from "@/lib/scoring-signature";
 import { SCORING_BUDGET } from "@/lib/constants";
+import { issueArticlesInvalidationToken } from "@/lib/cache-invalidation-token";
 
 export const maxDuration = 60;
 export const SUPPORTED_SOURCE_IDS = SOURCE_IDS;
@@ -231,7 +232,14 @@ export async function POST(request: Request) {
         },
         false,
       )
-        .then((result) => send({ type: "result", ...result }))
+        .then((result) => {
+          const cacheInvalidationToken = issueArticlesInvalidationToken();
+          if (!cacheInvalidationToken) {
+            send({ type: "error", error: "記事一覧を更新できませんでした" });
+            return;
+          }
+          send({ type: "result", ...result, cacheInvalidationToken });
+        })
         .catch((error: unknown) => {
           console.error("[fetch-news] Streaming fetch failed:", error);
           send({ type: "error", error: "ニュース取得に失敗しました" });
