@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   getActiveRefreshSlot: vi.fn(),
   getOwnedRefreshJob: vi.fn(),
   getRefreshJobSources: vi.fn(),
+  getRefreshArticleProgress: vi.fn(),
   tryRecoverActiveRefreshJob: vi.fn(),
 }));
 
@@ -24,6 +25,9 @@ vi.mock("@/lib/db/repository/refresh-job-repository", () => ({
   getActiveRefreshSlot: mocks.getActiveRefreshSlot,
   getOwnedRefreshJob: mocks.getOwnedRefreshJob,
   getRefreshJobSources: mocks.getRefreshJobSources,
+}));
+vi.mock("@/lib/db/repository/refresh-candidate-repository", () => ({
+  getRefreshArticleProgress: mocks.getRefreshArticleProgress,
 }));
 vi.mock("@/lib/refresh-job-auto-recovery", () => ({
   tryRecoverActiveRefreshJob: mocks.tryRecoverActiveRefreshJob,
@@ -70,6 +74,12 @@ describe("refresh job APIs", () => {
     mocks.getActiveRefreshSlot.mockResolvedValue({ ownerKind: "job", ownerId: job.id });
     mocks.getOwnedRefreshJob.mockResolvedValue(job);
     mocks.getRefreshJobSources.mockResolvedValue([source]);
+    mocks.getRefreshArticleProgress.mockResolvedValue({
+      candidateTotal: 3,
+      savedCount: 1,
+      failedCount: 0,
+      collectionComplete: false,
+    });
     mocks.tryRecoverActiveRefreshJob.mockResolvedValue(false);
   });
 
@@ -156,9 +166,31 @@ describe("refresh job APIs", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.job).toMatchObject({ jobId: job.id, status: job.status, sources: [source] });
+    expect(body.job).toMatchObject({
+      jobId: job.id,
+      status: job.status,
+      sources: [source],
+      articleProgress: {
+        candidateTotal: 3,
+        savedCount: 1,
+        failedCount: 0,
+        collectionComplete: false,
+      },
+    });
     expect(JSON.stringify(body)).not.toContain("secret-token");
     expect(mocks.getOwnedRefreshJob).toHaveBeenCalledWith(job.id);
+  });
+
+  test("includes article progress in the active-job response", async () => {
+    const response = await GET(new Request("https://news.test/api/refresh-jobs"));
+    const body = await response.json();
+
+    expect(body.job.articleProgress).toEqual({
+      candidateTotal: 3,
+      savedCount: 1,
+      failedCount: 0,
+      collectionComplete: false,
+    });
   });
 
   test("fails closed without auth", async () => {

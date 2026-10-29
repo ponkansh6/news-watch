@@ -12,6 +12,7 @@ import {
   claimCandidateBatch,
   deferCandidateBatchForRateLimit,
   freezeNextCandidateBatch,
+  getRefreshArticleProgress,
   getBatchCandidates,
   getCandidateBatch,
   listRefreshJobCandidates,
@@ -23,7 +24,13 @@ import {
   stageRefreshCandidates,
   storeCandidateBatchResult,
 } from "@/lib/db/repository/refresh-candidate-repository";
-import { refreshJobBatches, refreshJobSlot, refreshJobs, refreshJobSources } from "@/lib/db/schema";
+import {
+  refreshJobBatches,
+  refreshJobCandidates,
+  refreshJobSlot,
+  refreshJobs,
+  refreshJobSources,
+} from "@/lib/db/schema";
 import { SOURCE_IDS } from "@/lib/news/registry";
 
 const jobs: string[] = [];
@@ -142,6 +149,65 @@ describe("refresh candidate repository", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.representativeSourceId).toBe(firstSource);
     expect(JSON.parse(rows[0]!.sourceIdsJson)).toEqual([firstSource, secondSource]);
+  });
+
+  test("counts unique candidates by persisted state and waits for every source", async () => {
+    const job = await newJob();
+    const firstSource = SOURCE_IDS[0]!;
+    const secondSource = SOURCE_IDS[1]!;
+    await stageCandidates(job, firstSource, [candidate(1, firstSource), candidate(2, firstSource)]);
+    const duplicate = candidate(3, secondSource);
+    duplicate.payload.url = "https://EXAMPLE.com:443/1";
+    await stageCandidates(job, secondSource, [duplicate]);
+
+    expect(await getRefreshArticleProgress(job.id)).toEqual({
+      candidateTotal: 2,
+      savedCount: 0,
+      failedCount: 0,
+      collectionComplete: false,
+    });
+
+    const [firstCandidate, secondCandidate] = await listRefreshJobCandidates(job.id, job.token);
+    await db
+      .update(refreshJobCandidates)
+      .set({ status: "saved" })
+      .where(eq(refreshJobCandidates.id, firstCandidate!.id));
+    await db
+      .update(refreshJobCandidates)
+      .set({ status: "failed" })
+      .where(eq(refreshJobCandidates.id, secondCandidate!.id));
+    await db
+      .update(refreshJobSources)
+      .set({ status: "saved" })
+      .where(eq(refreshJobSources.jobId, job.id));
+
+    expect(await getRefreshArticleProgress(job.id)).toEqual({
+      candidateTotal: 2,
+      savedCount: 1,
+      failedCount: 1,
+      collectionComplete: true,
+    });
+  });
+
+  test("distinguishes a missing job from a zero-source job and terminal empty jobs", async () => {
+    const job = await newJob();
+    await db.delete(refreshJobSources).where(eq(refreshJobSources.jobId, job.id));
+
+    expect(await getRefreshArticleProgress(job.id)).toEqual({
+      candidateTotal: 0,
+      savedCount: 0,
+      failedCount: 0,
+      collectionComplete: false,
+    });
+    expect(await getRefreshArticleProgress("missing-job")).toBeNull();
+
+    await db.update(refreshJobs).set({ status: "completed" }).where(eq(refreshJobs.id, job.id));
+    expect(await getRefreshArticleProgress(job.id)).toEqual({
+      candidateTotal: 0,
+      savedCount: 0,
+      failedCount: 0,
+      collectionComplete: true,
+    });
   });
 
   test.each([0, 49, 50, 51])(

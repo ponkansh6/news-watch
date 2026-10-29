@@ -217,6 +217,114 @@ describe("FetchButton", () => {
     expect(mockRefresh).toHaveBeenCalled();
   });
 
+  it("shows candidate totals during collection and separates scoring failures", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/refresh-jobs" && init?.method === "POST") {
+        return jsonResponse(
+          {
+            jobId: "job-progress",
+            status: "running",
+            revision: 1,
+            sources: [
+              {
+                sourceId: "zenn",
+                status: "executing",
+                resultCount: null,
+                errorCode: null,
+                cacheInvalidatedAt: null,
+              },
+            ],
+          },
+          202,
+        );
+      }
+      if (input === "/api/refresh-jobs/job-progress") {
+        return jsonResponse({
+          job: {
+            jobId: "job-progress",
+            status: "running",
+            revision: 2,
+            currentSourceId: "zenn",
+            errorCode: null,
+            articleProgress: {
+              candidateTotal: 7,
+              savedCount: 2,
+              failedCount: 1,
+              collectionComplete: false,
+            },
+            sources: [
+              {
+                sourceId: "zenn",
+                status: "executing",
+                resultCount: null,
+                errorCode: null,
+                cacheInvalidatedAt: null,
+              },
+            ],
+          },
+        });
+      }
+      return jsonResponse({ job: null });
+    });
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="all" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+    await user.click(await screen.findByRole("button", { name: "全ソースを一括更新" }));
+
+    const progress = screen.getByRole("region", { name: "総合更新の進捗" });
+    expect(await within(progress).findByText("採点対象（収集中） 7件")).toBeInTheDocument();
+    expect(within(progress).getByText("失敗 1件")).toBeInTheDocument();
+    expect(within(progress).getByText("取得・採点中...")).toBeInTheDocument();
+  });
+
+  it("shows a zero candidate total after collection", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/refresh-jobs" && init?.method === "POST") {
+        return jsonResponse(
+          {
+            jobId: "job-empty",
+            status: "running",
+            revision: 1,
+            sources: [],
+          },
+          202,
+        );
+      }
+      if (input === "/api/refresh-jobs/job-empty") {
+        return jsonResponse({
+          job: {
+            jobId: "job-empty",
+            status: "completed",
+            revision: 2,
+            currentSourceId: null,
+            errorCode: null,
+            articleProgress: {
+              candidateTotal: 0,
+              savedCount: 0,
+              failedCount: 0,
+              collectionComplete: true,
+            },
+            sources: [],
+          },
+        });
+      }
+      return jsonResponse({ job: null });
+    });
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="all" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+    await user.click(await screen.findByRole("button", { name: "全ソースを一括更新" }));
+    expect(await screen.findByText("保存済み 0 / 採点対象 0件")).toBeInTheDocument();
+  });
+
   it("restores an active aggregate job when revisiting the page", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       if (input === "/api/refresh-jobs") {

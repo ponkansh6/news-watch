@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, max, sql } from "drizzle-orm";
 import { SOURCE_IDS, type SourceId } from "@/lib/news/registry";
 import { db } from "../index";
 import { refreshJobBatches, refreshJobCandidates, refreshJobs, refreshJobSources } from "../schema";
@@ -15,6 +15,13 @@ export type CandidateBatchStatus =
 export type RefreshJobCandidate = typeof refreshJobCandidates.$inferSelect;
 export type RefreshJobCandidateBatch = typeof refreshJobBatches.$inferSelect;
 
+export interface RefreshArticleProgress {
+  candidateTotal: number;
+  savedCount: number;
+  failedCount: number;
+  collectionComplete: boolean;
+}
+
 export interface RefreshCandidateInput {
   sourceId: SourceId;
   /** Payload remains in the DB; Workflow events should carry candidate IDs only. */
@@ -24,6 +31,43 @@ export interface RefreshCandidateInput {
 }
 
 const DEFAULT_BATCH_SIZE = 50;
+
+/** Counts normalized, deduplicated candidates without loading their article payloads. */
+export async function getRefreshArticleProgress(
+  jobId: string,
+): Promise<RefreshArticleProgress | null> {
+  const [job] = await db
+    .select({ status: refreshJobs.status })
+    .from(refreshJobs)
+    .where(eq(refreshJobs.id, jobId));
+  if (!job) return null;
+
+  const [candidateCounts] = await db
+    .select({
+      candidateTotal: count(),
+      savedCount: sql<number>`coalesce(sum(case when ${refreshJobCandidates.status} = 'saved' then 1 else 0 end), 0)`,
+      failedCount: sql<number>`coalesce(sum(case when ${refreshJobCandidates.status} = 'failed' then 1 else 0 end), 0)`,
+    })
+    .from(refreshJobCandidates)
+    .where(eq(refreshJobCandidates.jobId, jobId));
+  const [sourceCounts] = await db
+    .select({
+      sourceTotal: count(),
+      terminalCount: sql<number>`coalesce(sum(case when ${refreshJobSources.status} in ('saved', 'invalidated', 'failed') then 1 else 0 end), 0)`,
+    })
+    .from(refreshJobSources)
+    .where(eq(refreshJobSources.jobId, jobId));
+
+  return {
+    candidateTotal: candidateCounts?.candidateTotal ?? 0,
+    savedCount: candidateCounts?.savedCount ?? 0,
+    failedCount: candidateCounts?.failedCount ?? 0,
+    collectionComplete:
+      (sourceCounts?.sourceTotal ?? 0) === 0
+        ? ["completed", "partial", "failed"].includes(job.status)
+        : sourceCounts?.terminalCount === sourceCounts?.sourceTotal,
+  };
+}
 
 function tokenHash(token: string): string {
   return createHash("sha256").update(token).digest("hex");

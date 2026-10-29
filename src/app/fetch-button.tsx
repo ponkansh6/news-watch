@@ -41,6 +41,13 @@ interface AggregateJobSource {
   cacheInvalidatedAt: string | null;
 }
 
+interface AggregateArticleProgress {
+  candidateTotal: number;
+  savedCount: number;
+  failedCount: number;
+  collectionComplete: boolean;
+}
+
 interface AggregateJob {
   jobId: string;
   status: AggregateJobStatus;
@@ -48,6 +55,28 @@ interface AggregateJob {
   currentSourceId: string | null;
   errorCode: string | null;
   sources: AggregateJobSource[];
+  articleProgress?: AggregateArticleProgress;
+}
+
+function readAggregateArticleProgress(value: unknown): AggregateArticleProgress | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const progress = value as Record<string, unknown>;
+  const isCount = (count: unknown): count is number =>
+    typeof count === "number" && Number.isSafeInteger(count) && count >= 0;
+  if (
+    !isCount(progress.candidateTotal) ||
+    !isCount(progress.savedCount) ||
+    !isCount(progress.failedCount) ||
+    typeof progress.collectionComplete !== "boolean"
+  ) {
+    return undefined;
+  }
+  return {
+    candidateTotal: progress.candidateTotal,
+    savedCount: progress.savedCount,
+    failedCount: progress.failedCount,
+    collectionComplete: progress.collectionComplete,
+  };
 }
 
 function isAggregateJob(value: unknown): value is AggregateJob {
@@ -492,6 +521,9 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
         return "更新状況を確認できません。自動再実行は行いません。管理者による確認が必要です。";
     }
   };
+  const aggregateArticleProgress = aggregateJob
+    ? readAggregateArticleProgress(aggregateJob.articleProgress)
+    : undefined;
 
   return (
     <div className="flex flex-col gap-4">
@@ -561,6 +593,24 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
               >
                 {refreshStatusLabel(aggregateJob)}
               </p>
+              {aggregateArticleProgress && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md bg-muted/50 px-3 py-2 text-xs sm:text-sm"
+                >
+                  <span className="font-medium text-foreground">
+                    {aggregateArticleProgress.collectionComplete
+                      ? `保存済み ${aggregateArticleProgress.savedCount} / 採点対象 ${aggregateArticleProgress.candidateTotal}件`
+                      : `採点対象（収集中） ${aggregateArticleProgress.candidateTotal}件`}
+                  </span>
+                  {aggregateArticleProgress.failedCount > 0 && (
+                    <span className="text-destructive">
+                      失敗 {aggregateArticleProgress.failedCount}件
+                    </span>
+                  )}
+                </div>
+              )}
               <ul className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
                 {aggregateJob.sources.map((source) => {
                   const label =
@@ -588,7 +638,7 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
 
       <FetchResult results={results} error={fetchError} />
 
-      {isRefreshing && (
+      {isRefreshing && selectedSource !== "all" && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-muted-foreground" />
           {progress?.stage === "scoring"

@@ -3,6 +3,7 @@ import {
   getOwnedRefreshJob,
   getRefreshJobSources,
 } from "@/lib/db/repository/refresh-job-repository";
+import { getRefreshArticleProgress } from "@/lib/db/repository/refresh-candidate-repository";
 import { isNewsApiAuthorized } from "@/lib/news/api-auth";
 
 export async function GET(request: Request, context: { params: Promise<{ jobId: string }> }) {
@@ -19,7 +20,11 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
   const { jobId } = await context.params;
   const job = await getOwnedRefreshJob(jobId);
   if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const sources = await getRefreshJobSources(job.id);
+  const [sources, articleProgress] = await Promise.all([
+    getRefreshJobSources(job.id),
+    getRefreshArticleProgress(job.id),
+  ]);
+  if (!articleProgress) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   return NextResponse.json({
     job: {
@@ -32,6 +37,7 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
       completedAt: job.completedAt,
       nextEligibleAt: job.nextEligibleAt,
       errorCode: job.errorCode,
+      articleProgress,
       sources: sources.map((source) => ({
         sourceId: source.sourceId,
         status: source.status,

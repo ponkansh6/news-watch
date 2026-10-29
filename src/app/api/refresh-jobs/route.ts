@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { aggregateRefreshWorkflow } from "@/workflows/aggregate-refresh";
+import { getRefreshArticleProgress } from "@/lib/db/repository/refresh-candidate-repository";
 import {
   bindWorkflowRun,
   getActiveRefreshSlot,
@@ -31,8 +32,12 @@ export async function GET(request: Request) {
   const job =
     slot?.ownerKind === "job" && slot.ownerId ? await getOwnedRefreshJob(slot.ownerId) : null;
   if (!job) return NextResponse.json({ job: null });
-  const sources = await getRefreshJobSources(job.id);
-  return NextResponse.json({ job: publicJob(job, sources) });
+  const [sources, articleProgress] = await Promise.all([
+    getRefreshJobSources(job.id),
+    getRefreshArticleProgress(job.id),
+  ]);
+  if (!articleProgress) return NextResponse.json({ job: null });
+  return NextResponse.json({ job: publicJob(job, sources, articleProgress) });
 }
 
 export async function POST(request: Request) {
@@ -108,6 +113,7 @@ export async function POST(request: Request) {
 function publicJob(
   job: NonNullable<Awaited<ReturnType<typeof getOwnedRefreshJob>>>,
   sources: Awaited<ReturnType<typeof getRefreshJobSources>>,
+  articleProgress: Awaited<ReturnType<typeof getRefreshArticleProgress>>,
 ) {
   return {
     jobId: job.id,
@@ -119,6 +125,7 @@ function publicJob(
     completedAt: job.completedAt,
     nextEligibleAt: job.nextEligibleAt,
     errorCode: job.errorCode,
+    articleProgress,
     sources: sources.map(publicSource),
   };
 }
