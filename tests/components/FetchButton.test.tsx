@@ -10,8 +10,27 @@ import { SOURCES } from "@/lib/sources";
 import type { ArticleListRow as Article } from "@/components/article/article-list";
 import "@testing-library/jest-dom/vitest";
 
-const mockPush = vi.fn();
-const mockRefresh = vi.fn();
+const { mockPush, mockRefresh, mockInvalidateArticlesAfterFetch, useTransitionOverride } =
+  vi.hoisted(() => ({
+    mockPush: vi.fn(),
+    mockRefresh: vi.fn(),
+    mockInvalidateArticlesAfterFetch: vi.fn().mockResolvedValue({ ok: true }),
+    useTransitionOverride: {
+      current: null as (() => [boolean, (callback: () => void) => void]) | null,
+    },
+  }));
+
+vi.mock("react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react")>();
+  return {
+    ...actual,
+    useTransition: () => useTransitionOverride.current?.() ?? actual.useTransition(),
+  };
+});
+
+vi.mock("@/app/actions", () => ({
+  invalidateArticlesAfterFetch: mockInvalidateArticlesAfterFetch,
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -86,6 +105,8 @@ describe("FetchButton", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockOnSourceChange.mockClear();
+    mockInvalidateArticlesAfterFetch.mockResolvedValue({ ok: true });
+    useTransitionOverride.current = null;
   });
 
   afterEach(() => {
@@ -319,7 +340,71 @@ describe("FetchButton", () => {
     await act(async () => releaseResult());
 
     await waitFor(() => expect(screen.getByText("1件 スコアリング完了")).toBeInTheDocument());
+    expect(mockInvalidateArticlesAfterFetch).toHaveBeenCalledTimes(1);
     expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for article cache invalidation before refreshing after the stream succeeds", async () => {
+    const user = userEvent.setup();
+    const encoder = new TextEncoder();
+    let releaseAction: (value: { ok: true }) => void = () => {};
+    mockInvalidateArticlesAfterFetch.mockImplementationOnce(
+      () => new Promise((resolve) => (releaseAction = resolve)),
+    );
+    const resultLine =
+      JSON.stringify({
+        type: "result",
+        ok: true,
+        results: [{ fetched: 1, saved: 1, errors: [] }],
+      }) + "\n";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(encoder.encode(resultLine), {
+        headers: { "Content-Type": "application/x-ndjson" },
+      }),
+    );
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
+
+    await waitFor(() => expect(mockInvalidateArticlesAfterFetch).toHaveBeenCalledTimes(1));
+    expect(mockRefresh).not.toHaveBeenCalled();
+
+    await act(async () => releaseAction({ ok: true }));
+    await waitFor(() => expect(mockRefresh).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not refresh the article list when cache invalidation fails", async () => {
+    const user = userEvent.setup();
+    mockInvalidateArticlesAfterFetch.mockRejectedValueOnce(new Error("Unauthorized"));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        `${JSON.stringify({
+          type: "result",
+          ok: true,
+          results: [{ fetched: 1, saved: 1, errors: [] }],
+        })}\n`,
+        { headers: { "Content-Type": "application/x-ndjson" } },
+      ),
+    );
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("一覧の更新を確認できませんでした。ページを再読み込みしてください。"),
+      ).toBeInTheDocument(),
+    );
+    expect(mockInvalidateArticlesAfterFetch).toHaveBeenCalledTimes(1);
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -350,6 +435,7 @@ describe("FetchButton", () => {
     await user.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
 
     await waitFor(() => expect(screen.getByText("ニュース取得に失敗しました")).toBeInTheDocument());
+    expect(mockInvalidateArticlesAfterFetch).not.toHaveBeenCalled();
     expect(mockRefresh).not.toHaveBeenCalled();
     expect(
       screen.getByRole("button", { name: "ニュースを取得してスコアリング" }),
@@ -500,8 +586,11 @@ describe("FetchButton", () => {
     await waitFor(() => {
       expect(screen.getByText("0件 スコアリング完了")).toBeInTheDocument();
     });
+    expect(mockInvalidateArticlesAfterFetch).not.toHaveBeenCalled();
     expect(mockRefresh).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("記事取得中...")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("記事取得中...")).not.toBeInTheDocument();
+    });
   });
 
   it("displays network error on fetch rejection", async () => {
@@ -617,6 +706,7 @@ describe("Refresh lifecycle integration", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    useTransitionOverride.current = null;
   });
 
   it("clears refreshing when API returns saved=0 and no new article IDs appear", async () => {
@@ -788,5 +878,67 @@ describe("Refresh lifecycle integration", () => {
     // Old articles must also be visible
     expect(screen.getByText("既存記事 1")).toBeInTheDocument();
     expect(screen.getByText("既存記事 2")).toBeInTheDocument();
+  });
+
+  it("does not let a timed-out refresh transition clear a later fetch indicator", async () => {
+    vi.useFakeTimers();
+    const transition = { pending: false };
+    useTransitionOverride.current = () => [
+      transition.pending,
+      (callback: () => void) => {
+        transition.pending = true;
+        callback();
+      },
+    ];
+
+    mockRefresh.mockImplementation(() => {});
+
+    let resolveFirstFetch: (response: Response) => void = () => {};
+    let resolveSecondFetch: (response: Response) => void = () => {};
+    vi.spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(new Promise<Response>((resolve) => (resolveFirstFetch = resolve)))
+      .mockReturnValueOnce(new Promise<Response>((resolve) => (resolveSecondFetch = resolve)));
+
+    const page = (
+      <RefreshProvider>
+        <FetchButton selectedSource="zenn" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>
+    );
+    const { rerender } = render(page);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
+    });
+    await act(async () => {
+      resolveFirstFetch(
+        jsonResponse({ ok: true, results: [{ fetched: 1, saved: 0, errors: [] }] }),
+      );
+    });
+
+    await act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(
+      screen.getByText("一覧の更新を確認できませんでした。ページを再読み込みしてください。"),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "ニュースを取得してスコアリング" }));
+    });
+    expect(screen.getByText("記事取得中...")).toBeInTheDocument();
+
+    await act(async () => {
+      transition.pending = false;
+      rerender(page);
+    });
+
+    expect(screen.getByText("記事取得中...")).toBeInTheDocument();
+    await act(async () => {
+      resolveSecondFetch(
+        jsonResponse({ ok: true, results: [{ fetched: 1, saved: 0, errors: [] }] }),
+      );
+    });
+    useTransitionOverride.current = null;
+    vi.useRealTimers();
   });
 });

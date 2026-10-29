@@ -151,6 +151,7 @@ describe("POST /api/fetch-news", () => {
       ok: true,
       results: [{ fetched: expect.any(Number), saved: expect.any(Number) }],
     });
+    expect(revalidateTag).not.toHaveBeenCalled();
   });
 
   test("NDJSON stream emits a five-second heartbeat while source fetching is still pending", async () => {

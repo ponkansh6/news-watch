@@ -52,9 +52,10 @@ authors: [shunki]
   - AND scoring failures are reported separately in each result's optional `scoringErrors` string array only when every article selected for scoring fails to receive an LLM score; partial scoring success does not show a scoring error, even if database persistence fails, while preserving the fetch response; the dashboard visibly labels full scoring failures as 採点エラー and shows a safe retry message without exposing provider exception details
   - AND interactive fetch requests that advertise `Accept: application/x-ndjson` receive newline-delimited progress events over the same POST response, while callers without that header retain the JSON response contract
   - AND streaming progress reports the current fetch/select/score/cleanup stage and monotonically increasing completed/failed scoring counts no more often than needed, with a five-second heartbeat; the final result event preserves the standard fetch result payload
-  - AND the dashboard reads progress events from the original request, shows scoring completed/target/failed counts, applies the final result, and refreshes the dashboard once; malformed or interrupted streams show an error and clear the loading state
+  - AND the dashboard reads progress events from the original request, shows scoring completed/target/failed counts, applies the final result, then awaits an authenticated `invalidateArticlesAfterFetch` Server Action that immediately expires the `articles` cache tag with `updateTag("articles")` before refreshing the dashboard once
+  - AND malformed or interrupted streams and failed cache invalidation show an error without claiming the refreshed list is current
   - AND a non-success HTTP response or malformed response is shown as a fetch error and does not refresh the dashboard
-  - AND after the fetch pipeline finishes scoring and stale-article cleanup, the API immediately expires the `articles` cache tag with `revalidateTag("articles", { expire: 0 })`, regardless of the saved count
+  - AND the streaming fetch route does not rely on cache revalidation registered after its response begins; requests using the legacy JSON response expire the `articles` cache tag with `revalidateTag("articles", { expire: 0 })` before responding, preserving cron compatibility
   - AND after a successful fetch response, the client refreshes the dashboard once, and that first refreshed view includes newly saved articles that meet the display criteria without requiring another fetch operation
 
 #### FR-002: Data Processing with Scoring

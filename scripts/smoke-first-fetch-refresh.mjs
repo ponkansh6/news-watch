@@ -26,13 +26,13 @@ const referenceTimestampInput = process.env.PLAN22_REFERENCE_TIMESTAMP
   ? new Date(process.env.PLAN22_REFERENCE_TIMESTAMP)
   : new Date();
 const referenceTimestamp = `${referenceTimestampInput.toISOString().slice(0, 19)}Z`;
-if (!new Set(["warm", "cold"]).has(mode) || !new Set(["stale", "fresh"]).has(expected)) {
+if (!new Set(["warm", "cold", "action"]).has(mode) || !new Set(["stale", "fresh"]).has(expected)) {
   throw new Error(
     "Usage: pnpm run build && node scripts/smoke-first-fetch-refresh.mjs --case=warm --expect=stale|fresh, or --case=cold --expect=fresh",
   );
 }
 if (
-  (mode === "cold" && expected !== "fresh") ||
+  (mode !== "warm" && expected !== "fresh") ||
   (mode === "warm" && !new Set(["stale", "fresh"]).has(expected))
 ) {
   throw new Error(`Invalid smoke case/expect combination: --case=${mode} --expect=${expected}`);
@@ -91,7 +91,7 @@ async function initializeDatabase() {
     }
   }
 
-  if (mode === "warm") {
+  if (mode !== "cold") {
     const now = new Date(referenceTimestamp).toISOString();
     const publishedAt = new Date(referenceTimestamp).toUTCString();
     await client.execute({
@@ -186,6 +186,8 @@ async function main() {
         TURSO_AUTH_TOKEN: "",
         GOOGLE_API_KEY: "plan22-fixture-key",
         CRON_SECRET: secret,
+        ADMIN_BASIC_AUTH_USER: "plan22-smoke-admin",
+        ADMIN_BASIC_AUTH_PASSWORD: "plan22-smoke-admin-password",
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -195,7 +197,7 @@ async function main() {
   await waitUntilReady();
 
   let warmSetup = { status: null, hasA: false };
-  if (mode === "warm") {
+  if (mode !== "cold") {
     const warmResponse = await fetch(`${origin}/?source=yamadashy`);
     const warmBody = await warmResponse.text();
     warmSetup = { status: warmResponse.status, hasA: warmBody.includes("Plan22 fixture A") };
@@ -208,12 +210,23 @@ async function main() {
   try {
     postResponse = await fetch(`${origin}/api/fetch-news`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${secret}`,
+        ...(mode === "action" ? { accept: "application/x-ndjson" } : {}),
+      },
       body: JSON.stringify({ source: "yamadashy" }),
     });
     const postText = await postResponse.text();
     try {
-      postBody = JSON.parse(postText);
+      postBody =
+        mode === "action"
+          ? postText
+              .trim()
+              .split("\n")
+              .map((line) => JSON.parse(line))
+              .findLast((event) => event.type === "result")
+          : JSON.parse(postText);
     } catch {
       postBody = { malformedJson: true, body: postText };
     }
@@ -238,6 +251,45 @@ async function main() {
   const articleA = rowsByUrl.get("https://fixture.news-watch.invalid/articles/plan22-a") ?? null;
   const articleB = rowsByUrl.get("https://fixture.news-watch.invalid/articles/plan22-b") ?? null;
 
+  let cacheInvalidationAction = { status: null, revalidatedHeader: null, response: null };
+  if (mode === "action") {
+    const manifest = JSON.parse(
+      readFileSync(join(root, ".next/server/server-reference-manifest.json"), "utf8"),
+    );
+    const actionEntry = Object.entries(manifest.node ?? {}).find(
+      ([, entry]) =>
+        entry.filename === "app/actions.ts" &&
+        entry.exportedName === "invalidateArticlesAfterFetch",
+    );
+    if (!actionEntry)
+      throw new Error("Could not find invalidateArticlesAfterFetch in the Server Action manifest");
+    const [actionId] = actionEntry;
+    const adminUser = "plan22-smoke-admin";
+    const adminPassword = "plan22-smoke-admin-password";
+    const actionResponse = await fetch(`${origin}/`, {
+      method: "POST",
+      headers: {
+        accept: "text/x-component",
+        "content-type": "text/plain;charset=UTF-8",
+        "next-action": actionId,
+        origin,
+        "next-router-state-tree": encodeURIComponent(
+          JSON.stringify(["", { children: ["__PAGE__", {}] }]),
+        ),
+        authorization: `Basic ${Buffer.from(`${adminUser}:${adminPassword}`).toString("base64")}`,
+      },
+      body: "[]",
+    });
+    const actionText = await actionResponse.text();
+    cacheInvalidationAction = {
+      status: actionResponse.status,
+      contentType: actionResponse.headers.get("content-type"),
+      revalidatedHeader: actionResponse.headers.get("x-action-revalidated"),
+      actionNotFoundHeader: actionResponse.headers.get("x-next-action-not-found"),
+      response: actionText.slice(0, 4_000),
+    };
+  }
+
   // This is the first list request after POST. Do not retry or read another list until recorded.
   const firstListStartedAt = performance.now();
   const firstListResponse = await fetch(`${origin}/?source=yamadashy`, {
@@ -254,6 +306,7 @@ async function main() {
     postElapsedMs,
     postTransportError: postTransportError ?? null,
     pipelineResponse: postBody ?? null,
+    cacheInvalidationAction,
     databaseArticles: { a: articleA, b: articleB },
     dbVerifierElapsedMs,
     firstListStatus: firstListResponse.status,
@@ -267,7 +320,7 @@ async function main() {
       score: expectedBScore,
       displayCriteria: {
         ...displayCriteria,
-        expectedArticleCount: mode === "warm" ? 2 : 1,
+        expectedArticleCount: mode === "cold" ? 1 : 2,
         actualFixtureArticleCount: saved.rows.length,
       },
     },
@@ -305,9 +358,9 @@ async function main() {
     firstListStatusOk: firstListResponse.status === 200,
     apiSucceeded,
     databaseBPresent: articleB !== null,
-    databaseArticleCountMatchesCase: saved.rows.length === (mode === "warm" ? 2 : 1),
+    databaseArticleCountMatchesCase: saved.rows.length === (mode === "cold" ? 1 : 2),
     warmSetupContainedA: mode === "cold" || (warmSetup.status === 200 && warmSetup.hasA),
-    aPresentOnlyInWarmCase: mode === "warm" ? articleA !== null : articleA === null,
+    aPresentOnlyInWarmCase: mode !== "cold" ? articleA !== null : articleA === null,
     aAndBPublishedAtMatch: mode === "cold" || articleAPublishedAtMs === articleBPublishedAtMs,
     aPublishedAtMatchesReference: mode === "cold" || articleAPublishedAtMs === referenceTimestampMs,
     bPublishedAtMatchesReference: articleBPublishedAtMs === referenceTimestampMs,
@@ -318,10 +371,14 @@ async function main() {
       typeof articleB.score === "number" &&
       articleB.score >= displayCriteria.minimumScore &&
       saved.rows.length <= displayCriteria.limit,
+    serverActionInvalidatedCache:
+      mode !== "action" ||
+      (cacheInvalidationAction.status === 200 &&
+        cacheInvalidationAction.revalidatedHeader !== null),
     firstListMatchesExpectation:
-      expected === "stale"
-        ? mode === "warm" && firstResult.firstListHasA && !firstResult.firstListHasB
-        : firstResult.firstListHasB,
+      mode === "action" || expected === "fresh"
+        ? firstResult.firstListHasB
+        : mode === "warm" && firstResult.firstListHasA && !firstResult.firstListHasB,
   };
   firstResult.assertions = assertions;
   writeFileSync(recordPath, `${JSON.stringify(firstResult, null, 2)}\n`);
@@ -346,7 +403,10 @@ async function main() {
 
   const followupAssertion = {
     staleWarmFollowupContainsB:
-      mode !== "warm" || expected !== "stale" || (followupResponse.status === 200 && followupHasB),
+      mode === "action" ||
+      mode !== "warm" ||
+      expected !== "stale" ||
+      (followupResponse.status === 200 && followupHasB),
   };
   firstResult.followupAssertions = followupAssertion;
   writeFileSync(recordPath, `${JSON.stringify(firstResult, null, 2)}\n`);

@@ -30,6 +30,7 @@ type FetchProgress = {
 async function executeFetch(
   selectedSource: string,
   onProgress?: (progress: FetchProgress) => void,
+  invalidateArticleCache = true,
 ) {
   await cleanupOrphaned();
   onProgress?.({ stage: "fetching", completed: 0, total: 0, failed: 0 });
@@ -104,7 +105,7 @@ async function executeFetch(
     failed: failedScoring,
   });
   await gcStaleArticles();
-  revalidateTag("articles", { expire: 0 });
+  if (invalidateArticleCache) revalidateTag("articles", { expire: 0 });
   const response = { ok: true as const, message: "Scoring queued", results: [result], perSource };
   onProgress?.({
     stage: "complete",
@@ -221,11 +222,15 @@ export async function POST(request: Request) {
         });
       publishProgress();
       heartbeatTimer = setInterval(publishProgress, 5_000);
-      void executeFetch(selectedSource, (progress) => {
-        const stageChanged = progress.stage !== latest.stage;
-        latest = progress;
-        if (stageChanged) publishProgress();
-      })
+      void executeFetch(
+        selectedSource,
+        (progress) => {
+          const stageChanged = progress.stage !== latest.stage;
+          latest = progress;
+          if (stageChanged) publishProgress();
+        },
+        false,
+      )
         .then((result) => send({ type: "result", ...result }))
         .catch((error: unknown) => {
           console.error("[fetch-news] Streaming fetch failed:", error);

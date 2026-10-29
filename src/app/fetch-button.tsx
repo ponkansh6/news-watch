@@ -6,6 +6,7 @@ import { SourceFilter } from "@/components/news/source-filter";
 import { FetchAction } from "@/components/news/fetch-action";
 import { FetchResult, type FetchResultData } from "@/components/news/fetch-result";
 import { useRefresh } from "./refresh-context";
+import { invalidateArticlesAfterFetch } from "./actions";
 
 interface FetchResultItem {
   fetched: number;
@@ -74,29 +75,33 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
   const [results, setResults] = useState<FetchResultData[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [progress, setProgress] = useState<FetchProgress | null>(null);
-  const [, startTransition] = useTransition();
+  const [isAwaitingRouteRefresh, setIsAwaitingRouteRefresh] = useState(false);
+  const [isRouteRefreshing, startTransition] = useTransition();
   const { isRefreshing, setRefreshing } = useRefresh();
-  const refreshFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const awaitingRouteRefreshRef = useRef(false);
   const router = useRouter();
 
   // Safety timeout: force-clear refreshing after 30 seconds
   useEffect(() => {
-    if (!isRefreshing) return;
+    if (!isAwaitingRouteRefresh) return;
     const timer = setTimeout(() => {
+      awaitingRouteRefreshRef.current = false;
+      setFetchError("一覧の更新を確認できませんでした。ページを再読み込みしてください。");
       setRefreshing(false);
+      setIsAwaitingRouteRefresh(false);
     }, 30_000);
     return () => clearTimeout(timer);
-  }, [isRefreshing, setRefreshing]);
+  }, [isAwaitingRouteRefresh, setRefreshing]);
 
-  // Cleanup fallback timer on unmount
+  // router.refresh() is not awaitable, but its transition remains pending until
+  // the refreshed Server Component payload has been received and committed.
   useEffect(() => {
-    return () => {
-      if (refreshFallbackRef.current) {
-        clearTimeout(refreshFallbackRef.current);
-        refreshFallbackRef.current = null;
-      }
-    };
-  }, []);
+    if (awaitingRouteRefreshRef.current && !isRouteRefreshing) {
+      awaitingRouteRefreshRef.current = false;
+      setIsAwaitingRouteRefresh(false);
+      setRefreshing(false);
+    }
+  }, [isRouteRefreshing, setRefreshing]);
 
   const handleSourceChangeWithRouter = async (newSource: string) => {
     await onSourceChange(newSource);
@@ -110,6 +115,7 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
     setRefreshing(true);
     setResults(null);
     setFetchError(null);
+    setIsAwaitingRouteRefresh(false);
     setProgress({ stage: "fetching", completed: 0, total: 0, failed: 0 });
 
     try {
@@ -124,7 +130,9 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
         return;
       }
       let data: unknown;
+      let receivedProgressStream = false;
       if (res.headers.get("content-type")?.includes("application/x-ndjson")) {
+        receivedProgressStream = true;
         if (!res.body) throw new Error("Missing progress stream");
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -184,6 +192,7 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
           setRefreshing(false);
           return;
         }
+
         const hasErrors = data.results.some((r: FetchResultItem) => r.errors.length > 0);
         const scoringErrors = data.results.flatMap((r: FetchResultItem) => r.scoringErrors ?? []);
 
@@ -198,17 +207,21 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
           },
         ]);
 
+        if (receivedProgressStream) {
+          try {
+            await invalidateArticlesAfterFetch();
+          } catch {
+            setFetchError("一覧の更新を確認できませんでした。ページを再読み込みしてください。");
+            setRefreshing(false);
+            return;
+          }
+        }
+
+        awaitingRouteRefreshRef.current = true;
+        setIsAwaitingRouteRefresh(true);
         startTransition(() => {
           router.refresh();
         });
-
-        if (refreshFallbackRef.current) {
-          clearTimeout(refreshFallbackRef.current);
-        }
-        refreshFallbackRef.current = setTimeout(() => {
-          setRefreshing(false);
-          refreshFallbackRef.current = null;
-        }, 5_000);
       } else {
         setFetchError("ニュース取得に失敗しました");
         setRefreshing(false);
