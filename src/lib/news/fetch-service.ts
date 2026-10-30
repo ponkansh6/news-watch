@@ -75,6 +75,14 @@ export class AdapterStartCheckpointError extends Error {
   }
 }
 
+function emitAggregateCollectionMetric(event: Record<string, string | number | boolean>): void {
+  try {
+    console.info("[aggregate-collection-source-metric]", JSON.stringify(event));
+  } catch {
+    // Metrics are diagnostic only and must not alter source collection behavior.
+  }
+}
+
 function deduplicate(articles: NormalizedArticle[]): NormalizedArticle[] {
   const seen = new Set<string>();
   return articles.filter((article) => {
@@ -215,51 +223,188 @@ export async function collectRefreshCandidates(
     "strictAdapterErrors" | "beforeAdapterStart" | "onAdapterStart"
   > & { sourceAttemptCount: number } = { sourceAttemptCount: 0 },
 ): Promise<CollectRefreshCandidatesResult> {
-  const adapter = getSourceAdapter(selectedSource);
-  if (!adapter) throw new Error(`Unsupported source: ${selectedSource}`);
-  const profile = await getLatestPreferenceProfile();
-  const preferenceSection = buildPreferencePromptSection(profile?.analysis ?? null);
-  const signature = computeIdentifiedScoringSignature(preferenceSection);
-  if (options.beforeAdapterStart && !(await options.beforeAdapterStart())) {
-    throw new AdapterStartCheckpointError();
-  }
-  const request = (options.strictAdapterErrors ? adapter.fetchForWorkflow : adapter.fetch)();
-  const startedAt = new Date().toISOString();
-  if (options.onAdapterStart) {
-    let checkpointed = false;
+  const sourceStartedAt = performance.now();
+  let stage = "profile_signature";
+  let profileSignatureMs = 0;
+  let checkpointMs = 0;
+  let adapterMs = 0;
+  let adapterRequestElapsedMs = 0;
+  let normalizeDeduplicateMs = 0;
+  let selectionMs = 0;
+  let stageMs = 0;
+  let rawCount = 0;
+  let normalizedCount = 0;
+  let selectedCount = 0;
+  let deferredCount = 0;
+  const sourceAttemptCount = options.sourceAttemptCount;
+  try {
+    const adapter = getSourceAdapter(selectedSource);
+    if (!adapter) throw new Error(`Unsupported source: ${selectedSource}`);
+    const profileStartedAt = performance.now();
+    let preferenceSection: string;
+    let signature: string;
     try {
-      checkpointed = await options.onAdapterStart(startedAt);
-    } catch {
-      await request.catch(() => undefined);
-      throw new AdapterStartCheckpointError();
+      const profile = await getLatestPreferenceProfile();
+      preferenceSection = buildPreferencePromptSection(profile?.analysis ?? null);
+      signature = computeIdentifiedScoringSignature(preferenceSection);
+    } finally {
+      profileSignatureMs = Math.round((performance.now() - profileStartedAt) * 100) / 100;
     }
-    if (!checkpointed) {
-      await request.catch(() => undefined);
-      throw new AdapterStartCheckpointError();
-    }
-  }
 
-  const raw = await request;
-  const articles = deduplicate(raw.map((item) => adapter.toArticle(item, adapter.id)));
-  const selection = await selectForScoring(articles, signature, 50);
-  await stageRefreshCandidates(
-    jobId,
-    executionToken,
-    selectedSource,
-    selection.toScore.map((article) => ({
+    stage = "checkpoint";
+    if (options.beforeAdapterStart) {
+      const checkpointStartedAt = performance.now();
+      try {
+        if (!(await options.beforeAdapterStart())) throw new AdapterStartCheckpointError();
+      } finally {
+        checkpointMs += Math.round((performance.now() - checkpointStartedAt) * 100) / 100;
+      }
+    }
+
+    stage = "adapter";
+    const startedAt = new Date().toISOString();
+    const adapterStartedAt = performance.now();
+    const request = (options.strictAdapterErrors ? adapter.fetchForWorkflow : adapter.fetch)();
+    let adapterCheckpointStartedAt: number | undefined;
+    let adapterCheckpointEndedAt: number | undefined;
+    if (options.onAdapterStart) {
+      stage = "adapter_start_checkpoint";
+      let checkpointed = false;
+      let checkpointFailed = false;
+      const checkpointStartedAt = performance.now();
+      adapterCheckpointStartedAt = checkpointStartedAt;
+      try {
+        checkpointed = await options.onAdapterStart(startedAt);
+      } catch {
+        checkpointFailed = true;
+      } finally {
+        adapterCheckpointEndedAt = performance.now();
+        checkpointMs += Math.round((adapterCheckpointEndedAt - checkpointStartedAt) * 100) / 100;
+      }
+      if (checkpointFailed || !checkpointed) {
+        await request.catch(() => undefined);
+        const requestEndedAt = performance.now();
+        adapterRequestElapsedMs = Math.round((requestEndedAt - adapterStartedAt) * 100) / 100;
+        const checkpointOverlapMs =
+          adapterCheckpointStartedAt !== undefined && adapterCheckpointEndedAt !== undefined
+            ? Math.max(
+                0,
+                Math.min(requestEndedAt, adapterCheckpointEndedAt) -
+                  Math.max(adapterStartedAt, adapterCheckpointStartedAt),
+              )
+            : 0;
+        adapterMs =
+          Math.round(Math.max(0, requestEndedAt - adapterStartedAt - checkpointOverlapMs) * 100) /
+          100;
+        throw new AdapterStartCheckpointError();
+      }
+    }
+
+    stage = "adapter";
+    let raw: Awaited<typeof request>;
+    try {
+      raw = await request;
+    } finally {
+      const requestEndedAt = performance.now();
+      adapterRequestElapsedMs = Math.round((requestEndedAt - adapterStartedAt) * 100) / 100;
+      const checkpointOverlapMs =
+        adapterCheckpointStartedAt !== undefined && adapterCheckpointEndedAt !== undefined
+          ? Math.max(
+              0,
+              Math.min(requestEndedAt, adapterCheckpointEndedAt) -
+                Math.max(adapterStartedAt, adapterCheckpointStartedAt),
+            )
+          : 0;
+      adapterMs =
+        Math.round(Math.max(0, requestEndedAt - adapterStartedAt - checkpointOverlapMs) * 100) /
+        100;
+    }
+    rawCount = raw.length;
+    stage = "normalize_deduplicate";
+    const normalizeStartedAt = performance.now();
+    let articles: NormalizedArticle[];
+    try {
+      articles = deduplicate(raw.map((item) => adapter.toArticle(item, adapter.id)));
+    } finally {
+      normalizeDeduplicateMs = Math.round((performance.now() - normalizeStartedAt) * 100) / 100;
+    }
+    normalizedCount = articles.length;
+
+    stage = "selection";
+    const selectionStartedAt = performance.now();
+    let selection: Awaited<ReturnType<typeof selectForScoring>>;
+    try {
+      selection = await selectForScoring(articles, signature, 50);
+    } finally {
+      selectionMs = Math.round((performance.now() - selectionStartedAt) * 100) / 100;
+    }
+    selectedCount = selection.toScore.length;
+    deferredCount = selection.deferred.length;
+
+    stage = "staging";
+    const stageStartedAt = performance.now();
+    try {
+      await stageRefreshCandidates(
+        jobId,
+        executionToken,
+        selectedSource,
+        selection.toScore.map((article) => ({
+          sourceId: selectedSource,
+          contentHash: computeContentHash(article.title, article.description),
+          scoringSignature: signature,
+          payload: { ...article, preferenceSection },
+        })),
+        { resultCount: selection.toScore.length, sourceAttemptCount: options.sourceAttemptCount },
+      );
+    } finally {
+      stageMs = Math.round((performance.now() - stageStartedAt) * 100) / 100;
+    }
+    emitAggregateCollectionMetric({
+      jobId,
       sourceId: selectedSource,
-      contentHash: computeContentHash(article.title, article.description),
-      scoringSignature: signature,
-      payload: { ...article, preferenceSection },
-    })),
-    { resultCount: selection.toScore.length, sourceAttemptCount: options.sourceAttemptCount },
-  );
-  return {
-    fetched: articles.length,
-    selected: selection.toScore.length,
-    deferred: selection.deferred.length,
-    signature,
-  };
+      sourceAttemptCount,
+      outcome: "saved",
+      profileSignatureMs,
+      checkpointMs,
+      adapterMs,
+      adapterRequestElapsedMs,
+      rawCount,
+      normalizeDeduplicateMs,
+      normalizedCount,
+      selectionMs,
+      selectedCount,
+      deferredCount,
+      stageMs,
+      elapsedMs: Math.round((performance.now() - sourceStartedAt) * 100) / 100,
+    });
+    return {
+      fetched: articles.length,
+      selected: selection.toScore.length,
+      deferred: selection.deferred.length,
+      signature,
+    };
+  } catch (error) {
+    emitAggregateCollectionMetric({
+      jobId,
+      sourceId: selectedSource,
+      sourceAttemptCount,
+      outcome: "failed",
+      failedStage: stage,
+      profileSignatureMs,
+      checkpointMs,
+      adapterMs,
+      adapterRequestElapsedMs,
+      rawCount,
+      normalizeDeduplicateMs,
+      normalizedCount,
+      selectionMs,
+      selectedCount,
+      deferredCount,
+      stageMs,
+      elapsedMs: Math.round((performance.now() - sourceStartedAt) * 100) / 100,
+    });
+    throw error;
+  }
 }
 
 /** Refresh existing article scores after the source checkpoint is durable. */

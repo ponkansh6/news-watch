@@ -234,6 +234,27 @@ describe("aggregate refresh workflow", () => {
     expect(mocks.finishRefreshJob).not.toHaveBeenCalled();
   });
 
+  it("emits a failed collection timing metric when recovery aborts the source loop", async () => {
+    sourceRows[0]!.status = "unknown";
+    sourceRows[0]!.attemptCount = 1;
+    mocks.recoverRefreshSource.mockRejectedValueOnce(new Error("recovery store unavailable"));
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    await expect(
+      aggregateRefreshWorkflow("job-metric-failed", "execution-token"),
+    ).rejects.toThrow();
+
+    const metric = info.mock.calls
+      .filter(([prefix]) => prefix === "[aggregate-collection-workflow-metric]")
+      .map(([, event]) => JSON.parse(String(event)) as Record<string, unknown>)[0];
+    expect(metric).toMatchObject({
+      sourceCount: SOURCE_IDS.length,
+      outcome: "failed",
+      recoveryWaitRequestedMs: 0,
+    });
+    expect(metric?.collectionElapsedMs).toEqual(expect.any(Number));
+  });
+
   it("collects a failed source as partial and continues to the remaining sources", async () => {
     const failedSource = SOURCE_IDS[0];
     mocks.collectRefreshCandidates.mockImplementation(async (sourceId: SourceId) => {

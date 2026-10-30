@@ -29,12 +29,24 @@ function requireCheckpoint(checkpointed: boolean, name: string): void {
   if (!checkpointed) throw new FatalError(`Refresh checkpoint rejected: ${name}`);
 }
 
+function emitCollectionWorkflowMetric(event: Record<string, string | number>): void {
+  try {
+    console.info("[aggregate-collection-workflow-metric]", JSON.stringify(event));
+  } catch {
+    // Metrics must not affect durable collection or recovery behavior.
+  }
+}
+
 /** Executes the durable, registry-snapshotted all-source refresh. */
 export async function aggregateRefreshWorkflow(
   jobId: string,
   executionToken: string,
 ): Promise<{ status: "completed" | "partial" | "failed"; failedSources: number }> {
   "use workflow";
+  let collectionStartedAtMs: number | undefined;
+  let collectionMetricEmitted = false;
+  let collectionSourceCount = 0;
+  let recoveryWaitRequestedMs = 0;
   try {
     await registerRunStep(jobId, executionToken);
     const snapshot = await getSourceSnapshotStep(jobId);
@@ -42,8 +54,11 @@ export async function aggregateRefreshWorkflow(
       throw new FatalError("Refresh job is not owned by this workflow");
     }
     const sources = snapshot.sources;
+    collectionSourceCount = sources.length;
     if (sources.length === 0) throw new FatalError("Refresh job has no source snapshot");
 
+    const startedAtMs = await capturePresendBoundaryStep(jobId, "collection-start", 0);
+    collectionStartedAtMs = startedAtMs;
     for (const source of sources) {
       if (source.status === "invalidated" || source.status === "failed") continue;
       let sourceForAttempt = source;
@@ -68,6 +83,7 @@ export async function aggregateRefreshWorkflow(
             throw new FatalError(`Refresh source recovery is not claimable: ${source.sourceId}`);
           }
           await sleep(1_000);
+          recoveryWaitRequestedMs += 1_000;
           sourceForAttempt = {
             ...sourceForAttempt,
             status: "pending",
@@ -117,6 +133,14 @@ export async function aggregateRefreshWorkflow(
     }
 
     const collectionCompleteAtMs = await capturePresendBoundaryStep(jobId, "collection", 0);
+    emitCollectionWorkflowMetric({
+      jobId,
+      sourceCount: sources.length,
+      collectionElapsedMs: Math.max(0, collectionCompleteAtMs - startedAtMs),
+      recoveryWaitRequestedMs,
+      outcome: "completed",
+    });
+    collectionMetricEmitted = true;
     let failedBatches = 0;
     const runBatchUntilTerminal = async (
       batchId: string,
@@ -291,6 +315,24 @@ export async function aggregateRefreshWorkflow(
     await finishJobStep(jobId, executionToken, status);
     return { status, failedSources };
   } catch (error) {
+    if (collectionStartedAtMs !== undefined && !collectionMetricEmitted) {
+      try {
+        const collectionFailedAtMs = await capturePresendBoundaryStep(
+          jobId,
+          "collection-failed",
+          0,
+        );
+        emitCollectionWorkflowMetric({
+          jobId,
+          sourceCount: collectionSourceCount,
+          collectionElapsedMs: Math.max(0, collectionFailedAtMs - collectionStartedAtMs),
+          recoveryWaitRequestedMs,
+          outcome: "failed",
+        });
+      } catch {
+        // Metrics must not alter durable collection or recovery behavior.
+      }
+    }
     await reconcileJobStep(jobId, executionToken, "workflow-requires-reconciliation");
     if (error instanceof FatalError) throw error;
     throw new FatalError("Refresh workflow requires reconciliation");

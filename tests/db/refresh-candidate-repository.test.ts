@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, test } from "vitest";
-import { eq, inArray, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   claimRefreshSource,
@@ -105,6 +106,62 @@ describe("refresh candidate repository", () => {
     expect(await listRefreshJobCandidates(job.id, job.token)).toHaveLength(1);
   });
 
+  test("rebuilds the URL map after owner handoff and resumes from the saved checkpoint", async () => {
+    const originalOwner = await newJob();
+    const firstSource = SOURCE_IDS[0]!;
+    const secondSource = SOURCE_IDS[1]!;
+    await stageCandidates(originalOwner, firstSource, [candidate(1, firstSource)]);
+
+    const resumedToken = "resumed-owner-token";
+    const resumedTokenHash = createHash("sha256").update(resumedToken).digest("hex");
+    await db
+      .update(refreshJobs)
+      .set({ ownerTokenHash: resumedTokenHash })
+      .where(eq(refreshJobs.id, originalOwner.id));
+    await db
+      .update(refreshJobSlot)
+      .set({ ownerTokenHash: resumedTokenHash })
+      .where(eq(refreshJobSlot.id, 1));
+
+    const resumedOwner = { id: originalOwner.id, token: resumedToken };
+    const duplicate = candidate(2, secondSource);
+    duplicate.payload.url = "https://example.com/1";
+    const unique = candidate(3, secondSource);
+    const result = await stageCandidates(resumedOwner, secondSource, [duplicate, unique]);
+
+    await expect(
+      stageRefreshCandidates(
+        originalOwner.id,
+        originalOwner.token,
+        SOURCE_IDS[2]!,
+        [candidate(4, SOURCE_IDS[2]!)],
+        { sourceAttemptCount: 0 },
+      ),
+    ).rejects.toThrow("refresh_job_not_owned");
+
+    const rows = await listRefreshJobCandidates(originalOwner.id, resumedToken);
+    expect(result).toEqual({ inserted: 1, merged: 1 });
+    expect(rows.map((row) => row.ordinal)).toEqual([0, 1]);
+    expect(JSON.parse(rows[0]!.sourceIdsJson)).toEqual([firstSource, secondSource]);
+    expect(rows[0]?.representativeSourceId).toBe(firstSource);
+
+    const [storedJob] = await db
+      .select({ currentSourceId: refreshJobs.currentSourceId })
+      .from(refreshJobs)
+      .where(eq(refreshJobs.id, originalOwner.id));
+    const [sourceCheckpoint] = await db
+      .select({ status: refreshJobSources.status, resultCount: refreshJobSources.resultCount })
+      .from(refreshJobSources)
+      .where(
+        and(
+          eq(refreshJobSources.jobId, originalOwner.id),
+          eq(refreshJobSources.sourceId, secondSource),
+        ),
+      );
+    expect(storedJob?.currentSourceId).toBe(secondSource);
+    expect(sourceCheckpoint).toMatchObject({ status: "saved", resultCount: 2 });
+  });
+
   test("rejects a late source result after an automatic recovery fenced its attempt", async () => {
     const job = await newJob();
     const sourceId = SOURCE_IDS[0]!;
@@ -142,6 +199,8 @@ describe("refresh candidate repository", () => {
     const secondSource = SOURCE_IDS[1]!;
     await stageCandidates(job, firstSource, [candidate(1, firstSource)]);
     const duplicate = candidate(2, secondSource);
+    duplicate.scoringSignature = "signature-v2";
+    Object.assign(duplicate.payload, { preferenceSection: "new profile content" });
     duplicate.payload.url = "https://EXAMPLE.com:443/1";
     const result = await stageCandidates(job, secondSource, [duplicate]);
 
@@ -150,6 +209,171 @@ describe("refresh candidate repository", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.representativeSourceId).toBe(firstSource);
     expect(JSON.parse(rows[0]!.sourceIdsJson)).toEqual([firstSource, secondSource]);
+    expect(rows[0]?.scoringSignature).toBe("signature-v1");
+    expect(JSON.parse(rows[0]!.payloadJson)).not.toHaveProperty("preferenceSection");
+    expect(rows[0]?.contentHash).toBe("hash-1");
+  });
+
+  test("updates the transaction-local URL map for duplicates within one input", async () => {
+    const job = await newJob();
+    const sourceId = SOURCE_IDS[0]!;
+    const first = candidate(1, sourceId);
+    const duplicate = candidate(2, sourceId);
+    duplicate.payload.url = "https://EXAMPLE.com:443/1";
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    try {
+      const result = await stageCandidates(job, sourceId, [first, duplicate]);
+      const rows = await listRefreshJobCandidates(job.id, job.token);
+      expect(result).toEqual({ inserted: 1, merged: 1 });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        ordinal: 0,
+        representativeSourceId: sourceId,
+        payloadJson: JSON.stringify(first.payload),
+      });
+      const metric = info.mock.calls
+        .filter(([prefix]) => prefix === "[aggregate-collection-stage-metric]")
+        .map(([, event]) => JSON.parse(String(event)) as Record<string, unknown>)
+        .find((event) => event.sourceId === sourceId);
+      expect(metric).toMatchObject({
+        candidateCount: 2,
+        inserted: 1,
+        merged: 1,
+        existingCandidateReads: 1,
+        maxOrdinalReads: 1,
+      });
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  test.each([0, 1, 50])(
+    "keeps candidate lookup query counts constant for %i staged candidates",
+    async (count) => {
+      const job = await newJob();
+      const sourceId = SOURCE_IDS[0]!;
+      const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+      try {
+        const result = await stageCandidates(
+          job,
+          sourceId,
+          Array.from({ length: count }, (_, index) => candidate(index, sourceId)),
+        );
+        const rows = await listRefreshJobCandidates(job.id, job.token);
+        expect(result).toEqual({ inserted: count, merged: 0 });
+        expect(rows).toHaveLength(count);
+        expect(rows.map((row) => row.ordinal)).toEqual(Array.from({ length: count }, (_, i) => i));
+
+        const metric = info.mock.calls
+          .filter(([prefix]) => prefix === "[aggregate-collection-stage-metric]")
+          .map(([, event]) => JSON.parse(String(event)) as Record<string, unknown>)
+          .find((event) => event.sourceId === sourceId);
+        expect(metric).toMatchObject({
+          candidateCount: count,
+          inserted: count,
+          merged: 0,
+          existingCandidateReads: 1,
+          maxOrdinalReads: 1,
+        });
+      } finally {
+        info.mockRestore();
+      }
+    },
+  );
+
+  test.each([0, 0.5, 1])(
+    "preserves nine-source provenance and ordinals with %i cross-source duplicate ratio",
+    async (duplicateRatio) => {
+      const job = await newJob();
+      const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+      const expectedByUrl = new Map<string, string[]>();
+
+      try {
+        for (const [sourceIndex, sourceId] of SOURCE_IDS.entries()) {
+          const inputs = Array.from({ length: 50 }, (_, index) => {
+            const input = candidate(sourceIndex * 50 + index, sourceId);
+            const urlIndex =
+              sourceIndex === 0 || (sourceIndex > 0 && index < 50 * duplicateRatio)
+                ? 10_000 + index
+                : 20_000 + sourceIndex * 50 + index;
+            input.payload.url = `https://example.com/${urlIndex}`;
+            const sources = expectedByUrl.get(input.payload.url) ?? [];
+            if (!sources.includes(sourceId)) sources.push(sourceId);
+            expectedByUrl.set(input.payload.url, sources);
+            return input;
+          });
+          await stageCandidates(job, sourceId, inputs);
+        }
+
+        const rows = await listRefreshJobCandidates(job.id, job.token);
+        expect(rows).toHaveLength(expectedByUrl.size);
+        expect(rows.map((row) => row.ordinal)).toEqual(
+          Array.from({ length: rows.length }, (_, index) => index),
+        );
+        for (const row of rows) {
+          const expectedSources = expectedByUrl.get(row.normalizedUrl);
+          expect(JSON.parse(row.sourceIdsJson)).toEqual(expectedSources);
+          expect(row.representativeSourceId).toBe(expectedSources?.[0]);
+        }
+
+        const stageMetrics = info.mock.calls
+          .filter(([prefix]) => prefix === "[aggregate-collection-stage-metric]")
+          .map(([, event]) => JSON.parse(String(event)) as Record<string, unknown>);
+        expect(stageMetrics).toHaveLength(SOURCE_IDS.length);
+        expect(
+          stageMetrics.every(
+            (metric) => metric.existingCandidateReads === 1 && metric.maxOrdinalReads === 1,
+          ),
+        ).toBe(true);
+      } finally {
+        info.mockRestore();
+      }
+    },
+  );
+
+  test("rolls back candidate writes and the source checkpoint when a later insert fails", async () => {
+    const job = await newJob();
+    const sourceId = SOURCE_IDS[0]!;
+    const first = candidate(1, sourceId);
+    const rejected = candidate(2, sourceId);
+    rejected.payload.url = "https://example.com/rollback-fixture";
+    await db.run(
+      sql.raw(
+        `CREATE TRIGGER fail_candidate_insert BEFORE INSERT ON refresh_job_candidates WHEN NEW.job_id = '${job.id}' AND NEW.normalized_url = '${rejected.payload.url}' BEGIN SELECT RAISE(ABORT, 'fixture_abort'); END`,
+      ),
+    );
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    try {
+      await expect(stageCandidates(job, sourceId, [first, rejected])).rejects.toThrow();
+      const stageMetrics = info.mock.calls
+        .filter(([prefix]) => prefix === "[aggregate-collection-stage-metric]")
+        .map(([, event]) => JSON.parse(String(event)) as Record<string, unknown>);
+      expect(stageMetrics).toHaveLength(1);
+      expect(stageMetrics[0]).toMatchObject({
+        existingCandidateReads: 1,
+        maxOrdinalReads: 1,
+        outcome: "failed",
+      });
+      expect(await listRefreshJobCandidates(job.id, job.token)).toEqual([]);
+      const [source] = await db
+        .select()
+        .from(refreshJobSources)
+        .where(eq(refreshJobSources.jobId, job.id));
+      expect(source?.status).toBe("executing");
+      const [storedJob] = await db
+        .select({ currentSourceId: refreshJobs.currentSourceId })
+        .from(refreshJobs)
+        .where(eq(refreshJobs.id, job.id));
+      // Source claim is committed before staging; the failed staging transaction
+      // must leave it executing at this source, without saving its checkpoint.
+      expect(storedJob?.currentSourceId).toBe(sourceId);
+    } finally {
+      await db.run(sql.raw("DROP TRIGGER IF EXISTS fail_candidate_insert"));
+      info.mockRestore();
+    }
   });
 
   test("counts unique candidates by persisted state and waits for every source", async () => {
