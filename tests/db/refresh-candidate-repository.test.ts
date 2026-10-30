@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   claimRefreshSource,
@@ -23,6 +23,7 @@ import {
   recoverUnknownCandidateBatch,
   stageRefreshCandidates,
   storeCandidateBatchResult,
+  summarizePendingCandidateSignatures,
 } from "@/lib/db/repository/refresh-candidate-repository";
 import {
   refreshJobBatches,
@@ -210,7 +211,7 @@ describe("refresh candidate repository", () => {
     });
   });
 
-  test.each([0, 49, 50, 51])(
+  test.each([0, 1, 49, 50, 51])(
     "freezes an immutable full/tail batch for %i candidates",
     async (count) => {
       const job = await newJob();
@@ -247,6 +248,103 @@ describe("refresh candidate repository", () => {
       );
     },
   );
+
+  test.each([250, 1000])(
+    "aggregates and freezes %i candidates in batches of at most 50",
+    async (count) => {
+      const job = await newJob();
+      const now = new Date().toISOString();
+      const rows = Array.from({ length: count }, (_, ordinal) => ({
+        id: `bulk-${job.id}-${ordinal}`,
+        jobId: job.id,
+        normalizedUrl: `https://example.com/bulk-${ordinal}`,
+        payloadJson: JSON.stringify({ title: `title-${ordinal}` }),
+        contentHash: `bulk-hash-${ordinal}`,
+        scoringSignature: "signature-v1",
+        representativeSourceId: SOURCE_IDS[0]!,
+        sourceIdsJson: JSON.stringify([SOURCE_IDS[0]!]),
+        ordinal,
+        status: "pending" as const,
+        batchId: null,
+        errorCode: null,
+        createdAt: now,
+        updatedAt: now,
+      }));
+      for (let offset = 0; offset < rows.length; offset += 50) {
+        await db.insert(refreshJobCandidates).values(rows.slice(offset, offset + 50));
+      }
+
+      expect(await summarizePendingCandidateSignatures(job.id, job.token)).toEqual([
+        { scoringSignature: "signature-v1", candidateCount: count, firstOrdinal: 0 },
+      ]);
+      const frozenIds = new Set<string>();
+      const frozenSizes: number[] = [];
+      while (true) {
+        const batch = await freezeNextCandidateBatch(job.id, job.token, "signature-v1", true);
+        if (!batch) break;
+        const ids = JSON.parse(batch.candidateIdsJson) as string[];
+        frozenSizes.push(ids.length);
+        ids.forEach((id) => frozenIds.add(id));
+      }
+
+      expect(frozenIds.size).toBe(count);
+      expect(frozenSizes).toEqual(Array.from({ length: count / 50 }, () => 50));
+    },
+  );
+
+  test("rejects a stale execution token when freezing candidates", async () => {
+    const job = await newJob();
+    await stageCandidates(job, SOURCE_IDS[0]!, [candidate(1)]);
+
+    await expect(
+      freezeNextCandidateBatch(job.id, "stale-token", "signature-v1", true),
+    ).rejects.toThrow("refresh_job_not_owned");
+    expect(
+      await db.select().from(refreshJobBatches).where(eq(refreshJobBatches.jobId, job.id)),
+    ).toEqual([]);
+    expect(await listRefreshJobCandidates(job.id, job.token, ["pending"])).toHaveLength(1);
+  });
+
+  test("summarizes pending signatures in first-candidate order without changing candidate order", async () => {
+    const job = await newJob();
+    await stageCandidates(job, SOURCE_IDS[0]!, [candidate(1), candidate(2)]);
+    await stageCandidates(job, SOURCE_IDS[1]!, [
+      { ...candidate(3, SOURCE_IDS[1]!), scoringSignature: "signature-v2" },
+    ]);
+
+    expect(await summarizePendingCandidateSignatures(job.id, job.token)).toEqual([
+      { scoringSignature: "signature-v1", candidateCount: 2, firstOrdinal: 0 },
+      { scoringSignature: "signature-v2", candidateCount: 1, firstOrdinal: 2 },
+    ]);
+    await expect(summarizePendingCandidateSignatures(job.id, "wrong-token")).rejects.toThrow(
+      "not_owned",
+    );
+  });
+
+  test("rolls back batch insertion when a conditional membership update returns an incomplete set", async () => {
+    const job = await newJob();
+    await stageCandidates(job, SOURCE_IDS[0]!, [candidate(1), candidate(2)]);
+    const candidates = await listRefreshJobCandidates(job.id, job.token, ["pending"]);
+    const ignoredId = candidates[1]!.id;
+    await db.run(
+      sql.raw(
+        `CREATE TRIGGER ignore_candidate_batch_update BEFORE UPDATE OF status ON refresh_job_candidates WHEN OLD.id = '${ignoredId}' BEGIN SELECT RAISE(IGNORE); END`,
+      ),
+    );
+
+    try {
+      await expect(
+        freezeNextCandidateBatch(job.id, job.token, "signature-v1", true),
+      ).rejects.toThrow("candidate_batch_membership_update_mismatch");
+    } finally {
+      await db.run(sql.raw("DROP TRIGGER IF EXISTS ignore_candidate_batch_update"));
+    }
+
+    expect(
+      await db.select().from(refreshJobBatches).where(eq(refreshJobBatches.jobId, job.id)),
+    ).toEqual([]);
+    expect(await listRefreshJobCandidates(job.id, job.token, ["pending"])).toHaveLength(2);
+  });
 
   test("claims once and persists validated results before idempotent completion", async () => {
     const job = await newJob();

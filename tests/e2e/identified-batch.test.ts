@@ -32,7 +32,8 @@ describe("scoreArticlesById", () => {
       ]),
     );
 
-    const results = await scoreArticlesById(articles, "", { retries: 0 });
+    const onHttpAttempt = vi.fn();
+    const results = await scoreArticlesById(articles, "", { retries: 0, onHttpAttempt });
 
     expect(results.map(({ id, score }) => [id, score.usefulness])).toEqual([
       ["article-a", 9],
@@ -41,6 +42,7 @@ describe("scoreArticlesById", () => {
     const sentPrompt = mockGenerateContent.mock.calls[0][0] as string;
     expect(sentPrompt).toContain('"id":"article-a"');
     expect(sentPrompt).toContain('"id":"article-b"');
+    expect(onHttpAttempt).toHaveBeenCalledTimes(1);
   });
 
   it.each([

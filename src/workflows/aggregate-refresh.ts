@@ -1,6 +1,7 @@
 import { FatalError, sleep } from "workflow";
 import {
   cleanupArticlesStep,
+  capturePresendBoundaryStep,
   collectSourceCandidatesStep,
   finishJobStep,
   freezeCandidateBatchStep,
@@ -9,7 +10,6 @@ import {
   getSourceSnapshotStep,
   invalidateSourceCacheStep,
   listCandidateBatchesStep,
-  listRefreshJobCandidatesStep,
   markCandidateBatchFailedStep,
   recoverSourceStep,
   recoverUnknownCandidateBatchStep,
@@ -18,6 +18,8 @@ import {
   registerRunStep,
   retryFailedCandidateBatchStep,
   scoreCandidateBatchStep,
+  summarizePendingCandidateSignaturesStep,
+  type PresendMetricBoundary,
 } from "./aggregate-refresh-steps";
 
 const MAX_RATE_LIMIT_WAIT_CYCLES = 3;
@@ -114,11 +116,28 @@ export async function aggregateRefreshWorkflow(
       }
     }
 
+    const collectionCompleteAtMs = await capturePresendBoundaryStep(jobId, "collection", 0);
     let failedBatches = 0;
-    const runBatchUntilTerminal = async (batchId: string): Promise<void> => {
+    const runBatchUntilTerminal = async (
+      batchId: string,
+      initialBoundary: PresendMetricBoundary,
+      initialStartedAtMs: number,
+    ): Promise<void> => {
       let rateLimitWaitCycles = 0;
+      let boundary = initialBoundary;
       for (let batchCycle = 0; batchCycle < MAX_BATCH_WORKFLOW_CYCLES; batchCycle++) {
-        const result = await scoreCandidateBatchStep(jobId, executionToken, batchId);
+        const presendStartedAtMs =
+          batchCycle === 0
+            ? initialStartedAtMs
+            : await capturePresendBoundaryStep(jobId, batchId, batchCycle);
+        const result = await scoreCandidateBatchStep(
+          jobId,
+          executionToken,
+          batchId,
+          presendStartedAtMs,
+          boundary,
+          batchCycle,
+        );
         if (result.kind === "saved") return;
         if (result.kind === "wait") {
           rateLimitWaitCycles += 1;
@@ -136,12 +155,14 @@ export async function aggregateRefreshWorkflow(
             return;
           }
           await sleep(result.retryAfterMs);
+          boundary = "rate_wait_complete";
           continue;
         }
         if (result.kind === "unknown") {
           const recovery = await recoverUnknownCandidateBatchStep(jobId, executionToken, batchId);
           if (recovery === "retry") {
             await sleep(1_000);
+            boundary = "recovery_complete";
             continue;
           }
           if (recovery === "failed") {
@@ -164,7 +185,19 @@ export async function aggregateRefreshWorkflow(
       }
       const latest = await getCandidateBatchStep(jobId, executionToken, batchId);
       if (latest?.status === "result_ready") {
-        const saved = await scoreCandidateBatchStep(jobId, executionToken, batchId);
+        const presendStartedAtMs = await capturePresendBoundaryStep(
+          jobId,
+          batchId,
+          MAX_BATCH_WORKFLOW_CYCLES,
+        );
+        const saved = await scoreCandidateBatchStep(
+          jobId,
+          executionToken,
+          batchId,
+          presendStartedAtMs,
+          "recovery_complete",
+          MAX_BATCH_WORKFLOW_CYCLES,
+        );
         if (saved.kind === "saved") return;
       } else if (latest?.status === "unknown") {
         const recovered = await recoverUnknownCandidateBatchStep(jobId, executionToken, batchId);
@@ -191,41 +224,41 @@ export async function aggregateRefreshWorkflow(
     };
 
     // Resolve batches already frozen by an earlier Workflow invocation first.
+    let nextBatchBoundary: PresendMetricBoundary = "collection_complete";
+    let nextBatchStartedAtMs = collectionCompleteAtMs;
     for (const batch of await listCandidateBatchesStep(jobId, executionToken)) {
       if (batch.status === "saved") continue;
-      await runBatchUntilTerminal(batch.id);
+      await runBatchUntilTerminal(batch.id, nextBatchBoundary, nextBatchStartedAtMs);
+      nextBatchBoundary = "previous_batch_terminal";
+      nextBatchStartedAtMs = await capturePresendBoundaryStep(jobId, batch.id, 100);
     }
 
     // Freeze after collection so duplicate URLs have a deterministic representative.
-    const pendingBeforeFullBatches = await listRefreshJobCandidatesStep(jobId, executionToken, [
-      "pending",
-    ]);
-    const pendingBySignature = new Map<string, number>();
-    for (const candidate of pendingBeforeFullBatches) {
-      pendingBySignature.set(
-        candidate.scoringSignature,
-        (pendingBySignature.get(candidate.scoringSignature) ?? 0) + 1,
-      );
-    }
-    const maxFullBatches = [...pendingBySignature.values()].reduce(
-      (sum, count) => sum + Math.floor(count / 50),
+    const pendingBySignature = await summarizePendingCandidateSignaturesStep(jobId, executionToken);
+    const maxFullBatches = pendingBySignature.reduce(
+      (sum, signature) => sum + Math.floor(signature.candidateCount / 50),
       0,
     );
     for (let batchIndex = 0; batchIndex < maxFullBatches; batchIndex++) {
       const batchId = await freezeCandidateBatchStep(jobId, executionToken, false);
       if (!batchId) break;
-      await runBatchUntilTerminal(batchId);
+      await runBatchUntilTerminal(batchId, nextBatchBoundary, nextBatchStartedAtMs);
+      nextBatchBoundary = "previous_batch_terminal";
+      nextBatchStartedAtMs = await capturePresendBoundaryStep(jobId, batchId, 100);
     }
     // All source collection is complete; now persist the final 1–49 item batch.
-    for (let batchIndex = 0; batchIndex < pendingBySignature.size; batchIndex++) {
+    for (let batchIndex = 0; batchIndex < pendingBySignature.length; batchIndex++) {
       const batchId = await freezeCandidateBatchStep(jobId, executionToken, true);
       if (!batchId) break;
-      await runBatchUntilTerminal(batchId);
+      await runBatchUntilTerminal(batchId, nextBatchBoundary, nextBatchStartedAtMs);
+      nextBatchBoundary = "previous_batch_terminal";
+      nextBatchStartedAtMs = await capturePresendBoundaryStep(jobId, batchId, 100);
     }
-    const remainingCandidates = await listRefreshJobCandidatesStep(jobId, executionToken, [
-      "pending",
-    ]);
-    if (remainingCandidates.length > 0) {
+    const remainingCandidates = await summarizePendingCandidateSignaturesStep(
+      jobId,
+      executionToken,
+    );
+    if (remainingCandidates.some((signature) => signature.candidateCount > 0)) {
       await reconcileJobStep(jobId, executionToken, "candidate-batches-remain-pending");
       throw new FatalError("Candidate batches remain pending after bounded flush");
     }

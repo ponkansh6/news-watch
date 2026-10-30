@@ -110,6 +110,7 @@ export async function scoreArticlesById(
     retries?: number;
     rateWaitMode?: "sleep" | "throw";
     leaseEvidence?: GeminiLeaseEvidence;
+    onHttpAttempt?: () => void;
   },
 ): Promise<IdentifiedArticleScore[]> {
   if (articles.length === 0) return [];
@@ -146,7 +147,10 @@ export async function scoreArticlesById(
       const raw = await callGemini(prompt, LLM_BATCH_MAX_TOKENS, timeoutMs, 0, deadlineAt, {
         rateWaitMode: opts?.rateWaitMode,
         leaseEvidence: opts?.leaseEvidence,
-        onHttpAttempt: () => attemptsSent++,
+        onHttpAttempt: () => {
+          attemptsSent++;
+          opts?.onHttpAttempt?.();
+        },
       });
       if (!raw) throw new Error("Identified batch scoring returned an empty response");
       const parsed = LLMIdentifiedBatchResponseSchema.parse(JSON.parse(raw));

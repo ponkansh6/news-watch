@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   getCandidateBatch: vi.fn(),
   listCandidateBatches: vi.fn(),
   listRefreshJobCandidates: vi.fn(),
+  summarizePendingCandidateSignatures: vi.fn(),
   markCandidateBatchFailed: vi.fn(),
   markCandidateBatchSaved: vi.fn(),
   markCandidateBatchUnknown: vi.fn(),
@@ -187,6 +188,7 @@ describe("aggregate refresh workflow", () => {
     mocks.gcStaleArticles.mockResolvedValue({ deleted: 0 });
     mocks.listCandidateBatches.mockResolvedValue([]);
     mocks.listRefreshJobCandidates.mockResolvedValue([]);
+    mocks.summarizePendingCandidateSignatures.mockResolvedValue([]);
     mocks.freezeNextCandidateBatch.mockResolvedValue(null);
     mocks.retryFailedCandidateBatch.mockResolvedValue(false);
     mocks.sleep.mockResolvedValue(undefined);
@@ -329,17 +331,12 @@ describe("aggregate refresh workflow", () => {
   });
 
   it("freezes full batches first and flushes the final tail", async () => {
-    const fullCandidates = Array.from({ length: 50 }, (_, index) => ({
-      id: `c${index}`,
-      scoringSignature: "sig",
-    }));
-    const tailCandidates = [{ id: "tail-candidate", scoringSignature: "sig" }];
     const fullBatch = { id: "full", status: "pending" };
     const tailBatch = { id: "tail", status: "pending" };
-    mocks.listRefreshJobCandidates
-      .mockResolvedValueOnce(fullCandidates)
-      .mockResolvedValueOnce(fullCandidates)
-      .mockResolvedValueOnce(tailCandidates)
+    mocks.summarizePendingCandidateSignatures
+      .mockResolvedValueOnce([{ scoringSignature: "sig", candidateCount: 51, firstOrdinal: 0 }])
+      .mockResolvedValueOnce([{ scoringSignature: "sig", candidateCount: 51, firstOrdinal: 0 }])
+      .mockResolvedValueOnce([{ scoringSignature: "sig", candidateCount: 1, firstOrdinal: 50 }])
       .mockResolvedValueOnce([]);
     mocks.freezeNextCandidateBatch
       .mockResolvedValueOnce(fullBatch)
@@ -360,6 +357,138 @@ describe("aggregate refresh workflow", () => {
     expect(mocks.freezeNextCandidateBatch.mock.calls.map((call) => call[3])).toEqual([false, true]);
   });
 
+  it.each([false, true])(
+    "emits a replay-deduplicable SDK-boundary metric without article content (logger throws: %s)",
+    async (loggerThrows) => {
+      mocks.summarizePendingCandidateSignatures
+        .mockResolvedValueOnce([
+          { scoringSignature: "sig-a", candidateCount: 1, firstOrdinal: 0 },
+          { scoringSignature: "sig-b", candidateCount: 1, firstOrdinal: 1 },
+        ])
+        .mockResolvedValueOnce([
+          { scoringSignature: "sig-a", candidateCount: 1, firstOrdinal: 0 },
+          { scoringSignature: "sig-b", candidateCount: 1, firstOrdinal: 1 },
+        ])
+        .mockResolvedValueOnce([{ scoringSignature: "sig-b", candidateCount: 1, firstOrdinal: 1 }])
+        .mockResolvedValueOnce([]);
+      mocks.freezeNextCandidateBatch
+        .mockResolvedValueOnce({ id: "batch-failed", status: "pending" })
+        .mockResolvedValueOnce({ id: "batch-metric", status: "pending" })
+        .mockResolvedValue(null);
+      mocks.listCandidateBatches.mockResolvedValue([]);
+      const candidateBatchReads = new Map<string, number>();
+      const terminalFailedBatchIds = new Set<string>();
+      mocks.getCandidateBatch.mockImplementation(
+        async (_jobId: string, _token: string, id: string) => {
+          const reads = (candidateBatchReads.get(id) ?? 0) + 1;
+          candidateBatchReads.set(id, reads);
+          if (reads === 1 || (id === "batch-failed" && !terminalFailedBatchIds.has(id))) {
+            return {
+              id,
+              status: "pending",
+              attemptCount: 0,
+              resultJson: null,
+              errorCode: null,
+            };
+          }
+          if (id === "batch-failed") {
+            return {
+              id,
+              status: "failed",
+              attemptCount: 1,
+              resultJson: null,
+              errorCode: "candidate-batch-scoring-failed",
+            };
+          }
+          return {
+            id,
+            status: "result_ready",
+            attemptCount: 1,
+            resultJson: JSON.stringify({
+              c2: { summary: "safe summary", usefulness: 2, ntt_relevance: 3, reason: "safe" },
+            }),
+            errorCode: null,
+          };
+        },
+      );
+      mocks.claimCandidateBatch.mockImplementation(
+        async (_jobId: string, _token: string, id: string) => ({
+          id,
+          status: "running",
+          attemptCount: 1,
+        }),
+      );
+      mocks.getBatchCandidates.mockImplementation(
+        async (_jobId: string, _token: string, id: string) => [
+          {
+            id: id === "batch-failed" ? "c1" : "c2",
+            payloadJson: JSON.stringify({
+              title: "private article title",
+              description: "private article description",
+              preferenceSection: "private preference",
+            }),
+          },
+        ],
+      );
+      mocks.scoreArticlesById
+        .mockRejectedValueOnce(new Error("expected batch failure"))
+        .mockImplementation(async (_articles, _preference, options) => {
+          options.onHttpAttempt();
+          options.onHttpAttempt();
+          return [
+            {
+              id: "c2",
+              score: {
+                summary: "safe summary",
+                usefulness: 2,
+                ntt_relevance: 3,
+                reason: "safe",
+              },
+            },
+          ];
+        });
+      mocks.markCandidateBatchFailed.mockImplementation(
+        async (_jobId: string, _token: string, id: string) => {
+          terminalFailedBatchIds.add(id);
+          return true;
+        },
+      );
+      mocks.storeCandidateBatchResult.mockResolvedValue(true);
+      mocks.persistIdentifiedCandidateBatch.mockResolvedValue(1);
+      mocks.markCandidateBatchSaved.mockResolvedValue(true);
+      const info = vi.spyOn(console, "info").mockImplementation(() => {
+        if (loggerThrows) throw new Error("logger unavailable");
+      });
+
+      const result = await aggregateRefreshWorkflow("job-metric", "execution-token");
+
+      expect(result.status).toBe("partial");
+      expect(mocks.persistIdentifiedCandidateBatch).toHaveBeenCalledTimes(1);
+      if (!loggerThrows) {
+        const metrics = info.mock.calls
+          .filter(([prefix]) => prefix === "[aggregate-presend-metric]")
+          .map(([, event]) => JSON.parse(String(event)) as Record<string, unknown>);
+        expect(metrics).toHaveLength(2);
+        expect(metrics.map((event) => event.eventId)).toEqual([
+          "job-metric:batch-metric:1:0:1:sdk-call",
+          "job-metric:batch-metric:1:0:2:sdk-call",
+        ]);
+        expect(metrics[0]).toMatchObject({
+          boundary: "previous_batch_terminal",
+          internalRetryIndex: 1,
+          measurement: "sdk_call_before_generateContent_not_http_start",
+          elapsedIncludes: "shared_slot_claim_and_attempt_checkpoint",
+        });
+        expect(metrics[0].boundaryClockRelation).toMatch(
+          /observed_before_boundary|observed_after_or_equal_boundary/,
+        );
+        const serializedMetrics = JSON.stringify(metrics);
+        expect(serializedMetrics).not.toContain("private article");
+        expect(serializedMetrics).not.toContain("private preference");
+      }
+    },
+  );
+
   it("durably sleeps and retries the same batch when the shared Gemini slot is busy", async () => {
     const batch = {
       id: "batch-1",
@@ -368,10 +497,9 @@ describe("aggregate refresh workflow", () => {
       resultJson: null,
       errorCode: null,
     };
-    const candidate = { id: "c1", scoringSignature: "sig" };
-    mocks.listRefreshJobCandidates
-      .mockResolvedValueOnce([candidate])
-      .mockResolvedValueOnce([candidate])
+    mocks.summarizePendingCandidateSignatures
+      .mockResolvedValueOnce([{ scoringSignature: "sig", candidateCount: 1, firstOrdinal: 0 }])
+      .mockResolvedValueOnce([{ scoringSignature: "sig", candidateCount: 1, firstOrdinal: 0 }])
       .mockResolvedValueOnce([]);
     mocks.freezeNextCandidateBatch.mockResolvedValueOnce(batch).mockResolvedValue(null);
     mocks.getCandidateBatch.mockImplementation(async () => ({ ...batch }));
@@ -405,6 +533,7 @@ describe("aggregate refresh workflow", () => {
       }),
     );
     mocks.sleep.mockResolvedValue(undefined);
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
 
     const result = await aggregateRefreshWorkflow("job-id", "execution-token");
 
@@ -417,6 +546,17 @@ describe("aggregate refresh workflow", () => {
     );
     expect(mocks.sleep).toHaveBeenCalledWith(1_500);
     expect(mocks.scoreArticlesById).toHaveBeenCalledTimes(2);
+    const waitMetric = info.mock.calls
+      .filter(([prefix]) => prefix === "[aggregate-presend-metric]")
+      .map(([, event]) => JSON.parse(String(event)) as Record<string, unknown>)
+      .find((event) => event.event === "shared_slot_wait");
+    expect(waitMetric).toMatchObject({
+      jobId: "job-id",
+      batchId: "batch-1",
+      boundary: "collection_complete",
+      requestedWaitMs: 1_500,
+      attemptsSent: 0,
+    });
   });
 
   it("fails the batch after a bounded number of durable rate-limit waits", async () => {
@@ -427,10 +567,9 @@ describe("aggregate refresh workflow", () => {
       resultJson: null,
       errorCode: null,
     };
-    const candidate = { id: "c1", scoringSignature: "sig" };
-    mocks.listRefreshJobCandidates
-      .mockResolvedValueOnce([candidate])
-      .mockResolvedValueOnce([candidate])
+    mocks.summarizePendingCandidateSignatures
+      .mockResolvedValueOnce([{ scoringSignature: "sig", candidateCount: 1, firstOrdinal: 0 }])
+      .mockResolvedValueOnce([{ scoringSignature: "sig", candidateCount: 1, firstOrdinal: 0 }])
       .mockResolvedValueOnce([]);
     mocks.freezeNextCandidateBatch.mockResolvedValueOnce(batch).mockResolvedValue(null);
     mocks.listCandidateBatches.mockResolvedValue([]);
@@ -472,10 +611,9 @@ describe("aggregate refresh workflow", () => {
       resultJson: null,
       errorCode: null,
     };
-    const candidate = { id: "c1", scoringSignature: "sig" };
-    mocks.listRefreshJobCandidates
-      .mockResolvedValueOnce([candidate])
-      .mockResolvedValueOnce([candidate])
+    mocks.summarizePendingCandidateSignatures
+      .mockResolvedValueOnce([{ scoringSignature: "sig", candidateCount: 1, firstOrdinal: 0 }])
+      .mockResolvedValueOnce([{ scoringSignature: "sig", candidateCount: 1, firstOrdinal: 0 }])
       .mockResolvedValueOnce([]);
     mocks.freezeNextCandidateBatch.mockResolvedValueOnce(batch).mockResolvedValue(null);
     mocks.listCandidateBatches.mockResolvedValue([]);
@@ -666,10 +804,9 @@ describe("aggregate refresh workflow", () => {
   });
 
   it("does not finish the job when saving a model result has an ambiguous outcome", async () => {
-    const candidate = { id: "c1", scoringSignature: "sig" };
-    mocks.listRefreshJobCandidates
-      .mockResolvedValueOnce([candidate])
-      .mockResolvedValueOnce([candidate])
+    mocks.summarizePendingCandidateSignatures
+      .mockResolvedValueOnce([{ scoringSignature: "sig", candidateCount: 1, firstOrdinal: 0 }])
+      .mockResolvedValueOnce([{ scoringSignature: "sig", candidateCount: 1, firstOrdinal: 0 }])
       .mockResolvedValueOnce([]);
     mocks.freezeNextCandidateBatch
       .mockResolvedValueOnce({ id: "ambiguous", status: "pending" })

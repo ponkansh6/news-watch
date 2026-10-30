@@ -24,6 +24,7 @@ import {
   markCandidateBatchUnknown,
   recoverUnknownCandidateBatch,
   retryFailedCandidateBatch,
+  summarizePendingCandidateSignatures,
   storeCandidateBatchResult,
 } from "@/lib/db/repository/refresh-candidate-repository";
 import {
@@ -69,6 +70,20 @@ type CandidateBatchRunResult =
   | { kind: "wait"; retryAfterMs: number }
   | { kind: "failed"; errorCode: string }
   | { kind: "unknown" };
+
+export type PresendMetricBoundary =
+  | "collection_complete"
+  | "previous_batch_terminal"
+  | "rate_wait_complete"
+  | "recovery_complete";
+
+function emitPresendMetric(event: Record<string, string | number | boolean | null>): void {
+  try {
+    console.info("[aggregate-presend-metric]", JSON.stringify(event));
+  } catch {
+    // Observability must never affect scoring or durable checkpoints.
+  }
+}
 
 function requireCheckpoint(checkpointed: boolean, name: string): void {
   if (!checkpointed) throw new FatalError(`Refresh checkpoint rejected: ${name}`);
@@ -246,13 +261,15 @@ export async function freezeCandidateBatchStep(
     ["pending", "result_ready", "running"].includes(batch.status),
   );
   if (existingBatch) return existingBatch.id;
-  const pending = await listRefreshJobCandidates(jobId, executionToken, ["pending"]);
-  if (pending.length === 0) return null;
-  const signatures = [...new Set(pending.map((candidate) => candidate.scoringSignature))];
-  for (const signature of signatures) {
-    const matching = pending.filter((candidate) => candidate.scoringSignature === signature);
-    if (matching.length >= 50 || flushTail) {
-      const batch = await freezeNextCandidateBatch(jobId, executionToken, signature, flushTail);
+  const pending = await summarizePendingCandidateSignatures(jobId, executionToken);
+  for (const summary of pending) {
+    if (summary.candidateCount >= 50 || flushTail) {
+      const batch = await freezeNextCandidateBatch(
+        jobId,
+        executionToken,
+        summary.scoringSignature,
+        flushTail,
+      );
       if (batch) return batch.id;
     }
   }
@@ -265,6 +282,19 @@ export async function listCandidateBatchesStep(jobId: string, executionToken: st
   return batches.map((batch) => ({ id: batch.id, status: batch.status }));
 }
 
+/** Capture a durable timestamp before a batch scoring attempt. */
+export async function capturePresendBoundaryStep(
+  jobId: string,
+  batchId: string,
+  workflowCycle: number,
+): Promise<number> {
+  "use step";
+  void jobId;
+  void batchId;
+  void workflowCycle;
+  return Date.now();
+}
+
 export async function listRefreshJobCandidatesStep(
   jobId: string,
   executionToken: string,
@@ -272,6 +302,14 @@ export async function listRefreshJobCandidatesStep(
 ) {
   "use step";
   return listRefreshJobCandidates(jobId, executionToken, statuses);
+}
+
+export async function summarizePendingCandidateSignaturesStep(
+  jobId: string,
+  executionToken: string,
+) {
+  "use step";
+  return summarizePendingCandidateSignatures(jobId, executionToken);
 }
 
 export async function retryFailedCandidateBatchStep(
@@ -323,6 +361,9 @@ export async function scoreCandidateBatchStep(
   jobId: string,
   executionToken: string,
   batchId: string,
+  presendStartedAtMs: number,
+  presendBoundary: PresendMetricBoundary,
+  workflowCycle: number,
 ): Promise<CandidateBatchRunResult> {
   "use step";
   const existing = await getCandidateBatch(jobId, executionToken, batchId);
@@ -365,6 +406,7 @@ export async function scoreCandidateBatchStep(
   if (batch.status === "running") {
     const candidates = await getBatchCandidates(jobId, executionToken, batchId);
     let scores: IdentifiedArticleScore[];
+    let internalRetryIndex = 0;
     try {
       scores = await scoreArticlesById(
         candidates.map((candidate) => {
@@ -384,10 +426,42 @@ export async function scoreCandidateBatchStep(
           retries: 2,
           rateWaitMode: "throw",
           leaseEvidence: geminiLeaseEvidence("workflow-step-300-v1"),
+          onHttpAttempt: () => {
+            internalRetryIndex += 1;
+            const observedAtMs = Date.now();
+            emitPresendMetric({
+              eventId: `${jobId}:${batchId}:${batch.attemptCount}:${workflowCycle}:${internalRetryIndex}:sdk-call`,
+              jobId,
+              batchId,
+              batchAttempt: batch.attemptCount,
+              workflowCycle,
+              internalRetryIndex,
+              boundary: presendBoundary,
+              elapsedMsFromDurableBoundary:
+                observedAtMs >= presendStartedAtMs ? observedAtMs - presendStartedAtMs : null,
+              boundaryClockRelation:
+                observedAtMs < presendStartedAtMs
+                  ? "observed_before_boundary"
+                  : "observed_after_or_equal_boundary",
+              elapsedIncludes: "shared_slot_claim_and_attempt_checkpoint",
+              measurement: "sdk_call_before_generateContent_not_http_start",
+            });
+          },
         },
       );
     } catch (error) {
       if (error instanceof GeminiSlotWaitError) {
+        emitPresendMetric({
+          eventId: `${jobId}:${batchId}:${batch.attemptCount}:${workflowCycle}:rate-wait`,
+          jobId,
+          batchId,
+          batchAttempt: batch.attemptCount,
+          workflowCycle,
+          boundary: presendBoundary,
+          requestedWaitMs: error.retryAfterMs ?? null,
+          attemptsSent: error.attemptsSent,
+          event: "shared_slot_wait",
+        });
         if (!error.recoverable || error.retryAfterMs === undefined) {
           requireCheckpoint(
             await markCandidateBatchFailed(

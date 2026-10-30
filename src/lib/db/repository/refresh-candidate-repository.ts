@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, count, eq, inArray, max, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, max, min, sql } from "drizzle-orm";
 import { SOURCE_IDS, type SourceId } from "@/lib/news/registry";
 import { db } from "../index";
 import { refreshJobBatches, refreshJobCandidates, refreshJobs, refreshJobSources } from "../schema";
@@ -31,6 +31,37 @@ export interface RefreshCandidateInput {
 }
 
 const DEFAULT_BATCH_SIZE = 50;
+
+export interface PendingCandidateSignatureSummary {
+  scoringSignature: string;
+  candidateCount: number;
+  firstOrdinal: number;
+}
+
+/** Summarize pending rows without loading their persisted article payloads. */
+export async function summarizePendingCandidateSignatures(
+  jobId: string,
+  executionToken: string,
+): Promise<PendingCandidateSignatureSummary[]> {
+  const [job] = await db.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+  if (!job || job.ownerTokenHash !== tokenHash(executionToken))
+    throw new Error("refresh_job_not_owned");
+  const rows = await db
+    .select({
+      scoringSignature: refreshJobCandidates.scoringSignature,
+      candidateCount: count(),
+      firstOrdinal: min(refreshJobCandidates.ordinal),
+    })
+    .from(refreshJobCandidates)
+    .where(and(eq(refreshJobCandidates.jobId, jobId), eq(refreshJobCandidates.status, "pending")))
+    .groupBy(refreshJobCandidates.scoringSignature)
+    .orderBy(min(refreshJobCandidates.ordinal));
+  return rows.map((row) => ({
+    scoringSignature: row.scoringSignature,
+    candidateCount: row.candidateCount,
+    firstOrdinal: row.firstOrdinal ?? 0,
+  }));
+}
 
 /** Counts normalized, deduplicated candidates without loading their article payloads. */
 export async function getRefreshArticleProgress(
@@ -265,7 +296,7 @@ export async function freezeNextCandidateBatch(
     if (job.status !== "running") throw new Error("refresh_job_not_active");
 
     const pending = await tx
-      .select()
+      .select({ id: refreshJobCandidates.id, ordinal: refreshJobCandidates.ordinal })
       .from(refreshJobCandidates)
       .where(
         and(
@@ -274,17 +305,17 @@ export async function freezeNextCandidateBatch(
           eq(refreshJobCandidates.scoringSignature, scoringSignature),
         ),
       )
-      .orderBy(asc(refreshJobCandidates.ordinal));
+      .orderBy(asc(refreshJobCandidates.ordinal))
+      .limit(DEFAULT_BATCH_SIZE);
     if (pending.length < DEFAULT_BATCH_SIZE && (!flushTail || pending.length === 0)) return null;
     const selected = pending.slice(0, DEFAULT_BATCH_SIZE);
     if (selected.length < DEFAULT_BATCH_SIZE && !flushTail) return null;
 
-    const existingBatches = await tx
-      .select({ ordinal: refreshJobBatches.ordinal })
+    const [batchOrdinal] = await tx
+      .select({ ordinal: max(refreshJobBatches.ordinal) })
       .from(refreshJobBatches)
-      .where(eq(refreshJobBatches.jobId, jobId))
-      .orderBy(asc(refreshJobBatches.ordinal));
-    const ordinal = (existingBatches.at(-1)?.ordinal ?? -1) + 1;
+      .where(eq(refreshJobBatches.jobId, jobId));
+    const ordinal = (batchOrdinal?.ordinal ?? -1) + 1;
     const now = new Date().toISOString();
     const batch = {
       id: randomUUID(),
@@ -301,16 +332,25 @@ export async function freezeNextCandidateBatch(
       completedAt: null,
     };
     await tx.insert(refreshJobBatches).values(batch);
-    for (const candidate of selected) {
-      await tx
-        .update(refreshJobCandidates)
-        .set({ status: "batched", batchId: batch.id, updatedAt: now })
-        .where(
-          and(
-            eq(refreshJobCandidates.id, candidate.id),
-            eq(refreshJobCandidates.status, "pending"),
-          ),
-        );
+    const selectedIds = selected.map((candidate) => candidate.id);
+    const changed = await tx
+      .update(refreshJobCandidates)
+      .set({ status: "batched", batchId: batch.id, updatedAt: now })
+      .where(
+        and(
+          inArray(refreshJobCandidates.id, selectedIds),
+          eq(refreshJobCandidates.jobId, jobId),
+          eq(refreshJobCandidates.scoringSignature, scoringSignature),
+          eq(refreshJobCandidates.status, "pending"),
+        ),
+      )
+      .returning({ id: refreshJobCandidates.id });
+    if (
+      changed.length !== selectedIds.length ||
+      new Set(changed.map((row) => row.id)).size !== selectedIds.length ||
+      selectedIds.some((id) => !changed.some((row) => row.id === id))
+    ) {
+      throw new Error("candidate_batch_membership_update_mismatch");
     }
     return batch;
   });
