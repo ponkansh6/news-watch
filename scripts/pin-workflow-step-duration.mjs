@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 const CONFIG_PATH = "src/app/.well-known/workflow/v1/config.json";
-const PINNED_WORKFLOW_VERSION = "4.8.8";
+const PINNED_WORKFLOW_VERSION = "5.2.3";
 const PINNED_STEP_MAX_DURATION_SECONDS = 300;
 
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
@@ -20,16 +20,16 @@ try {
   });
 }
 
-if (!config.steps || typeof config.steps !== "object" || Array.isArray(config.steps)) {
-  throw new Error(`Generated Workflow config has no steps settings: ${CONFIG_PATH}`);
+if (!config.workflows || typeof config.workflows !== "object" || Array.isArray(config.workflows)) {
+  throw new Error(`Generated Workflow config has no workflows settings: ${CONFIG_PATH}`);
 }
 
-const generatedDuration = config.steps.maxDuration;
+const generatedDuration = config.workflows.maxDuration;
 if (generatedDuration !== "max" && generatedDuration !== PINNED_STEP_MAX_DURATION_SECONDS) {
   throw new Error(
-    `Unexpected generated Workflow step maxDuration (${String(generatedDuration)}); expected "max" from workflow@${PINNED_WORKFLOW_VERSION}. Recheck the Vercel adapter before updating this pin.`,
+    `Unexpected generated Workflow maxDuration (${String(generatedDuration)}); expected "max" from workflow@${PINNED_WORKFLOW_VERSION}. Recheck the Vercel adapter before updating this pin.`,
   );
 }
 
-config.steps.maxDuration = PINNED_STEP_MAX_DURATION_SECONDS;
+config.workflows.maxDuration = PINNED_STEP_MAX_DURATION_SECONDS;
 await writeFile(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);

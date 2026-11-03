@@ -7,12 +7,12 @@ AGENTS.md の「ツール使用に関するガイドライン」の詳細版。
 - `npx` や `npm` を利用せず、`pnpm exec` や `pnpm` を使用する。
 - `preinstall` の `scripts/only-pnpm.mjs` は `npm_config_user_agent` が `pnpm` と確認できる場合だけ install を許可する。値が欠落・空の場合も判定不能として停止するため、パッケージマネージャ経由で実行する。
 - `pnpm-workspace.yaml` の `minimumReleaseAgeExclude` は、指定したパッケージの指定バージョンだけ release-age gate を迂回する。例外を追加するときは対象を限定し、必要性を個別に確認する。
-- `pnpm-workspace.yaml` の `overrides` では Hono を監査済みの修正版 `4.13.13`、Vite `8.1.3` を同一メジャーの修正版 `8.1.6` に固定している。依存元が指定するバージョンより優先されるため、更新時は脆弱性修正を含む版か確認する。
-- Vercel Workflow `4.8.8` の依存が `@vercel/oidc@4.0.4` を要求する一方、registry mirror が同版を提供しない場合に備え、`@vercel/functions@3.10.4` の依存辺だけ `4.0.3` へ限定 override している。`@swc/core` と `cbor-extract` の install scripts は Workflow SDK の導入時も明示的に拒否する。
-- Workflow SDK の本番依存で検出された脆弱性を修正するため、`undici` 7、`nanoid` 5、`zod` 4、`body-parser` 2、`qs` 6 はパッチ済み版へmajor範囲内で固定し、`devalue` は `5.9.3` に固定する。nanoid 3 など別majorの利用箇所には適用しない。
+- `pnpm-workspace.yaml` の `overrides` では Hono を監査済みの修正版 `4.13.13`、Vite `8.1.3` を同一メジャーの修正版 `8.1.6`、`fast-uri` を `3.1.9`、`ip-address` を `10.7.4` に固定し、依存元の許容範囲を越える advisory 修正として `minimatch` を `11.0.1`、`glob` を `14.0.2` に固定している。両ライブラリを使う Workflow / Vercel の呼び出しは既存の `minimatch()` / `glob()` API を使う。依存元が指定するバージョンより優先されるため、更新時は脆弱性修正を含み、呼び出し側と互換な版か確認する。
+- Vercel Workflow `5.2.3` は `@vercel/functions@3.10.5` を経由して `@vercel/oidc@4.0.5` を使う。両パッケージの版がそろったため、以前の OIDC 依存辺 override は削除した。`@swc/core`、`cbor-extract`、`koffi` の install scripts は明示的に拒否する。
+- Workflow SDK / Vercel CLI の依存で検出された脆弱性を修正するため、`undici` 7 は `7.30.1`、6 は `6.29.1`、`nanoid` 5、`zod` 3 / 4、`body-parser` 2、`qs` 6 はパッチ済み版へ固定し、`devalue` は `5.9.3` に固定する。`zod@3` を要求する Vercel CLI のスキーマは `passthrough()` / `extend()` など v4 互換 API を使うことを確認して v4 に統一した。nanoid 3 など別majorの利用箇所には適用しない。
 - Vitest coverage は SDK が生成する `src/app/.well-known/workflow/**` だけを集計対象から除外する。`src/workflows/**` などアプリ側の Workflow 実装は従来どおり計測する。
 - ESLint も SDK が生成する `src/app/.well-known/workflow/**` を除外する。アプリ側 Workflow 実装はLint対象に含める。
-- `pnpm run build` 後の `postbuild` は Workflow SDK `4.8.8` が生成する `src/app/.well-known/workflow/v1/config.json` の `steps.maxDuration` を300秒に固定する。Vercel adapter はこの値を step 関数の `maxDuration` として優先するため、送信枠の自動回収期限が実行上限を超えないようにする。SDK版・生成設定・Vercel adapterの読み込み契約が変わった場合は、スクリプトがビルドを失敗させる。上限を変更する場合は、Workflow step 関数の生成成果物で反映を検証してから pin 値と送信枠回収期限を一緒に更新する。
+- `pnpm run build` 後の `postbuild` は Workflow SDK `5.2.3` が生成する `src/app/.well-known/workflow/v1/config.json` の `workflows.maxDuration` を300秒に固定する。Vercel adapter はこの値を Workflow 関数の `maxDuration` として使うため、送信枠の自動回収期限が実行上限を超えないようにする。SDK版・生成設定・Vercel adapterの読み込み契約が変わった場合は、スクリプトがビルドを失敗させる。上限を変更する場合は、Workflow 生成成果物で反映を検証してから pin 値と送信枠回収期限を一緒に更新する。
 - Gemini送信所有権はWorkflow stepの300秒上限+60秒margin（360秒）、明示的に60秒制限されたrequest経路は60秒+60秒margin（120秒）後に限り、認識済みmarkerとVercel deployment IDを持つ所有者を次の処理が回収できる。DB時刻による回収期限のため、実行中のDB時計の前進が60秒以内であることを前提とする。旧形式・unknown・marker/deployment ID欠落の所有者は時間だけでは解放しない。`docs/gemini-rate-limit-recovery.md` に詳細と運用上の限界を記載する。
 - `/api/refresh-jobs` のGET/POSTは、held jobが既知のWorkflow run IDを持つ `needs_reconciliation` 状態なら、一回だけterminal-run自動reconcileを試す。Workflowの終端状態を確認し、sourceに `executing`/`unknown` がなく、candidate batchに `pending`/`running`/`result_ready`/`unknown` がない場合だけ完了化する。候補処理の再実行はせず、terminal runでも未終端candidate batchや結果不明checkpointが残ればslotを保留する。run IDのない `enqueue_unknown` 等も自動回復しない。
 

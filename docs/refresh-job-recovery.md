@@ -35,7 +35,7 @@ The request returns a conflict without changing the slot if a source is `executi
 
 ## If enqueue is uncertain and there is no run ID
 
-Workflow SDK 4.8.8 generates the run ID inside `start()`, accepts no caller-provided idempotency key, and cannot find a run by the application's job ID. A missing run ID therefore cannot prove that enqueue failed. Check the Vercel project's Workflow runs and deployment timeline for a candidate run, then verify its ownership from the persisted run ID or trustworthy application logs. A candidate based only on a similar timestamp is not proof.
+Workflow SDK 5.2.3 creates the run ID during `start()`, accepts no caller-provided run ID or idempotency key, and cannot find a run by the application's job ID. A missing run ID therefore cannot prove that enqueue failed. Check the Vercel project's Workflow runs and deployment timeline for a candidate run, then verify its ownership from the persisted run ID or trustworthy application logs. A candidate based only on a similar timestamp is not proof.
 
 Until the run can be tied to the job, keep the slot held. Do not call the start endpoint again, release the slot by age, or retry the source. The current application provides no safe automatic way to resolve this case.
 
