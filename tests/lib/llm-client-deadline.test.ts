@@ -22,7 +22,9 @@ describe("Gemini request deadline", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(callGemini("test prompt", 10, 20, 0, Date.now() + 20)).rejects.toThrow(
+    // Keep the overall request deadline long enough for the slot claim and
+    // attempt bookkeeping; the SDK timeout is what should abort this fetch.
+    await expect(callGemini("test prompt", 10, 50, 0, Date.now() + 5_000)).rejects.toThrow(
       "Gemini API error",
     );
 
