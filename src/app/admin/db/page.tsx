@@ -32,23 +32,23 @@ export default async function AdminDbLandingPage() {
       title="Database Viewer"
       description="Select a table to inspect raw records, review counts, and browse database state."
     >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-x-8 gap-y-0 md:grid-cols-2">
         {Object.entries(TABLE_DESCRIPTIONS).map(([key, info]) => {
           const count = counts[key as keyof typeof counts] ?? 0;
           return (
             <Link
               key={key}
               href={`/admin/db/${key}`}
-              className="bg-card border border-border rounded-lg p-6 shadow-xs hover:border-muted-foreground hover:shadow-sm transition flex flex-col justify-between"
+              className="flex flex-col justify-between border-y border-border bg-card/50 px-5 py-5 transition-colors hover:bg-card sm:px-6"
             >
               <div>
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold text-foreground">{info.name}</h2>
-                  <span className="font-mono text-xs bg-muted text-muted-foreground px-2.5 py-1 rounded-full">
+                  <span className="bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground">
                     {key}
                   </span>
                 </div>
-                <p className="text-sm text-muted-foreground mt-3">{info.desc}</p>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{info.desc}</p>
               </div>
 
               <div className="mt-6 pt-4 border-t border-border flex items-center justify-between">

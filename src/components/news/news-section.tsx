@@ -17,12 +17,12 @@ export function NewsSection({
   const headerSuffix = isRefreshing ? "(更新中...)" : `(${articles.length}件)`;
 
   return (
-    <div className="space-y-3">
-      <div className="mb-2 flex items-center justify-between sm:mb-4">
-        <h1 className="text-xl font-semibold">
+    <section className="space-y-4" aria-labelledby="scored-news-heading">
+      <div className="flex items-end justify-between border-b border-border pb-3">
+        <h1 id="scored-news-heading" className="text-lg font-semibold tracking-tight sm:text-xl">
           スコアリング済み記事
           <span
-            className="ml-2 text-sm font-normal text-muted-foreground"
+            className="ml-2 text-xs font-normal tabular-nums text-muted-foreground"
             role="status"
             aria-live="polite"
           >
@@ -30,7 +30,7 @@ export function NewsSection({
           </span>
           {isFiltering && !isRefreshing && (
             <span
-              className="ml-2 inline-flex items-center gap-1 text-sm font-normal text-primary"
+              className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-primary"
               role="status"
               aria-live="polite"
             >
@@ -42,17 +42,17 @@ export function NewsSection({
       </div>
 
       {articles.length === 0 ? (
-        <Card className="p-12 text-center">
-          <Newspaper className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+        <Card className="border-dashed p-10 text-center sm:p-14">
+          <Newspaper className="mx-auto mb-4 h-9 w-9 text-primary/60" strokeWidth={1.4} />
           <h3 className="text-lg font-semibold">まだ記事がありません</h3>
-          <p className="text-sm text-muted-foreground mt-2">
+          <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
             {emptyMessage || "「ニュースを取得」ボタンで最新ニュースを取得・スコアリングできます"}
           </p>
         </Card>
       ) : (
         <ArticleList articles={articles} isLoading={isRefreshing} />
       )}
-    </div>
+    </section>
   );
 }
 

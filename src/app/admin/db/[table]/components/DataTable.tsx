@@ -76,7 +76,7 @@ export default function DataTable({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card p-4 border border-border rounded-lg shadow-xs">
+      <div className="flex flex-col gap-4 border-y border-border bg-card/50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <div>
           <div className="flex items-center space-x-2">
             <Link href="/admin/db" className="text-xs text-muted-foreground hover:text-foreground">
@@ -105,18 +105,18 @@ export default function DataTable({
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-lg shadow-xs overflow-hidden">
+      <div className="overflow-hidden border-y border-border bg-card">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead>
-              <tr className="bg-muted border-b border-border text-foreground text-xs font-semibold">
+              <tr className="border-b border-border bg-muted/70 text-xs font-semibold tracking-wide text-muted-foreground">
                 {visibleColumns.map((col) => {
                   const isSorted = currentSort === col.key;
                   return (
                     <th
                       key={col.key}
                       onClick={() => handleSort(col.key, col.sortable)}
-                      className={`px-4 py-3 whitespace-nowrap ${
+                      className={`whitespace-nowrap px-4 py-3 ${
                         col.sortable ? "cursor-pointer hover:bg-muted select-none" : ""
                       } ${col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left"}`}
                     >
@@ -156,7 +156,7 @@ export default function DataTable({
                   <tr
                     key={(row.id as string | number) ?? idx}
                     onClick={() => setSelectedRow(row)}
-                    className="hover:bg-muted cursor-pointer transition"
+                    className="cursor-pointer transition-colors hover:bg-muted/60"
                   >
                     {visibleColumns.map((col) => {
                       const rawVal = row[col.key];
@@ -166,7 +166,7 @@ export default function DataTable({
                       return (
                         <td
                           key={col.key}
-                          className={`px-4 py-3 max-w-xs truncate ${
+                          className={`max-w-xs truncate px-4 py-3 ${
                             col.align === "right"
                               ? "text-right font-mono text-xs"
                               : col.align === "center"
@@ -187,24 +187,24 @@ export default function DataTable({
           </table>
         </div>
 
-        <div className="bg-card border-t border-border px-4 py-3 flex items-center justify-between">
+        <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs text-muted-foreground">
             Page <span className="font-semibold text-foreground">{page}</span> of{" "}
             <span className="font-semibold text-foreground">{totalPages}</span>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
               onClick={() => goToPage(page - 1)}
               disabled={page <= 1}
-              className="px-3 py-1.5 text-xs font-medium border border-border rounded-md bg-card text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-10 border border-border bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
             >
               Previous
             </button>
             <button
               onClick={() => goToPage(page + 1)}
               disabled={page >= totalPages}
-              className="px-3 py-1.5 text-xs font-medium border border-border rounded-md bg-card text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-10 border border-border bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
             >
               Next
             </button>

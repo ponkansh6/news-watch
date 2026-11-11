@@ -73,12 +73,9 @@ export function ArticleCard({
           : "bg-muted";
 
   return (
-    <li className="relative bg-card transition-colors sm:overflow-hidden sm:rounded-xl sm:ring-1 sm:ring-foreground/10 sm:hover:shadow-sm">
-      <span
-        aria-hidden
-        className={cn("absolute inset-y-4 left-0 w-1 rounded-r-full sm:inset-y-3", barColor)}
-      />
-      <article className="px-3 py-4 sm:px-4 sm:py-3.5">
+    <li className="group/article relative bg-card transition-colors sm:border sm:border-border sm:shadow-[0_1px_0_rgb(30_24_17/0.03)] sm:hover:border-primary/35 dark:sm:shadow-none">
+      <span aria-hidden className={cn("absolute inset-y-4 left-0 w-0.5 sm:inset-y-0", barColor)} />
+      <article className="px-4 py-4 sm:px-5 sm:py-5">
         {/* Title + Summary */}
         <div>
           <h3 className="select-none touch-pan-y py-1 -my-1" {...swipeGesture}>
@@ -87,14 +84,14 @@ export function ArticleCard({
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              className="block font-semibold leading-snug text-foreground transition-colors hover:text-primary text-base line-clamp-2"
+              className="block text-[1.02rem] font-semibold leading-[1.55] tracking-[-0.015em] text-foreground transition-colors hover:text-primary line-clamp-3 sm:text-[1.08rem]"
             >
               {title}
             </a>
           </h3>
           {summary && (
             <p
-              className="mt-1 select-none touch-manipulation text-sm leading-relaxed text-muted-foreground line-clamp-3"
+              className="mt-2 select-none touch-manipulation text-[0.88rem] leading-[1.8] text-muted-foreground line-clamp-3"
               onPointerDown={onPointerDown}
             >
               {summary}
@@ -103,14 +100,14 @@ export function ArticleCard({
         </div>
 
         {/* Metadata: Score · Source · MM/DD · Keyword Badge · Reason */}
-        <div className="mt-2.5 flex items-center gap-1.5 text-xs min-w-0">
+        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-border/70 pt-2.5 text-xs">
           <ScorePopover
             score={score ?? null}
             relevance={relevance ?? null}
             usefulness={usefulness ?? null}
             recency={recency ?? null}
           />
-          <span className="text-muted-foreground shrink-0">·</span>
+          <span className="text-border shrink-0">/</span>
           {displaySource && (
             <span
               className="font-medium text-muted-foreground shrink-0 select-none touch-manipulation cursor-pointer"
@@ -119,7 +116,7 @@ export function ArticleCard({
               {displaySource}
             </span>
           )}
-          <span className="text-muted-foreground shrink-0">·</span>
+          <span className="text-border shrink-0">/</span>
           <time
             dateTime={publishedAt}
             title={publishedAt}
@@ -130,7 +127,7 @@ export function ArticleCard({
           </time>
           {keywordLabel && (
             <>
-              <span className="text-muted-foreground shrink-0">·</span>
+              <span className="text-border shrink-0">/</span>
               <Badge variant="secondary" className="shrink-0 max-w-[6rem] truncate">
                 {keywordLabel}
               </Badge>
@@ -138,7 +135,7 @@ export function ArticleCard({
           )}
           {reason && (
             <>
-              <span className="text-muted-foreground shrink-0">·</span>
+              <span className="text-border shrink-0">/</span>
               <Popover>
                 <PopoverTrigger asChild>
                   <button

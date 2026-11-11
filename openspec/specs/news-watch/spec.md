@@ -3,7 +3,7 @@ title: News Watch
 status: Active
 version: 1.0.3
 created_at: 2026-06-01
-updated_at: 2026-10-29
+updated_at: 2026-11-12
 authors: [shunki]
 ---
 
@@ -84,6 +84,9 @@ authors: [shunki]
   - WHEN the user visits the home page
   - THEN the system renders a list of articles sorted by score or date
   - AND each article shows title, source, score (with tier-based styling), and summary
+  - AND the article feed presents title and summary as the primary reading content, with score, source, publication date, keyword, and scoring reason as clearly grouped secondary metadata
+  - AND article metadata wraps on narrow screens without horizontal overflow, and score details remain keyboard accessible
+  - AND dashboard, bookmarks, and shared page headings use a consistent editorial visual hierarchy, with readable light and dark themes
   - AND the first-refresh cache contract in FR-001 is covered by `tests/api/fetch-news/route.test.ts` and the production-mode regression harness (`pnpm run build` followed by `node scripts/smoke-first-fetch-refresh.mjs --case=warm --expect=fresh`; cold-cache control: `node scripts/smoke-first-fetch-refresh.mjs --case=cold --expect=fresh`)
   - AND clicking the score button opens a Popover showing 3-metric breakdown (関連性/有用性/新しさ with weights × 10%/60%/30%, rendered as horizontal bars)
   - AND the breakdown is accessible via keyboard (Enter/Space on button)
@@ -275,17 +278,17 @@ RootLayout (src/app/layout.tsx)
 │   │   └── FetchResult (src/components/news/fetch-result.tsx - Client)
 │   └── NewsSection (src/components/news/news-section.tsx - Client, h1 heading)
 │       └── ArticleList (src/components/article/article-list.tsx - Client, dimmed via aria-busy + opacity-60 when isRefreshing, mobile boundary = 8px muted band)
-│           └── ArticleCard[*] (src/components/article/article-card.tsx - Client, mobile-first feed: full-width list on mobile, card on sm+, accent tier pill, no internal separator)
-│               ├── Title (link, target=_blank, 2-line clamp, swipe gesture area for Not For Me)
+│           └── ArticleCard[*] (src/components/article/article-card.tsx - Client, shared editorial feed presentation)
+│               ├── Title (link, target=_blank, up to 3-line clamp, swipe gesture area for Not For Me)
 │               ├── Summary (3-line clamp, muted, tap area for favorites)
-│               ├── Meta row (single line): Score · Source · MM/DD · Keyword Badge · Reason (truncate)
+│               ├── Meta row (wraps on narrow screens): Score · Source · MM/DD · Keyword Badge · Reason (truncate)
 │               ├── ScorePopover (src/components/article/score-popover.tsx - Client, compact inline trigger in meta row)
 │               │   └── ScoreBreakdown (3 metrics + weights as horizontal bars)
 │               └── Reason popover (Popover on ⓘ button, tap to open full text)
 │
 ├── /bookmarks (src/app/bookmarks/page.tsx - RSC)
 │   └── PageShell
-│       ├── PreferenceProfile (嗜好プロファイルカード)
+│       ├── PreferenceProfile (嗜好プロファイル; analysis date and metadata)
 │       ├── AnalyzeButton (src/app/bookmarks/analyze-button.tsx - Client)
 │       └── ArticleList (same as above)
 │
@@ -422,7 +425,7 @@ recency    : 機械判定 (0-10) — 更新日の新しさ（publishedAt基準�
 
 - **Unofficial Favorites**: Allows users to bookmark articles by tapping rapidly (5 taps within 4 seconds) on the article body area. A 4-second timeout resets the tap counter to prevent accidental triggers during normal browsing.
 - **Data Persistence**: Stored in a dedicated server-side `favorites` table with cascade delete on article removal.
-- **Bookmarks Page**: Accessible via hidden route `/bookmarks` (no navigation link on the main dashboard), displaying all bookmarked articles in a shared view.
+- **Bookmarks Page**: Accessible via hidden route `/bookmarks` (no navigation link on the main dashboard), displaying all bookmarked articles in the shared editorial feed presentation. The empty state explains how to save articles; an existing preference profile shows its analysis date and metadata readably across viewport sizes.
 - **Preference Analysis**: `/bookmarks` shows a "傾向を分析" button; it analyzes favorites and explicit "Not For Me" (NFM) items via LLM (`POST /api/favorites/analyze`) and persists the profile to `preference_profiles`. Requires ≥5 favorites; rate-limited to once/hour; reused unchanged when favorites and NFM states have not changed.
 - **Unofficial Not For Me (NFM)**: Allows users to mark articles as "Not For Me" by swiping horizontally on the article title area (5 continuous swipes within 4 seconds, horizontal movement dominating vertical movement with a 40px threshold). Stored in the server-side `not_for_me` table with cascade delete on article removal. Visible in the admin database viewer at `/admin/db/not_for_me`. Used indirectly in preference analysis as explicit negative examples.
 

@@ -19,10 +19,10 @@ export default function RowDetail({ row, onClose }: RowDetailProps) {
       onClick={onClose}
     >
       <div
-        className="bg-card rounded-lg shadow-xl border border-border w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden border border-border bg-card shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted">
+        <div className="flex items-center justify-between border-b border-border bg-muted/60 px-5 py-4 sm:px-6">
           <h3 className="font-bold text-foreground text-base">
             Row Detail{" "}
             <span className="font-mono text-xs text-muted-foreground font-normal">
@@ -31,13 +31,14 @@ export default function RowDetail({ row, onClose }: RowDetailProps) {
           </h3>
           <button
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground/90 text-lg font-bold p-1"
+            aria-label="閉じる"
+            className="flex size-10 items-center justify-center text-lg font-bold text-muted-foreground transition-colors hover:text-foreground"
           >
             ×
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto space-y-4 divide-y divide-border">
+        <div className="space-y-4 divide-y divide-border overflow-y-auto p-5 sm:p-6">
           {Object.entries(row as Record<string, unknown>).map(([key, val]) => {
             const isEmbedding = key === "embedding";
             const stringVal = val === null || val === undefined ? "—" : String(val);

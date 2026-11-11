@@ -27,8 +27,11 @@ export function SourceFilter({ value, onSourceChange }: SourceFilterProps) {
   };
 
   return (
-    <div className="flex items-center gap-3">
-      <label htmlFor="source-select" className="text-xs font-medium text-muted-foreground">
+    <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <label
+        htmlFor="source-select"
+        className="shrink-0 text-[11px] font-semibold tracking-wide text-muted-foreground sm:text-xs"
+      >
         データソース
       </label>
       <select
@@ -36,7 +39,7 @@ export function SourceFilter({ value, onSourceChange }: SourceFilterProps) {
         value={value}
         onChange={handleSourceChange}
         disabled={isPending}
-        className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
+        className="h-11 min-w-0 rounded-md border border-border bg-card px-3 text-sm text-foreground shadow-[0_1px_0_rgb(30_24_17/0.03)] outline-none transition-colors focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-50"
       >
         {SOURCE_FILTER_OPTIONS.map((source) => (
           <option key={source.id} value={source.id}>
@@ -45,7 +48,7 @@ export function SourceFilter({ value, onSourceChange }: SourceFilterProps) {
         ))}
       </select>
       {isPending && (
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <span role="status" className="flex items-center gap-1 text-xs text-muted-foreground">
           <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary" />
           フィルタリング中...
         </span>

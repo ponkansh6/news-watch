@@ -21,18 +21,18 @@ export default function Pagination({ total, page, limit, table }: PaginationProp
   };
 
   return (
-    <div className="bg-card border-t border-border px-4 py-3 flex items-center justify-between">
+    <div className="flex flex-col gap-3 border-t border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="text-xs text-muted-foreground">
         Showing <span className="font-semibold text-foreground">{(page - 1) * limit + 1}</span> to{" "}
         <span className="font-semibold text-foreground">{Math.min(page * limit, total)}</span> of{" "}
         <span className="font-semibold text-foreground">{total.toLocaleString()}</span> results
       </div>
 
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center gap-2 self-end sm:self-auto">
         <button
           onClick={() => goToPage(page - 1)}
           disabled={page <= 1}
-          className="px-3 py-1.5 text-xs font-medium border border-border rounded-md bg-card text-foreground/90 hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-10 border border-border bg-card px-3 text-xs font-medium text-foreground/90 transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
         >
           Previous
         </button>
@@ -42,7 +42,7 @@ export default function Pagination({ total, page, limit, table }: PaginationProp
         <button
           onClick={() => goToPage(page + 1)}
           disabled={page >= totalPages}
-          className="px-3 py-1.5 text-xs font-medium border border-border rounded-md bg-card text-foreground/90 hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-10 border border-border bg-card px-3 text-xs font-medium text-foreground/90 transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
         >
           Next
         </button>

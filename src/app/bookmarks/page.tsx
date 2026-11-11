@@ -21,9 +21,14 @@ export default async function BookmarksPage() {
       }
     >
       {profile && (
-        <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-foreground">嗜好プロファイル</h2>
+        <section
+          aria-labelledby="profile-heading"
+          className="space-y-4 border-y border-border bg-card/50 px-4 py-5 sm:px-6"
+        >
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 id="profile-heading" className="text-base font-semibold text-foreground">
+              嗜好プロファイル
+            </h2>
             <span className="text-xs text-muted-foreground">
               分析日時: {new Date(profile.createdAt).toLocaleString("ja-JP")}
             </span>
@@ -52,12 +57,15 @@ export default async function BookmarksPage() {
             </span>
             <span className="text-muted-foreground">モデル: {profile.model}</span>
           </div>
-        </div>
+        </section>
       )}
 
       {articles.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-12 text-center text-muted-foreground">
-          お気に入りの記事がまだありません
+        <div className="border-y border-dashed border-border px-6 py-14 text-center">
+          <p className="font-medium text-foreground">お気に入りの記事がまだありません</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            気になる記事を保存すると、ここから読み返せます。
+          </p>
         </div>
       ) : (
         <ArticleList articles={articles} />

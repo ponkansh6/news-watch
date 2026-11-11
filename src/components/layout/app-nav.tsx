@@ -15,7 +15,10 @@ export function AppNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="hidden md:flex items-center gap-1">
+    <nav
+      aria-label="メインナビゲーション"
+      className="hidden md:flex h-full items-center gap-5 border-l border-border pl-6"
+    >
       {navItems.map((item) => {
         const isActive = pathname === item.href;
         return (
@@ -25,10 +28,10 @@ export function AppNav() {
             prefetch={item.prefetch ?? true}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
+              "relative flex h-full items-center gap-2 border-b-2 px-1 text-sm font-medium transition-colors",
               isActive
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             <item.icon className="h-4 w-4" />
@@ -54,10 +57,10 @@ export function AppNavMobile() {
             aria-label={item.label}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "inline-flex size-11 items-center justify-center rounded-full transition-colors",
+              "inline-flex size-11 items-center justify-center border-b-2 transition-colors",
               isActive
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             <item.icon className="h-5 w-5" />
