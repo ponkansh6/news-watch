@@ -223,11 +223,24 @@ export function getSourceAdapter(sourceId: string): SourceAdapter<any> | undefin
   return (SOURCE_REGISTRY as Record<string, SourceAdapter<any>>)[sourceId];
 }
 
+interface UnknownSourceArticle {
+  title: string;
+  url?: string | null;
+  link?: string | null;
+  publishedAt?: string | null;
+  published?: string | null;
+  pubDate?: string | null;
+  date?: string | null;
+  source?: { name?: string | null } | null;
+  author?: string | null;
+  creator?: string | null;
+}
+
 /** normalize() の元の default: ダックタイピング分岐を再現。未知sourceIdを
  * 直接テストする2ファイルのために維持。 */
 export function normalizeUnknownSource(article: unknown, sourceId: string): NormalizedArticle {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const a = article as Record<string, any>;
+  // Compile-time compatibility view only; preserve the legacy runtime duck typing.
+  const a = article as UnknownSourceArticle;
   return {
     title: a.title,
     description: extractDescription(article),

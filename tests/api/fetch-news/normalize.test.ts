@@ -1,7 +1,9 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { normalize } from "@/app/api/fetch-news/route";
 
 describe("normalize function", () => {
+  afterEach(() => vi.useRealTimers());
+
   test("Normalize a Zenn article", () => {
     const zennArticle = {
       title: "Zenn Article Title",
@@ -108,5 +110,125 @@ describe("normalize function", () => {
     expect(normalized.author).toBeNull();
     expect(normalized.description).toBeNull();
     expect(typeof normalized.publishedAt).toBe("string");
+  });
+
+  test("unknown source fallback keeps the first available compatibility field", () => {
+    const normalized = normalize(
+      {
+        title: "Fallback title",
+        url: "https://example.com/primary",
+        link: "https://example.com/secondary",
+        publishedAt: "2026-07-01T00:00:00Z",
+        published: "2026-07-02T00:00:00Z",
+        author: "primary author",
+        creator: "secondary author",
+        source: { name: "Fallback source" },
+      },
+      "unknown-source",
+    );
+
+    expect(normalized).toMatchObject({
+      title: "Fallback title",
+      url: "https://example.com/primary",
+      publishedAt: "2026-07-01T00:00:00Z",
+      author: "primary author",
+      sourceName: "Fallback source",
+    });
+  });
+
+  test("unknown source fallback skips nullish values and preserves empty strings", () => {
+    const normalized = normalize(
+      {
+        title: "Fallback title",
+        url: null,
+        link: "",
+        publishedAt: undefined,
+        published: null,
+        pubDate: "2026-07-03T00:00:00Z",
+        date: "2026-07-04T00:00:00Z",
+        author: null,
+        creator: "fallback author",
+      },
+      "unknown-source",
+    );
+
+    expect(normalized.url).toBe("");
+    expect(normalized.publishedAt).toBe("2026-07-03T00:00:00Z");
+    expect(normalized.author).toBe("fallback author");
+  });
+
+  test.each([
+    [{ publishedAt: null, published: "published" }, "published"],
+    [{ publishedAt: undefined, published: null, pubDate: "pubDate" }, "pubDate"],
+    [{ publishedAt: null, published: undefined, pubDate: null, date: "date" }, "date"],
+  ])("unknown source date fallback selects the first non-nullish field", (fields, expected) => {
+    expect(normalize({ title: "Fallback title", ...fields }, "unknown-source").publishedAt).toBe(
+      expected,
+    );
+  });
+
+  test("unknown source date fallback uses the current ISO timestamp when fields are absent", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-05T12:34:56.000Z"));
+
+    expect(normalize({ title: "Fallback title" }, "unknown-source").publishedAt).toBe(
+      "2026-07-05T12:34:56.000Z",
+    );
+  });
+
+  test("unknown source fallback reads compatibility fields in legacy order", () => {
+    const reads: string[] = [];
+    const article = {
+      get title() {
+        reads.push("title");
+        return "Fallback title";
+      },
+      get description() {
+        reads.push("description");
+        return "summary";
+      },
+      get url() {
+        reads.push("url");
+        return undefined;
+      },
+      get link() {
+        reads.push("link");
+        return "https://example.com";
+      },
+      get publishedAt() {
+        reads.push("publishedAt");
+        return undefined;
+      },
+      get published() {
+        reads.push("published");
+        return "2026-07-06T00:00:00Z";
+      },
+      get source() {
+        reads.push("source");
+        return { name: "Fallback source" };
+      },
+      get author() {
+        reads.push("author");
+        return undefined;
+      },
+      get creator() {
+        reads.push("creator");
+        return "fallback author";
+      },
+    };
+
+    normalize(article, "unknown-source");
+
+    expect(reads).toEqual([
+      "title",
+      "description",
+      "url",
+      "link",
+      "publishedAt",
+      "published",
+      "source",
+      "author",
+      "creator",
+    ]);
   });
 });

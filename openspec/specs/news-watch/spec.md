@@ -145,6 +145,7 @@ authors: [shunki]
 - **Priority**: Must
 - **Acceptance Criteria**:
   - The source selector offers `総合` as a display selection; it is not a synthetic source adapter or registry entry.
+  - Unknown source responses retain the compatibility fallback: `url` precedes `link`, `publishedAt` precedes `published`, `pubDate`, and `date`, and `author` precedes `creator`.
   - The dashboard restores `総合` from the `source` URL parameter or `source` cookie. Unknown or repeated query values and invalid cookie values fall back to `zenn`; the existing `zenn` default and individual sources remain supported.
   - The aggregate article query passes the ordered `SOURCE_IDS` list to the existing scored-article query, retaining its score filtering, sort order, page limit, and each article's real source name.
   - Selecting `総合` starts or joins an authenticated job through `POST /api/refresh-jobs`. `GET /api/refresh-jobs` restores the active aggregate job after navigation or reload, and `GET /api/refresh-jobs/{jobId}` returns its status without exposing the execution token.
