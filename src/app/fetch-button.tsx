@@ -661,7 +661,9 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
                     source.status === "invalidated"
                       ? `完了 ${source.resultCount ?? 0}件`
                       : source.status === "saved"
-                        ? "一覧を更新中..."
+                        ? source.resultCount === null
+                          ? "採点対象数不明"
+                          : `採点対象 ${source.resultCount}件`
                         : source.status === "executing"
                           ? "取得・採点中..."
                           : source.status === "failed"

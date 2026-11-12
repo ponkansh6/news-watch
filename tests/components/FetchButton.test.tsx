@@ -217,6 +217,43 @@ describe("FetchButton", () => {
     expect(mockRefresh).toHaveBeenCalled();
   });
 
+  it("shows the saved source candidate count without a list refresh placeholder", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/refresh-jobs" && init?.method === "POST") {
+        return jsonResponse(
+          {
+            jobId: "job-saved-source",
+            status: "running",
+            revision: 1,
+            sources: [
+              {
+                sourceId: "zenn",
+                status: "saved",
+                resultCount: 4,
+                errorCode: null,
+                cacheInvalidatedAt: null,
+              },
+            ],
+          },
+          202,
+        );
+      }
+      return jsonResponse({ job: null });
+    });
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="all" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+    await user.click(await screen.findByRole("button", { name: "全ソースを一括更新" }));
+
+    const progress = screen.getByRole("region", { name: "総合更新の進捗" });
+    expect(await within(progress).findByText("採点対象 4件")).toBeInTheDocument();
+    expect(within(progress).queryByText(/一覧.*中/)).not.toBeInTheDocument();
+  });
+
   it("shows candidate totals during collection and separates scoring failures", async () => {
     const user = userEvent.setup();
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
