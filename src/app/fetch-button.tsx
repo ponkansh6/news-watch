@@ -524,6 +524,13 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
   const aggregateArticleProgress = aggregateJob
     ? readAggregateArticleProgress(aggregateJob.articleProgress)
     : undefined;
+  const aggregateFinishedSources =
+    aggregateJob?.sources.filter((source) => ["invalidated", "failed"].includes(source.status))
+      .length ?? 0;
+  const aggregateProgressPercent = aggregateJob?.sources.length
+    ? Math.round((aggregateFinishedSources / aggregateJob.sources.length) * 100)
+    : 0;
+  const aggregateIsActive = aggregateJob !== null && isActiveAggregateJob(aggregateJob);
 
   return (
     <div className="flex flex-col gap-4">
@@ -543,19 +550,25 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
                   ? "総合更新を開始中..."
                   : "全ソースを一括更新"
             }
-            className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="group ml-auto inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {aggregateJob?.status === "needs_reconciliation" ? (
               <span>要確認</span>
             ) : aggregateLoading ||
               (aggregateJob !== null && isActiveAggregateJob(aggregateJob)) ? (
               <>
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" />
+                <span
+                  className="relative inline-flex h-4 w-4 items-center justify-center"
+                  aria-hidden="true"
+                >
+                  <span className="absolute inset-0 rounded-full border-2 border-current/30" />
+                  <span className="absolute inset-0 rounded-full border-2 border-current border-r-transparent motion-safe:animate-spin" />
+                </span>
                 <span>更新中...</span>
               </>
             ) : (
               <>
-                <RefreshCw className="h-4 w-4" />
+                <RefreshCw className="h-4 w-4 motion-safe:transition-transform motion-safe:duration-500 group-hover:motion-safe:rotate-180" />
                 <span>全ソースを更新</span>
               </>
             )}
@@ -571,9 +584,17 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
 
       {(aggregateJob || aggregateError) && (
         <section
-          className="space-y-2 rounded-lg border border-border bg-card px-4 py-3 text-sm"
+          className="relative isolate space-y-3 overflow-hidden rounded-xl border border-border bg-card px-4 py-4 text-sm shadow-sm motion-safe:transition-[border-color,box-shadow] motion-safe:duration-500"
           aria-label="総合更新の進捗"
         >
+          {aggregateIsActive && (
+            <div
+              aria-hidden="true"
+              className="absolute inset-x-0 top-0 h-0.5 overflow-hidden bg-muted"
+            >
+              <div className="h-full w-1/3 rounded-full bg-primary motion-safe:animate-[refresh-sweep_1.8s_ease-in-out_infinite]" />
+            </div>
+          )}
           {aggregateError ? (
             <p role="alert" className="text-destructive">
               {aggregateError}
@@ -593,6 +614,29 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
               >
                 {refreshStatusLabel(aggregateJob)}
               </p>
+              {aggregateJob.sources.length > 0 && (
+                <div className="space-y-1.5" aria-label="ソース更新の進捗">
+                  <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <span>完了・失敗が確定したソース</span>
+                    <span className="tabular-nums">
+                      {aggregateFinishedSources} / {aggregateJob.sources.length}
+                    </span>
+                  </div>
+                  <div
+                    role="progressbar"
+                    aria-label="ソース更新の進捗"
+                    aria-valuemin={0}
+                    aria-valuemax={aggregateJob.sources.length}
+                    aria-valuenow={aggregateFinishedSources}
+                    className="h-1.5 overflow-hidden rounded-full bg-muted"
+                  >
+                    <div
+                      className="h-full rounded-full bg-primary motion-safe:transition-[width] motion-safe:duration-700 motion-safe:ease-out"
+                      style={{ width: `${aggregateProgressPercent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               {aggregateArticleProgress && (
                 <div
                   role="status"
@@ -611,7 +655,7 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
                   )}
                 </div>
               )}
-              <ul className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="grid gap-1.5 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-3">
                 {aggregateJob.sources.map((source) => {
                   const label =
                     source.status === "invalidated"
@@ -620,13 +664,36 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
                         ? "一覧を更新中..."
                         : source.status === "executing"
                           ? "取得・採点中..."
-                          : source.status === "failed" || source.status === "unknown"
+                          : source.status === "failed"
                             ? "失敗"
-                            : "待機中";
+                            : source.status === "unknown"
+                              ? "要確認"
+                              : "待機中";
+                  const isExecuting = source.status === "executing" || source.status === "saved";
+                  const isDone = source.status === "invalidated";
+                  const isFailed = source.status === "failed";
+                  const isUnknown = source.status === "unknown";
                   return (
-                    <li key={source.sourceId} className="flex justify-between gap-2">
-                      <span>{sourceName(source.sourceId)}</span>
-                      <span>{label}</span>
+                    <li
+                      key={source.sourceId}
+                      className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-2.5 py-2 motion-safe:transition-colors motion-safe:duration-300"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span
+                          className={`relative inline-flex h-2 w-2 shrink-0 rounded-full ${isExecuting ? "bg-primary" : isDone ? "bg-primary/55" : isFailed ? "bg-destructive" : "bg-muted-foreground/35"}`}
+                          aria-hidden="true"
+                        >
+                          {isExecuting && (
+                            <span className="absolute inset-0 rounded-full bg-primary motion-safe:animate-ping motion-reduce:hidden" />
+                          )}
+                        </span>
+                        <span className="truncate">{sourceName(source.sourceId)}</span>
+                      </span>
+                      <span
+                        className={`shrink-0 tabular-nums ${isFailed ? "text-destructive" : isExecuting || isUnknown ? "font-medium text-foreground" : ""}`}
+                      >
+                        {label}
+                      </span>
                     </li>
                   );
                 })}

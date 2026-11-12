@@ -279,6 +279,11 @@ describe("FetchButton", () => {
     expect(await within(progress).findByText("採点対象（収集中） 7件")).toBeInTheDocument();
     expect(within(progress).getByText("失敗 1件")).toBeInTheDocument();
     expect(within(progress).getByText("取得・採点中...")).toBeInTheDocument();
+    const sourceProgress = within(progress).getByRole("progressbar", {
+      name: "ソース更新の進捗",
+    });
+    expect(sourceProgress).toHaveAttribute("aria-valuemax", "1");
+    expect(sourceProgress).toHaveAttribute("aria-valuenow", "0");
   });
 
   it("shows a zero candidate total after collection", async () => {
