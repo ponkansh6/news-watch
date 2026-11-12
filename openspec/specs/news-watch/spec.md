@@ -87,6 +87,7 @@ authors: [shunki]
   - AND the article feed presents title and summary as the primary reading content, with score, source, publication date, keyword, and scoring reason as clearly grouped secondary metadata
   - AND article metadata wraps on narrow screens without horizontal overflow, and score details remain keyboard accessible
   - AND dashboard, bookmarks, and shared page headings use a consistent editorial visual hierarchy, with readable light and dark themes
+  - AND the dashboard uses a restrained silver-gray neutral palette for surfaces, text, and structure, with one steel-blue accent for primary actions and focus; status colors remain reserved for their semantic meaning
   - AND the first-refresh cache contract in FR-001 is covered by `tests/api/fetch-news/route.test.ts` and the production-mode regression harness (`pnpm run build` followed by `node scripts/smoke-first-fetch-refresh.mjs --case=warm --expect=fresh`; cold-cache control: `node scripts/smoke-first-fetch-refresh.mjs --case=cold --expect=fresh`)
   - AND clicking the score button opens a Popover showing 3-metric breakdown (関連性/有用性/新しさ with weights × 10%/60%/30%, rendered as horizontal bars)
   - AND the breakdown is accessible via keyboard (Enter/Space on button)

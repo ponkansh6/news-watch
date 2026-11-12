@@ -73,7 +73,7 @@ export function ArticleCard({
           : "bg-muted";
 
   return (
-    <li className="group/article relative bg-card transition-colors sm:border sm:border-border sm:shadow-[0_1px_0_rgb(30_24_17/0.03)] sm:hover:border-primary/35 dark:sm:shadow-none">
+    <li className="group/article relative bg-card transition-colors sm:border sm:border-border sm:shadow-[0_1px_0_rgb(15_23_42/0.03)] sm:hover:border-primary/35 dark:sm:shadow-none">
       <span aria-hidden className={cn("absolute inset-y-4 left-0 w-0.5 sm:inset-y-0", barColor)} />
       <article className="px-4 py-4 sm:px-5 sm:py-5">
         {/* Title + Summary */}
