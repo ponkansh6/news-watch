@@ -3,6 +3,7 @@
  */
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { withFastForwardedTimers } from "./helpers/with-fast-forwarded-timers";
 
 const refreshJobMocks = vi.hoisted(() => ({
   claimSingleRefresh: vi.fn().mockResolvedValue({
@@ -118,7 +119,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       },
     });
 
-    const response = await POST(request);
+    const response = await withFastForwardedTimers(() => POST(request));
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -160,7 +161,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       },
     });
 
-    const response = await POST(request);
+    const response = await withFastForwardedTimers(() => POST(request));
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -211,7 +212,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       },
     });
 
-    const response = await POST(request);
+    const response = await withFastForwardedTimers(() => POST(request));
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -245,7 +246,7 @@ describe("Qiita scoring reproduction: 75 fetched, 0 scored", () => {
       },
     });
 
-    const response = await POST(request);
+    const response = await withFastForwardedTimers(() => POST(request));
     const data = await response.json();
 
     expect(response.status).toBe(200);

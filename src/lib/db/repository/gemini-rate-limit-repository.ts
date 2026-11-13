@@ -8,6 +8,7 @@ import { db } from "../index";
 const SLOT_ID = 1;
 const ATTEMPT_LIMIT = 15;
 const WINDOW_MS = 60_000;
+const START_INTERVAL_MS = 5_000;
 
 export interface GeminiAttemptOwner {
   ownerId: string;
@@ -50,13 +51,13 @@ function dbNowSql(): string {
  */
 export async function getGeminiRateOwnerStatus(): Promise<GeminiRateOwnerStatus | null> {
   const result = await db.$client.execute({
-    sql: `SELECT slot.owner_id, slot.acquired_at,
+    sql: `SELECT COALESCE(attempt.owner_id, slot.owner_id) AS owner_id,
+                 COALESCE(attempt.started_at, slot.acquired_at) AS acquired_at,
                  attempt.id AS attempt_id, attempt.started_at AS attempt_started_at,
                  attempt.outcome AS attempt_outcome
           FROM gemini_request_slot AS slot
-          LEFT JOIN gemini_request_attempts AS attempt
-            ON attempt.owner_id = slot.owner_id AND attempt.outcome = 'started'
-          WHERE slot.id = ? AND slot.owner_id IS NOT NULL
+          LEFT JOIN gemini_request_attempts AS attempt ON attempt.outcome = 'started'
+          WHERE slot.id = ? AND (slot.owner_id IS NOT NULL OR attempt.id IS NOT NULL)
           ORDER BY attempt.started_at DESC LIMIT 1`,
     args: [SLOT_ID],
   });
@@ -81,10 +82,9 @@ export async function getGeminiRateOwnerStatus(): Promise<GeminiRateOwnerStatus 
 }
 
 /**
- * Claims the singleton send slot and admits an HTTP attempt only if fewer than
- * 15 attempts completed during the preceding 60 seconds. All time comparisons
- * use the shared SQLite/Turso clock. A rate-limited claim releases the slot so
- * the caller can sleep and claim again later.
+ * The singleton slot serializes admission only. Once an HTTP attempt starts,
+ * its own lease metadata stays on the attempt row so other requests may be
+ * admitted on the global five-second cadence without losing fencing.
  */
 export async function claimGeminiAttempt(
   lease: GeminiLeaseEvidence = { kind: "unknown" },
@@ -114,16 +114,33 @@ export async function claimGeminiAttempt(
         args: [SLOT_ID],
       },
       {
-        // Only leases with an explicit, build-verified duration marker expire.
-        // Preserve an uncertain send in the rolling-window ledger before the
-        // old owner is removed, so a replacement claim still observes 15/60.
+        // Backfill an attempt created by the previous version while its lease
+        // still lives on the singleton slot. This keeps in-flight deployments
+        // recoverable across the additive migration.
+        sql: `UPDATE gemini_request_attempts
+              SET owner_token_hash = (SELECT owner_token_hash FROM gemini_request_slot
+                    WHERE id = ? AND owner_id = gemini_request_attempts.owner_id),
+                  lease_kind = (SELECT lease_kind FROM gemini_request_slot
+                    WHERE id = ? AND owner_id = gemini_request_attempts.owner_id),
+                  deployment_id = (SELECT deployment_id FROM gemini_request_slot
+                    WHERE id = ? AND owner_id = gemini_request_attempts.owner_id),
+                  recovery_after = (SELECT recovery_after FROM gemini_request_slot
+                    WHERE id = ? AND owner_id = gemini_request_attempts.owner_id)
+              WHERE outcome = 'started' AND owner_token_hash IS NULL
+                AND EXISTS (SELECT 1 FROM gemini_request_slot
+                  WHERE id = ? AND owner_id = gemini_request_attempts.owner_id)`,
+        args: [SLOT_ID, SLOT_ID, SLOT_ID, SLOT_ID, SLOT_ID],
+      },
+      {
+        // Explicitly bounded attempt leases can be recovered independently.
         sql: `UPDATE gemini_request_attempts
               SET outcome = 'ambiguous', completed_at = ${dbNowSql()}
               WHERE outcome = 'started'
-                AND owner_id = (SELECT owner_id FROM gemini_request_slot
-                  WHERE id = ? AND recovery_after IS NOT NULL
-                    AND julianday(recovery_after) <= julianday('now'))`,
-        args: [SLOT_ID],
+                AND recovery_after IS NOT NULL
+                AND lease_kind IN ('workflow-step-300-v1', 'request-60-v1')
+                AND deployment_id IS NOT NULL AND length(deployment_id) > 0
+                AND julianday(recovery_after) <= julianday('now')`,
+        args: [],
       },
       {
         sql: `UPDATE gemini_request_slot
@@ -159,11 +176,14 @@ export async function claimGeminiAttempt(
                      recovery_after, julianday(recovery_after) AS recovery_julian,
                      julianday('now') AS now_julian,
                      (SELECT COUNT(*) FROM gemini_request_attempts
-                       WHERE completed_at IS NOT NULL
-                         AND julianday(completed_at) > julianday('now', '-60 seconds')) AS recent_count,
-                     (SELECT MIN(julianday(completed_at)) FROM gemini_request_attempts
-                       WHERE completed_at IS NOT NULL
-                         AND julianday(completed_at) > julianday('now', '-60 seconds')) AS oldest_julian
+                       WHERE julianday(started_at) > julianday('now', '-60 seconds')) AS recent_count,
+                     (SELECT MIN(julianday(started_at)) FROM gemini_request_attempts
+                       WHERE julianday(started_at) > julianday('now', '-60 seconds')) AS oldest_julian,
+                     (SELECT MAX(julianday(started_at)) FROM gemini_request_attempts) AS latest_julian
+                     , (SELECT COUNT(*) FROM gemini_request_attempts
+                       WHERE outcome = 'started'
+                         AND (recovery_after IS NULL OR lease_kind NOT IN ('workflow-step-300-v1', 'request-60-v1')
+                           OR deployment_id IS NULL OR length(deployment_id) = 0)) AS unbounded_inflight
               FROM gemini_request_slot WHERE id = ?`,
         args: [SLOT_ID],
       },
@@ -171,7 +191,7 @@ export async function claimGeminiAttempt(
     "write",
   );
 
-  const row = result[5]?.rows[0] as unknown as
+  const row = result[6]?.rows[0] as unknown as
     | {
         owner_id: string | null;
         owner_token_hash: string | null;
@@ -182,6 +202,8 @@ export async function claimGeminiAttempt(
         now_julian: number;
         recent_count: number;
         oldest_julian: number | null;
+        latest_julian: number | null;
+        unbounded_inflight: number;
       }
     | undefined;
   if (row?.owner_id !== owner.ownerId || row.owner_token_hash !== tokenHash) {
@@ -198,7 +220,24 @@ export async function claimGeminiAttempt(
   }
 
   const recentCount = Number(row.recent_count);
-  if (recentCount < ATTEMPT_LIMIT) return { kind: "claimed", owner };
+  if (Number(row.unbounded_inflight) > 0) {
+    const release = await db.$client.execute({
+      sql: `UPDATE gemini_request_slot
+            SET owner_id = NULL, owner_token_hash = NULL, acquired_at = NULL,
+                lease_kind = NULL, deployment_id = NULL, recovery_after = NULL
+            WHERE id = ? AND owner_id = ? AND owner_token_hash = ?`,
+      args: [SLOT_ID, owner.ownerId, tokenHash],
+    });
+    if (Number(release.rowsAffected) !== 1)
+      throw new Error("failed_to_release_unbounded_gemini_slot");
+    return { kind: "busy", recoverable: false };
+  }
+  const cadenceWaitMs =
+    row.latest_julian === null
+      ? 0
+      : (Number(row.latest_julian) + START_INTERVAL_MS / 86_400_000 - Number(row.now_julian)) *
+        86_400_000;
+  if (recentCount < ATTEMPT_LIMIT && cadenceWaitMs <= 0) return { kind: "claimed", owner };
 
   const release = await db.$client.execute({
     sql: `UPDATE gemini_request_slot
@@ -210,12 +249,18 @@ export async function claimGeminiAttempt(
   if (Number(release.rowsAffected) !== 1)
     throw new Error("failed_to_release_rate_limited_gemini_slot");
 
-  const remainingMs =
+  const windowWaitMs =
     row.oldest_julian === null
       ? WINDOW_MS
       : (Number(row.oldest_julian) + 60 / 86_400 - Number(row.now_julian) + 2 / 86_400_000) *
         86_400_000;
-  return { kind: "rate-limited", retryAfterMs: Math.max(1, Math.ceil(remainingMs)) };
+  return {
+    kind: "rate-limited",
+    retryAfterMs: Math.max(
+      1,
+      Math.ceil(recentCount >= ATTEMPT_LIMIT ? windowWaitMs : cadenceWaitMs),
+    ),
+  };
 }
 
 /** Records the attempt immediately before the HTTP request is started. */
@@ -223,49 +268,45 @@ export async function beginGeminiAttempt(
   owner: GeminiAttemptOwner,
   attemptId = randomUUID(),
 ): Promise<string> {
-  const result = await db.$client.execute({
-    sql: `INSERT INTO gemini_request_attempts (id, owner_id, started_at, outcome)
-          SELECT ?, ?, ${dbNowSql()}, 'started'
-          WHERE EXISTS (
-            SELECT 1 FROM gemini_request_slot
+  const lease = await db.$client.batch(
+    [
+      {
+        sql: `INSERT INTO gemini_request_attempts
+              (id, owner_id, started_at, outcome, owner_token_hash, lease_kind, deployment_id, recovery_after)
+            SELECT ?, ?, ${dbNowSql()}, 'started', owner_token_hash, lease_kind, deployment_id, recovery_after
+            FROM gemini_request_slot
+            WHERE id = ? AND owner_id = ? AND owner_token_hash = ?`,
+        args: [attemptId, owner.ownerId, SLOT_ID, owner.ownerId, hashToken(owner.ownerToken)],
+      },
+      {
+        sql: `UPDATE gemini_request_slot SET owner_id = NULL, owner_token_hash = NULL,
+              acquired_at = NULL, lease_kind = NULL, deployment_id = NULL, recovery_after = NULL
             WHERE id = ? AND owner_id = ? AND owner_token_hash = ?
-          )`,
-    args: [attemptId, owner.ownerId, SLOT_ID, owner.ownerId, hashToken(owner.ownerToken)],
-  });
-  if (Number(result.rowsAffected) !== 1) throw new Error("gemini_attempt_owner_not_held");
+              AND EXISTS (SELECT 1 FROM gemini_request_attempts WHERE id = ? AND owner_id = ?)`,
+        args: [SLOT_ID, owner.ownerId, hashToken(owner.ownerToken), attemptId, owner.ownerId],
+      },
+    ],
+    "write",
+  );
+  if (Number(lease[0]?.rowsAffected) !== 1 || Number(lease[1]?.rowsAffected) !== 1)
+    throw new Error("gemini_attempt_owner_not_held");
   return attemptId;
 }
 
 /**
- * Persists success or failure and releases the send slot atomically. If this
- * fails, the caller must leave the owner in place and stop further sends.
+ * Persists success or failure for the attempt's independently fenced lease.
  */
 export async function completeGeminiAttempt(
   owner: GeminiAttemptOwner,
   attemptId: string,
   outcome: "succeeded" | "failed",
 ): Promise<boolean> {
-  const tokenHash = hashToken(owner.ownerToken);
-  const statements = [
-    {
-      sql: `UPDATE gemini_request_attempts SET outcome = ?, completed_at = ${dbNowSql()}
-            WHERE id = ? AND owner_id = ? AND outcome = 'started'
-              AND EXISTS (SELECT 1 FROM gemini_request_slot
-                WHERE id = ? AND owner_id = ? AND owner_token_hash = ?)`,
-      args: [outcome, attemptId, owner.ownerId, SLOT_ID, owner.ownerId, tokenHash],
-    },
-    {
-      sql: `UPDATE gemini_request_slot
-            SET owner_id = NULL, owner_token_hash = NULL, acquired_at = NULL,
-                lease_kind = NULL, deployment_id = NULL, recovery_after = NULL
-            WHERE id = ? AND owner_id = ? AND owner_token_hash = ?
-              AND EXISTS (SELECT 1 FROM gemini_request_attempts
-                WHERE id = ? AND owner_id = ? AND outcome = ? AND completed_at IS NOT NULL)`,
-      args: [SLOT_ID, owner.ownerId, tokenHash, attemptId, owner.ownerId, outcome],
-    },
-  ];
-  const result = await db.$client.batch(statements, "write");
-  return Number(result[0]?.rowsAffected) === 1 && Number(result[1]?.rowsAffected) === 1;
+  const result = await db.$client.execute({
+    sql: `UPDATE gemini_request_attempts SET outcome = ?, completed_at = ${dbNowSql()}
+          WHERE id = ? AND owner_id = ? AND owner_token_hash = ? AND outcome = 'started'`,
+    args: [outcome, attemptId, owner.ownerId, hashToken(owner.ownerToken)],
+  });
+  return Number(result.rowsAffected) === 1;
 }
 
 /**
@@ -284,9 +325,8 @@ export async function releaseFencedGeminiOwner(
         {
           sql: `UPDATE gemini_request_attempts SET outcome = 'ambiguous', completed_at = ${dbNowSql()}
                 WHERE id = ? AND owner_id = ? AND outcome = 'started'
-                  AND EXISTS (SELECT 1 FROM gemini_request_slot
-                    WHERE id = ? AND owner_id = ?)`,
-          args: [attemptId, ownerId, SLOT_ID, ownerId],
+                  AND owner_token_hash IS NOT NULL`,
+          args: [attemptId, ownerId],
         },
         {
           sql: `UPDATE gemini_request_slot
@@ -310,7 +350,7 @@ export async function releaseFencedGeminiOwner(
         },
       ];
   const result = await db.$client.batch(statements, "write");
-  return Number(result.at(-1)?.rowsAffected) === 1;
+  return Number(result[0]?.rowsAffected) === 1;
 }
 
 export async function getGeminiRateWindow(): Promise<{
@@ -320,10 +360,9 @@ export async function getGeminiRateWindow(): Promise<{
   const result = await db.$client.execute({
     sql: `SELECT COUNT(*) AS recent_count,
                  julianday('now') AS now_julian,
-                 MIN(julianday(completed_at)) AS oldest_julian
+                 MIN(julianday(started_at)) AS oldest_julian
           FROM gemini_request_attempts
-          WHERE completed_at IS NOT NULL
-            AND julianday(completed_at) > julianday('now', '-60 seconds')`,
+          WHERE julianday(started_at) > julianday('now', '-60 seconds')`,
     args: [],
   });
   const row = result.rows[0] as unknown as

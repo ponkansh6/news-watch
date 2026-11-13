@@ -32,6 +32,19 @@ export interface RefreshCandidateInput {
 
 const DEFAULT_BATCH_SIZE = 50;
 const CANDIDATE_STAGE_BUSY_RETRY_DELAYS_MS = [25, 50, 100, 200, 400, 800] as const;
+const BATCH_WRITE_BUSY_RETRY_DELAYS_MS = [25, 50, 100, 200, 400] as const;
+
+async function withBatchWriteBusyRetry<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      const delay = BATCH_WRITE_BUSY_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || !isRetryableBusyError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
 
 export interface PendingCandidateSignatureSummary {
   scoringSignature: string;
@@ -374,71 +387,73 @@ export async function freezeNextCandidateBatch(
   scoringSignature: string,
   flushTail = false,
 ): Promise<RefreshJobCandidateBatch | null> {
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash(executionToken))
-      throw new Error("refresh_job_not_owned");
-    if (job.status !== "running") throw new Error("refresh_job_not_active");
+  return withBatchWriteBusyRetry(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash(executionToken))
+        throw new Error("refresh_job_not_owned");
+      if (job.status !== "running") throw new Error("refresh_job_not_active");
 
-    const pending = await tx
-      .select({ id: refreshJobCandidates.id, ordinal: refreshJobCandidates.ordinal })
-      .from(refreshJobCandidates)
-      .where(
-        and(
-          eq(refreshJobCandidates.jobId, jobId),
-          eq(refreshJobCandidates.status, "pending"),
-          eq(refreshJobCandidates.scoringSignature, scoringSignature),
-        ),
-      )
-      .orderBy(asc(refreshJobCandidates.ordinal))
-      .limit(DEFAULT_BATCH_SIZE);
-    if (pending.length < DEFAULT_BATCH_SIZE && (!flushTail || pending.length === 0)) return null;
-    const selected = pending.slice(0, DEFAULT_BATCH_SIZE);
-    if (selected.length < DEFAULT_BATCH_SIZE && !flushTail) return null;
+      const pending = await tx
+        .select({ id: refreshJobCandidates.id, ordinal: refreshJobCandidates.ordinal })
+        .from(refreshJobCandidates)
+        .where(
+          and(
+            eq(refreshJobCandidates.jobId, jobId),
+            eq(refreshJobCandidates.status, "pending"),
+            eq(refreshJobCandidates.scoringSignature, scoringSignature),
+          ),
+        )
+        .orderBy(asc(refreshJobCandidates.ordinal))
+        .limit(DEFAULT_BATCH_SIZE);
+      if (pending.length < DEFAULT_BATCH_SIZE && (!flushTail || pending.length === 0)) return null;
+      const selected = pending.slice(0, DEFAULT_BATCH_SIZE);
+      if (selected.length < DEFAULT_BATCH_SIZE && !flushTail) return null;
 
-    const [batchOrdinal] = await tx
-      .select({ ordinal: max(refreshJobBatches.ordinal) })
-      .from(refreshJobBatches)
-      .where(eq(refreshJobBatches.jobId, jobId));
-    const ordinal = (batchOrdinal?.ordinal ?? -1) + 1;
-    const now = new Date().toISOString();
-    const batch = {
-      id: randomUUID(),
-      jobId,
-      ordinal,
-      candidateIdsJson: JSON.stringify(selected.map((candidate) => candidate.id)),
-      scoringSignature,
-      status: "pending" as const,
-      resultJson: null,
-      attemptCount: 0,
-      errorCode: null,
-      createdAt: now,
-      updatedAt: now,
-      completedAt: null,
-    };
-    await tx.insert(refreshJobBatches).values(batch);
-    const selectedIds = selected.map((candidate) => candidate.id);
-    const changed = await tx
-      .update(refreshJobCandidates)
-      .set({ status: "batched", batchId: batch.id, updatedAt: now })
-      .where(
-        and(
-          inArray(refreshJobCandidates.id, selectedIds),
-          eq(refreshJobCandidates.jobId, jobId),
-          eq(refreshJobCandidates.scoringSignature, scoringSignature),
-          eq(refreshJobCandidates.status, "pending"),
-        ),
-      )
-      .returning({ id: refreshJobCandidates.id });
-    if (
-      changed.length !== selectedIds.length ||
-      new Set(changed.map((row) => row.id)).size !== selectedIds.length ||
-      selectedIds.some((id) => !changed.some((row) => row.id === id))
-    ) {
-      throw new Error("candidate_batch_membership_update_mismatch");
-    }
-    return batch;
-  });
+      const [batchOrdinal] = await tx
+        .select({ ordinal: max(refreshJobBatches.ordinal) })
+        .from(refreshJobBatches)
+        .where(eq(refreshJobBatches.jobId, jobId));
+      const ordinal = (batchOrdinal?.ordinal ?? -1) + 1;
+      const now = new Date().toISOString();
+      const batch = {
+        id: randomUUID(),
+        jobId,
+        ordinal,
+        candidateIdsJson: JSON.stringify(selected.map((candidate) => candidate.id)),
+        scoringSignature,
+        status: "pending" as const,
+        resultJson: null,
+        attemptCount: 0,
+        errorCode: null,
+        createdAt: now,
+        updatedAt: now,
+        completedAt: null,
+      };
+      await tx.insert(refreshJobBatches).values(batch);
+      const selectedIds = selected.map((candidate) => candidate.id);
+      const changed = await tx
+        .update(refreshJobCandidates)
+        .set({ status: "batched", batchId: batch.id, updatedAt: now })
+        .where(
+          and(
+            inArray(refreshJobCandidates.id, selectedIds),
+            eq(refreshJobCandidates.jobId, jobId),
+            eq(refreshJobCandidates.scoringSignature, scoringSignature),
+            eq(refreshJobCandidates.status, "pending"),
+          ),
+        )
+        .returning({ id: refreshJobCandidates.id });
+      if (
+        changed.length !== selectedIds.length ||
+        new Set(changed.map((row) => row.id)).size !== selectedIds.length ||
+        selectedIds.some((id) => !changed.some((row) => row.id === id))
+      ) {
+        throw new Error("candidate_batch_membership_update_mismatch");
+      }
+      return batch;
+    }),
+  );
 }
 
 /** A batch is claimed once; running batches are never silently reclaimed after a crash. */
@@ -447,28 +462,30 @@ export async function claimCandidateBatch(
   executionToken: string,
   batchId: string,
 ): Promise<RefreshJobCandidateBatch | null> {
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash(executionToken))
-      throw new Error("refresh_job_not_owned");
-    if (job.status !== "running") throw new Error("refresh_job_not_active");
-    const changed = await tx
-      .update(refreshJobBatches)
-      .set({
-        status: "running",
-        attemptCount: sql`${refreshJobBatches.attemptCount} + 1`,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(
-        and(
-          eq(refreshJobBatches.id, batchId),
-          eq(refreshJobBatches.jobId, jobId),
-          eq(refreshJobBatches.status, "pending"),
-        ),
-      )
-      .returning();
-    return changed[0] ?? null;
-  });
+  return withBatchWriteBusyRetry(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash(executionToken))
+        throw new Error("refresh_job_not_owned");
+      if (job.status !== "running") throw new Error("refresh_job_not_active");
+      const changed = await tx
+        .update(refreshJobBatches)
+        .set({
+          status: "running",
+          attemptCount: sql`${refreshJobBatches.attemptCount} + 1`,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(
+          and(
+            eq(refreshJobBatches.id, batchId),
+            eq(refreshJobBatches.jobId, jobId),
+            eq(refreshJobBatches.status, "pending"),
+          ),
+        )
+        .returning();
+      return changed[0] ?? null;
+    }),
+  );
 }
 
 /** Return a claimed batch to pending when the shared rate limiter refused before HTTP. */
@@ -478,30 +495,32 @@ export async function deferCandidateBatchForRateLimit(
   batchId: string,
   consumedAttempt: boolean,
 ): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash(executionToken))
-      throw new Error("refresh_job_not_owned");
-    if (job.status !== "running") throw new Error("refresh_job_not_active");
-    const changed = await tx
-      .update(refreshJobBatches)
-      .set({
-        status: "pending",
-        attemptCount: consumedAttempt
-          ? refreshJobBatches.attemptCount
-          : sql`max(${refreshJobBatches.attemptCount} - 1, 0)`,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(
-        and(
-          eq(refreshJobBatches.id, batchId),
-          eq(refreshJobBatches.jobId, jobId),
-          eq(refreshJobBatches.status, "running"),
-        ),
-      )
-      .returning({ id: refreshJobBatches.id });
-    return changed.length === 1;
-  });
+  return withBatchWriteBusyRetry(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash(executionToken))
+        throw new Error("refresh_job_not_owned");
+      if (job.status !== "running") throw new Error("refresh_job_not_active");
+      const changed = await tx
+        .update(refreshJobBatches)
+        .set({
+          status: "pending",
+          attemptCount: consumedAttempt
+            ? refreshJobBatches.attemptCount
+            : sql`max(${refreshJobBatches.attemptCount} - 1, 0)`,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(
+          and(
+            eq(refreshJobBatches.id, batchId),
+            eq(refreshJobBatches.jobId, jobId),
+            eq(refreshJobBatches.status, "running"),
+          ),
+        )
+        .returning({ id: refreshJobBatches.id });
+      return changed.length === 1;
+    }),
+  );
 }
 
 export async function getCandidateBatch(
@@ -544,41 +563,43 @@ export async function storeCandidateBatchResult(
   resultByCandidateId: Record<string, unknown>,
   expectedAttemptCount: number,
 ): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash(executionToken))
-      throw new Error("refresh_job_not_owned");
-    if (job.status !== "running") throw new Error("refresh_job_not_active");
-    const [batch] = await tx
-      .select()
-      .from(refreshJobBatches)
-      .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.jobId, jobId)));
-    if (!batch || batch.status !== "running" || batch.attemptCount !== expectedAttemptCount)
-      return false;
-    const ids = JSON.parse(batch.candidateIdsJson) as string[];
-    if (
-      ids.length !== Object.keys(resultByCandidateId).length ||
-      ids.some((id) => !(id in resultByCandidateId))
-    ) {
-      throw new Error("candidate_batch_result_ids_mismatch");
-    }
-    const changed = await tx
-      .update(refreshJobBatches)
-      .set({
-        status: "result_ready",
-        resultJson: JSON.stringify(resultByCandidateId),
-        updatedAt: new Date().toISOString(),
-      })
-      .where(
-        and(
-          eq(refreshJobBatches.id, batchId),
-          eq(refreshJobBatches.status, "running"),
-          eq(refreshJobBatches.attemptCount, expectedAttemptCount),
-        ),
-      )
-      .returning({ id: refreshJobBatches.id });
-    return changed.length === 1;
-  });
+  return withBatchWriteBusyRetry(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash(executionToken))
+        throw new Error("refresh_job_not_owned");
+      if (job.status !== "running") throw new Error("refresh_job_not_active");
+      const [batch] = await tx
+        .select()
+        .from(refreshJobBatches)
+        .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.jobId, jobId)));
+      if (!batch || batch.status !== "running" || batch.attemptCount !== expectedAttemptCount)
+        return false;
+      const ids = JSON.parse(batch.candidateIdsJson) as string[];
+      if (
+        ids.length !== Object.keys(resultByCandidateId).length ||
+        ids.some((id) => !(id in resultByCandidateId))
+      ) {
+        throw new Error("candidate_batch_result_ids_mismatch");
+      }
+      const changed = await tx
+        .update(refreshJobBatches)
+        .set({
+          status: "result_ready",
+          resultJson: JSON.stringify(resultByCandidateId),
+          updatedAt: new Date().toISOString(),
+        })
+        .where(
+          and(
+            eq(refreshJobBatches.id, batchId),
+            eq(refreshJobBatches.status, "running"),
+            eq(refreshJobBatches.attemptCount, expectedAttemptCount),
+          ),
+        )
+        .returning({ id: refreshJobBatches.id });
+      return changed.length === 1;
+    }),
+  );
 }
 
 /** Mark candidates and their immutable batch saved after idempotent article persistence. */
@@ -587,28 +608,30 @@ export async function markCandidateBatchSaved(
   executionToken: string,
   batchId: string,
 ): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash(executionToken))
-      throw new Error("refresh_job_not_owned");
-    if (job.status !== "running") throw new Error("refresh_job_not_active");
-    const [batch] = await tx
-      .select()
-      .from(refreshJobBatches)
-      .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.jobId, jobId)));
-    if (!batch || batch.status !== "result_ready") return false;
-    const now = new Date().toISOString();
-    await tx
-      .update(refreshJobCandidates)
-      .set({ status: "saved", errorCode: null, updatedAt: now })
-      .where(eq(refreshJobCandidates.batchId, batchId));
-    const changed = await tx
-      .update(refreshJobBatches)
-      .set({ status: "saved", completedAt: now, updatedAt: now })
-      .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.status, "result_ready")))
-      .returning({ id: refreshJobBatches.id });
-    return changed.length === 1;
-  });
+  return withBatchWriteBusyRetry(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash(executionToken))
+        throw new Error("refresh_job_not_owned");
+      if (job.status !== "running") throw new Error("refresh_job_not_active");
+      const [batch] = await tx
+        .select()
+        .from(refreshJobBatches)
+        .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.jobId, jobId)));
+      if (!batch || batch.status !== "result_ready") return false;
+      const now = new Date().toISOString();
+      await tx
+        .update(refreshJobCandidates)
+        .set({ status: "saved", errorCode: null, updatedAt: now })
+        .where(eq(refreshJobCandidates.batchId, batchId));
+      const changed = await tx
+        .update(refreshJobBatches)
+        .set({ status: "saved", completedAt: now, updatedAt: now })
+        .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.status, "result_ready")))
+        .returning({ id: refreshJobBatches.id });
+      return changed.length === 1;
+    }),
+  );
 }
 
 export async function markCandidateBatchFailed(
@@ -636,30 +659,32 @@ export async function retryFailedCandidateBatch(
   batchId: string,
   maxAttempts = 2,
 ): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash(executionToken))
-      throw new Error("refresh_job_not_owned");
-    if (job.status !== "running") throw new Error("refresh_job_not_active");
-    const [batch] = await tx
-      .select()
-      .from(refreshJobBatches)
-      .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.jobId, jobId)));
-    if (!batch || batch.status !== "failed" || batch.attemptCount >= maxAttempts) return false;
-    const now = new Date().toISOString();
-    await tx
-      .update(refreshJobCandidates)
-      .set({ status: "batched", errorCode: null, updatedAt: now })
-      .where(
-        and(eq(refreshJobCandidates.batchId, batchId), eq(refreshJobCandidates.status, "failed")),
-      );
-    const changed = await tx
-      .update(refreshJobBatches)
-      .set({ status: "pending", errorCode: null, updatedAt: now })
-      .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.status, "failed")))
-      .returning({ id: refreshJobBatches.id });
-    return changed.length === 1;
-  });
+  return withBatchWriteBusyRetry(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash(executionToken))
+        throw new Error("refresh_job_not_owned");
+      if (job.status !== "running") throw new Error("refresh_job_not_active");
+      const [batch] = await tx
+        .select()
+        .from(refreshJobBatches)
+        .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.jobId, jobId)));
+      if (!batch || batch.status !== "failed" || batch.attemptCount >= maxAttempts) return false;
+      const now = new Date().toISOString();
+      await tx
+        .update(refreshJobCandidates)
+        .set({ status: "batched", errorCode: null, updatedAt: now })
+        .where(
+          and(eq(refreshJobCandidates.batchId, batchId), eq(refreshJobCandidates.status, "failed")),
+        );
+      const changed = await tx
+        .update(refreshJobBatches)
+        .set({ status: "pending", errorCode: null, updatedAt: now })
+        .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.status, "failed")))
+        .returning({ id: refreshJobBatches.id });
+      return changed.length === 1;
+    }),
+  );
 }
 
 export async function markCandidateBatchUnknown(
@@ -687,52 +712,54 @@ export async function recoverUnknownCandidateBatch(
   batchId: string,
   maxAttempts = 2,
 ): Promise<"retry" | "failed" | "not-claimable"> {
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash(executionToken))
-      throw new Error("refresh_job_not_owned");
-    if (job.status !== "running") throw new Error("refresh_job_not_active");
-    const [batch] = await tx
-      .select()
-      .from(refreshJobBatches)
-      .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.jobId, jobId)));
-    if (!batch || batch.status !== "unknown") return "not-claimable";
+  return withBatchWriteBusyRetry(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash(executionToken))
+        throw new Error("refresh_job_not_owned");
+      if (job.status !== "running") throw new Error("refresh_job_not_active");
+      const [batch] = await tx
+        .select()
+        .from(refreshJobBatches)
+        .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.jobId, jobId)));
+      if (!batch || batch.status !== "unknown") return "not-claimable";
 
-    const now = new Date().toISOString();
-    if (batch.attemptCount >= maxAttempts) {
+      const now = new Date().toISOString();
+      if (batch.attemptCount >= maxAttempts) {
+        await tx
+          .update(refreshJobCandidates)
+          .set({ status: "failed", errorCode: "candidate-batch-retry-exhausted", updatedAt: now })
+          .where(eq(refreshJobCandidates.batchId, batchId));
+        await tx
+          .update(refreshJobBatches)
+          .set({
+            status: "failed",
+            errorCode: "candidate-batch-retry-exhausted",
+            completedAt: now,
+            updatedAt: now,
+          })
+          .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.status, "unknown")));
+        return "failed";
+      }
+
       await tx
         .update(refreshJobCandidates)
-        .set({ status: "failed", errorCode: "candidate-batch-retry-exhausted", updatedAt: now })
+        .set({ status: "batched", errorCode: null, updatedAt: now })
         .where(eq(refreshJobCandidates.batchId, batchId));
-      await tx
+      const changed = await tx
         .update(refreshJobBatches)
-        .set({
-          status: "failed",
-          errorCode: "candidate-batch-retry-exhausted",
-          completedAt: now,
-          updatedAt: now,
-        })
-        .where(and(eq(refreshJobBatches.id, batchId), eq(refreshJobBatches.status, "unknown")));
-      return "failed";
-    }
-
-    await tx
-      .update(refreshJobCandidates)
-      .set({ status: "batched", errorCode: null, updatedAt: now })
-      .where(eq(refreshJobCandidates.batchId, batchId));
-    const changed = await tx
-      .update(refreshJobBatches)
-      .set({ status: "pending", errorCode: null, updatedAt: now })
-      .where(
-        and(
-          eq(refreshJobBatches.id, batchId),
-          eq(refreshJobBatches.status, "unknown"),
-          eq(refreshJobBatches.attemptCount, batch.attemptCount),
-        ),
-      )
-      .returning({ id: refreshJobBatches.id });
-    return changed.length === 1 ? "retry" : "not-claimable";
-  });
+        .set({ status: "pending", errorCode: null, updatedAt: now })
+        .where(
+          and(
+            eq(refreshJobBatches.id, batchId),
+            eq(refreshJobBatches.status, "unknown"),
+            eq(refreshJobBatches.attemptCount, batch.attemptCount),
+          ),
+        )
+        .returning({ id: refreshJobBatches.id });
+      return changed.length === 1 ? "retry" : "not-claimable";
+    }),
+  );
 }
 
 async function setBatchState(
@@ -746,32 +773,34 @@ async function setBatchState(
 ): Promise<boolean> {
   const sanitized = safeErrorCode(errorCode);
   const now = new Date().toISOString();
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash(executionToken))
-      throw new Error("refresh_job_not_owned");
-    if (job.status !== "running") throw new Error("refresh_job_not_active");
-    const conditions = [
-      eq(refreshJobBatches.id, batchId),
-      eq(refreshJobBatches.jobId, jobId),
-      inArray(refreshJobBatches.status, from),
-    ];
-    if (expectedAttemptCount !== undefined) {
-      conditions.push(eq(refreshJobBatches.attemptCount, expectedAttemptCount));
-    }
-    const changed = await tx
-      .update(refreshJobBatches)
-      .set({ status, errorCode: sanitized, updatedAt: now })
-      .where(and(...conditions))
-      .returning({ id: refreshJobBatches.id });
-    if (changed.length === 1 && status === "failed") {
-      await tx
-        .update(refreshJobCandidates)
-        .set({ status: "failed", errorCode: sanitized, updatedAt: now })
-        .where(eq(refreshJobCandidates.batchId, batchId));
-    }
-    return changed.length === 1;
-  });
+  return withBatchWriteBusyRetry(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash(executionToken))
+        throw new Error("refresh_job_not_owned");
+      if (job.status !== "running") throw new Error("refresh_job_not_active");
+      const conditions = [
+        eq(refreshJobBatches.id, batchId),
+        eq(refreshJobBatches.jobId, jobId),
+        inArray(refreshJobBatches.status, from),
+      ];
+      if (expectedAttemptCount !== undefined) {
+        conditions.push(eq(refreshJobBatches.attemptCount, expectedAttemptCount));
+      }
+      const changed = await tx
+        .update(refreshJobBatches)
+        .set({ status, errorCode: sanitized, updatedAt: now })
+        .where(and(...conditions))
+        .returning({ id: refreshJobBatches.id });
+      if (changed.length === 1 && status === "failed") {
+        await tx
+          .update(refreshJobCandidates)
+          .set({ status: "failed", errorCode: sanitized, updatedAt: now })
+          .where(eq(refreshJobCandidates.batchId, batchId));
+      }
+      return changed.length === 1;
+    }),
+  );
 }
 
 export async function listCandidateBatches(

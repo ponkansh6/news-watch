@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { scoreArticlesById } from "@/lib/llm";
+import { db } from "@/lib/db";
+import { geminiRequestAttempts, geminiRequestSlot } from "@/lib/db/schema";
 
 const { mockGenerateContent } = vi.hoisted(() => ({ mockGenerateContent: vi.fn() }));
 
@@ -19,9 +21,11 @@ function response(results: unknown) {
 }
 
 describe("scoreArticlesById", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
     process.env.GOOGLE_API_KEY = "test-api-key";
+    await db.delete(geminiRequestAttempts);
+    await db.delete(geminiRequestSlot);
   });
 
   it("matches scores by id when the model changes result order", async () => {
@@ -75,7 +79,18 @@ describe("scoreArticlesById", () => {
 
   it("retries a malformed batch response as a whole within the configured bound", async () => {
     mockGenerateContent
-      .mockResolvedValueOnce({ response: { text: () => "not json" } })
+      .mockImplementationOnce(async () => {
+        // Keep this retry test independent of the real five-second sender
+        // cadence while still exercising the persisted request attempt.
+        await db.$client.execute({
+          sql: `UPDATE gemini_request_attempts
+                SET started_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-6 seconds')
+                WHERE id = (SELECT id FROM gemini_request_attempts
+                  WHERE outcome = 'started' ORDER BY started_at DESC LIMIT 1)`,
+          args: [],
+        });
+        return { response: { text: () => "not json" } };
+      })
       .mockResolvedValueOnce(
         response([
           { id: "article-a", summary: "A", usefulness: 8, ntt_relevance: 1, reason: "A" },

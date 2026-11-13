@@ -74,6 +74,7 @@ type CandidateBatchRunResult =
 export type PresendMetricBoundary =
   | "collection_complete"
   | "previous_batch_terminal"
+  | "batch_interval_elapsed"
   | "rate_wait_complete"
   | "recovery_complete";
 
@@ -265,10 +266,6 @@ export async function freezeCandidateBatchStep(
   flushTail: boolean,
 ): Promise<string | null> {
   "use step";
-  const existingBatch = (await listCandidateBatches(jobId, executionToken)).find((batch) =>
-    ["pending", "result_ready", "running"].includes(batch.status),
-  );
-  if (existingBatch) return existingBatch.id;
   const pending = await summarizePendingCandidateSignatures(jobId, executionToken);
   for (const summary of pending) {
     if (summary.candidateCount >= 50 || flushTail) {

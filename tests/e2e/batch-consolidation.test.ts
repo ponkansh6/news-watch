@@ -5,6 +5,7 @@
  * in batches of up to 20 instead of being split into small batches.
  */
 import { describe, expect, test, vi, beforeEach } from "vitest";
+import { withFastForwardedTimers } from "../helpers/with-fast-forwarded-timers";
 
 const { mockScoreArticles } = vi.hoisted(() => ({ mockScoreArticles: vi.fn() }));
 const { mockUpsertArticle } = vi.hoisted(() => ({ mockUpsertArticle: vi.fn() }));
@@ -55,7 +56,7 @@ describe("e2e: batch consolidation", () => {
   test("20 articles are scored in a single LLM call", async () => {
     const { scoreAndSaveTagged } = await import("@/lib/score-pipeline");
     const articles = Array.from({ length: 20 }, (_, i) => makeArticle(`https://example.com/${i}`));
-    const saved = await scoreAndSaveTagged(articles);
+    const saved = await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
     expect(saved).toBe(20);
     expect(mockScoreArticles).toHaveBeenCalledTimes(1);
     expect(mockScoreArticles.mock.calls[0][0]).toHaveLength(20);
@@ -66,7 +67,7 @@ describe("e2e: batch consolidation", () => {
   test("25 articles split into 20 + 5 (2 LLM calls)", async () => {
     const { scoreAndSaveTagged } = await import("@/lib/score-pipeline");
     const articles = Array.from({ length: 25 }, (_, i) => makeArticle(`https://example.com/${i}`));
-    const saved = await scoreAndSaveTagged(articles);
+    const saved = await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
     expect(saved).toBe(25);
     expect(mockScoreArticles).toHaveBeenCalledTimes(2);
     expect(mockScoreArticles.mock.calls[0][0]).toHaveLength(20);

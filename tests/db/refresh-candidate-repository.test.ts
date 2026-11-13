@@ -679,6 +679,50 @@ describe("refresh candidate repository", () => {
     ).toBe(true);
   });
 
+  test("persists separate frozen batch results concurrently without mixing membership", async () => {
+    const job = await newJob();
+    const firstSource = SOURCE_IDS[0]!;
+    const secondSource = SOURCE_IDS[1]!;
+    await stageCandidates(
+      job,
+      firstSource,
+      Array.from({ length: 50 }, (_, index) => candidate(index + 1000, firstSource)),
+    );
+    await stageCandidates(
+      job,
+      secondSource,
+      Array.from({ length: 50 }, (_, index) => candidate(index + 2000, secondSource)),
+    );
+    const firstBatch = await freezeNextCandidateBatch(job.id, job.token, "signature-v1");
+    const secondBatch = await freezeNextCandidateBatch(job.id, job.token, "signature-v1");
+    expect(firstBatch).not.toBeNull();
+    expect(secondBatch).not.toBeNull();
+    await Promise.all([
+      claimCandidateBatch(job.id, job.token, firstBatch!.id),
+      claimCandidateBatch(job.id, job.token, secondBatch!.id),
+    ]);
+
+    const [firstCandidates, secondCandidates] = await Promise.all([
+      getBatchCandidates(job.id, job.token, firstBatch!.id),
+      getBatchCandidates(job.id, job.token, secondBatch!.id),
+    ]);
+    const firstResult = Object.fromEntries(firstCandidates.map((row) => [row.id, { score: 1 }]));
+    const secondResult = Object.fromEntries(secondCandidates.map((row) => [row.id, { score: 2 }]));
+    const stored = await Promise.all([
+      storeCandidateBatchResult(job.id, job.token, firstBatch!.id, firstResult, 1),
+      storeCandidateBatchResult(job.id, job.token, secondBatch!.id, secondResult, 1),
+    ]);
+    expect(stored).toEqual([true, true]);
+
+    const saved = await Promise.all([
+      markCandidateBatchSaved(job.id, job.token, firstBatch!.id),
+      markCandidateBatchSaved(job.id, job.token, secondBatch!.id),
+    ]);
+    expect(saved).toEqual([true, true]);
+    expect((await getCandidateBatch(job.id, job.token, firstBatch!.id))?.status).toBe("saved");
+    expect((await getCandidateBatch(job.id, job.token, secondBatch!.id))?.status).toBe("saved");
+  });
+
   test("rejects wrong execution tokens and oversized per-source staging", async () => {
     const job = await newJob();
     await expect(

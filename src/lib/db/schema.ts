@@ -259,7 +259,7 @@ export const refreshJobBatches = sqliteTable(
   }),
 );
 
-/** Shared send lock held across one Gemini HTTP attempt. */
+/** Shared admission lock, released when an HTTP attempt row is durably started. */
 export const geminiRequestSlot = sqliteTable("gemini_request_slot", {
   id: integer("id").primaryKey(),
   ownerId: text("owner_id"),
@@ -281,6 +281,10 @@ export const geminiRequestAttempts = sqliteTable(
     outcome: text("outcome", { enum: ["started", "succeeded", "failed", "ambiguous"] })
       .notNull()
       .default("started"),
+    ownerTokenHash: text("owner_token_hash"),
+    leaseKind: text("lease_kind"),
+    deploymentId: text("deployment_id"),
+    recoveryAfter: text("recovery_after"),
   },
   (table) => ({
     completedAtIndex: index("idx_gemini_request_attempts_completed_at").on(table.completedAt),

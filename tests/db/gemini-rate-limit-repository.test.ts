@@ -22,19 +22,45 @@ afterEach(async () => {
 });
 
 describe("Gemini rate-limit repository", () => {
-  test("allows one concurrent sender and keeps the slot until attempt completion", async () => {
-    const claims = await Promise.all(Array.from({ length: 16 }, () => claimGeminiAttempt()));
+  test("serializes admission while allowing overlapping attempts after each cadence slot", async () => {
+    const evidence = { kind: "workflow-step-300-v1" as const, deploymentId: "test-deployment" };
+    const claims = await Promise.all(
+      Array.from({ length: 16 }, () => claimGeminiAttempt(evidence)),
+    );
     const admitted = claims.filter((claim) => claim.kind === "claimed");
     expect(admitted).toHaveLength(1);
 
     const owner = admitted[0]!.owner;
-    expect(await claimGeminiAttempt()).toMatchObject({ kind: "busy" });
+    expect(await claimGeminiAttempt(evidence)).toMatchObject({ kind: "busy" });
     const attemptId = await beginGeminiAttempt(owner);
+    await db.$client.execute({
+      sql: `UPDATE gemini_request_attempts SET started_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-6 seconds') WHERE id = ?`,
+      args: [attemptId],
+    });
     expect(
       await completeGeminiAttempt({ ...owner, ownerToken: "wrong-token" }, attemptId, "succeeded"),
     ).toBe(false);
-    expect(await claimGeminiAttempt()).toMatchObject({ kind: "busy" });
+    const nextClaim = await claimGeminiAttempt(evidence);
+    expect(nextClaim.kind).toBe("claimed");
+    if (nextClaim.kind !== "claimed") throw new Error("expected next cadence admission");
+    const nextAttemptId = await beginGeminiAttempt(nextClaim.owner);
     expect(await completeGeminiAttempt(owner, attemptId, "succeeded")).toBe(true);
+    expect(await completeGeminiAttempt(nextClaim.owner, nextAttemptId, "failed")).toBe(true);
+  });
+
+  test("enforces the five-second cadence from durable start timestamps", async () => {
+    const evidence = { kind: "workflow-step-300-v1" as const, deploymentId: "test-deployment" };
+    const claim = await claimGeminiAttempt(evidence);
+    expect(claim.kind).toBe("claimed");
+    if (claim.kind !== "claimed") throw new Error("expected an admitted attempt");
+    await beginGeminiAttempt(claim.owner);
+
+    const next = await claimGeminiAttempt(evidence);
+    expect(next.kind).toBe("rate-limited");
+    if (next.kind === "rate-limited") {
+      expect(next.retryAfterMs).toBeGreaterThan(0);
+      expect(next.retryAfterMs).toBeLessThanOrEqual(5_000);
+    }
   });
 
   test("counts failed attempts and rejects the sixteenth completion in a rolling window", async () => {
@@ -46,6 +72,10 @@ describe("Gemini rate-limit repository", () => {
       expect(
         await completeGeminiAttempt(claim.owner, attemptId, index === 0 ? "failed" : "succeeded"),
       ).toBe(true);
+      await db.$client.execute({
+        sql: `UPDATE gemini_request_attempts SET started_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${6 + index} seconds') WHERE id = ?`,
+        args: [attemptId],
+      });
     }
 
     const next = await claimGeminiAttempt();
@@ -67,6 +97,10 @@ describe("Gemini rate-limit repository", () => {
       .where(eq(geminiRequestAttempts.id, attemptId));
     expect(attempt).toMatchObject({ outcome: "ambiguous" });
     expect(attempt?.completedAt).toBeTruthy();
+    await db.$client.execute({
+      sql: `UPDATE gemini_request_attempts SET started_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-6 seconds') WHERE id = ?`,
+      args: [attemptId],
+    });
     expect((await claimGeminiAttempt()).kind).toBe("claimed");
   });
 
@@ -102,7 +136,7 @@ describe("Gemini rate-limit repository", () => {
     expect(slot?.ownerId).toBe(claim.owner.ownerId);
   });
 
-  test("recovers an expired pinned workflow owner and counts its started send as ambiguous", async () => {
+  test("recovers an expired pinned attempt and counts its send as ambiguous", async () => {
     const first = await claimGeminiAttempt({
       kind: "workflow-step-300-v1",
       deploymentId: "commit-a",
@@ -112,9 +146,9 @@ describe("Gemini rate-limit repository", () => {
     const attemptId = await beginGeminiAttempt(first.owner);
 
     const lease = await db.$client.execute({
-      sql: `SELECT (julianday(recovery_after) - julianday(acquired_at)) * 86400 AS lease_seconds
-            FROM gemini_request_slot WHERE id = 1`,
-      args: [],
+      sql: `SELECT (julianday(recovery_after) - julianday(started_at)) * 86400 AS lease_seconds
+            FROM gemini_request_attempts WHERE id = ?`,
+      args: [attemptId],
     });
     const leaseSeconds = Number(lease.rows[0]?.lease_seconds);
     expect(leaseSeconds).toBeGreaterThan(359.98);
@@ -123,32 +157,18 @@ describe("Gemini rate-limit repository", () => {
     // Move the deadline relative to SQLite's own clock to exercise both sides
     // of the fence without sleeping or depending on the test process clock.
     await db.$client.execute({
-      sql: `UPDATE gemini_request_slot
-            SET recovery_after = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+2 seconds')
-            WHERE id = 1`,
-      args: [],
+      sql: `UPDATE gemini_request_attempts SET recovery_after = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+2 seconds'),
+              started_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-6 seconds') WHERE id = ?`,
+      args: [attemptId],
     });
 
-    const waiting = await claimGeminiAttempt();
-    expect(waiting.kind).toBe("busy");
-    if (waiting.kind === "busy") {
-      expect(waiting.recoverable).toBe(true);
-      if (waiting.recoverable) {
-        expect(waiting.retryAfterMs).toBeGreaterThan(0);
-        expect(waiting.retryAfterMs).toBeLessThan(2_500);
-      }
-    }
-
     await db.$client.execute({
-      sql: `UPDATE gemini_request_slot
-            SET recovery_after = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-            WHERE id = 1`,
-      args: [],
+      sql: `UPDATE gemini_request_attempts SET recovery_after = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+      args: [attemptId],
     });
     const replacements = await Promise.all(Array.from({ length: 16 }, () => claimGeminiAttempt()));
     expect(replacements.filter((claim) => claim.kind === "claimed")).toHaveLength(1);
     expect(replacements.filter((claim) => claim.kind === "busy")).toHaveLength(15);
-
     const [attempt] = await db
       .select()
       .from(geminiRequestAttempts)
@@ -158,25 +178,99 @@ describe("Gemini rate-limit repository", () => {
     expect(await getGeminiRateWindow()).toMatchObject({ recentAttempts: 1 });
   });
 
+  test("backfills a legacy in-flight attempt from its slot and recovers it safely", async () => {
+    const claim = await claimGeminiAttempt({
+      kind: "workflow-step-300-v1",
+      deploymentId: "old-deployment",
+    });
+    expect(claim.kind).toBe("claimed");
+    if (claim.kind !== "claimed") throw new Error("expected an admitted attempt");
+
+    await db.$client.execute({
+      sql: `INSERT INTO gemini_request_attempts (id, owner_id, started_at, outcome)
+            VALUES ('legacy-attempt', ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-6 seconds'), 'started')`,
+      args: [claim.owner.ownerId],
+    });
+    await db.$client.execute({
+      sql: `UPDATE gemini_request_slot
+            SET recovery_after = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = 1`,
+      args: [],
+    });
+
+    const replacement = await claimGeminiAttempt();
+    expect(replacement.kind).toBe("claimed");
+    const [legacy] = await db
+      .select()
+      .from(geminiRequestAttempts)
+      .where(eq(geminiRequestAttempts.id, "legacy-attempt"));
+    expect(legacy).toMatchObject({
+      outcome: "ambiguous",
+      ownerTokenHash: expect.any(String),
+      leaseKind: "workflow-step-300-v1",
+      deploymentId: "old-deployment",
+    });
+  });
+
+  test("recovers one expired in-flight request without releasing another", async () => {
+    const evidence = { kind: "workflow-step-300-v1" as const, deploymentId: "test-deployment" };
+    const first = await claimGeminiAttempt(evidence);
+    expect(first.kind).toBe("claimed");
+    if (first.kind !== "claimed") throw new Error("expected first admission");
+    const firstId = await beginGeminiAttempt(first.owner);
+    await db.$client.execute({
+      sql: `UPDATE gemini_request_attempts
+            SET started_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-6 seconds') WHERE id = ?`,
+      args: [firstId],
+    });
+
+    const second = await claimGeminiAttempt(evidence);
+    expect(second.kind).toBe("claimed");
+    if (second.kind !== "claimed") throw new Error("expected second admission");
+    const secondId = await beginGeminiAttempt(second.owner);
+    await db.$client.execute({
+      sql: `UPDATE gemini_request_attempts
+            SET started_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-6 seconds'),
+                recovery_after = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+60 seconds')
+            WHERE id = ?`,
+      args: [secondId],
+    });
+    await db.$client.execute({
+      sql: `UPDATE gemini_request_attempts
+            SET started_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-12 seconds'),
+                recovery_after = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = ?`,
+      args: [firstId],
+    });
+
+    const third = await claimGeminiAttempt(evidence);
+    expect(third.kind).toBe("claimed");
+    const [firstAttempt] = await db
+      .select()
+      .from(geminiRequestAttempts)
+      .where(eq(geminiRequestAttempts.id, firstId));
+    const [secondAttempt] = await db
+      .select()
+      .from(geminiRequestAttempts)
+      .where(eq(geminiRequestAttempts.id, secondId));
+    expect(firstAttempt?.outcome).toBe("ambiguous");
+    expect(secondAttempt?.outcome).toBe("started");
+  });
+
   test("uses the 120-second fence only for an explicitly identified request lease", async () => {
     const claim = await claimGeminiAttempt({ kind: "request-60-v1", deploymentId: "deployment-a" });
     expect(claim.kind).toBe("claimed");
     if (claim.kind !== "claimed") throw new Error("expected an admitted attempt");
+    const attemptId = await beginGeminiAttempt(claim.owner);
 
     const lease = await db.$client.execute({
-      sql: `SELECT (julianday(recovery_after) - julianday(acquired_at)) * 86400 AS lease_seconds
-            FROM gemini_request_slot WHERE id = 1`,
-      args: [],
+      sql: `SELECT (julianday(recovery_after) - julianday(started_at)) * 86400 AS lease_seconds
+            FROM gemini_request_attempts WHERE id = ?`,
+      args: [attemptId],
     });
     const leaseSeconds = Number(lease.rows[0]?.lease_seconds);
     expect(leaseSeconds).toBeGreaterThan(119.98);
     expect(leaseSeconds).toBeLessThan(120.02);
 
-    const busy = await claimGeminiAttempt();
-    expect(busy.kind).toBe("busy");
-    if (busy.kind === "busy") {
-      expect(busy.recoverable).toBe(true);
-      if (busy.recoverable) expect(busy.retryAfterMs).toBeGreaterThan(0);
-    }
+    expect((await claimGeminiAttempt()).kind).toBe("rate-limited");
   });
 });

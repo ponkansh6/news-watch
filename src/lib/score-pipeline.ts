@@ -4,6 +4,7 @@ import { calcRecencyScore, calcCompositeScore } from "@/lib/scoring";
 import { computeContentHash, computeScoringSignature } from "./scoring-signature";
 import {
   LLM_BATCH_SIZE,
+  LLM_BATCH_CONCURRENCY,
   JAPANESE_RATIO_THRESHOLD,
   JAPANESE_LARGE_BATCH,
   NTT_TAG_RELEVANCE_THRESHOLD,
@@ -64,22 +65,36 @@ export async function scoreAndSaveTagged(
     options?.onScoringProgress?.(completed, failed, articles.length);
   };
   let savedCount = 0;
+  const active = new Set<Promise<void>>();
+  let lastRequestStartedAt: number | undefined;
   for (const batch of batches) {
-    try {
-      savedCount += await scoreAndSaveBatch(
-        batch,
-        preferenceSection,
-        signature,
-        deadline,
-        options?.onScoringError,
-        options?.onScoringSuccess,
-        reportProgress,
-        options?.leaseEvidence,
-      );
-    } catch (err) {
-      console.error("[pipeline] Unexpected batch scoring failure:", err);
+    while (active.size >= LLM_BATCH_CONCURRENCY) await Promise.race(active);
+    if (lastRequestStartedAt !== undefined) {
+      const waitMs = 5_000 - (Date.now() - lastRequestStartedAt);
+      if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
+    lastRequestStartedAt = Date.now();
+    let task!: Promise<void>;
+    task = scoreAndSaveBatch(
+      batch,
+      preferenceSection,
+      signature,
+      deadline,
+      options?.onScoringError,
+      options?.onScoringSuccess,
+      reportProgress,
+      options?.leaseEvidence,
+    )
+      .then((count) => {
+        savedCount += count;
+      })
+      .catch((err: unknown) => {
+        console.error("[pipeline] Unexpected batch scoring failure:", err);
+      })
+      .finally(() => active.delete(task));
+    active.add(task);
   }
+  await Promise.all(active);
 
   return savedCount;
 }

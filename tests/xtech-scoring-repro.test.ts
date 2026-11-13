@@ -2,6 +2,7 @@
  * Reproduction test: xtech 20件取得→0件スコアリング
  */
 import { afterEach, beforeAll, beforeEach, describe, it, expect, vi } from "vitest";
+import { withFastForwardedTimers } from "./helpers/with-fast-forwarded-timers";
 
 vi.mock("@/lib/db", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, any>;
@@ -231,7 +232,7 @@ describe("xtech 20件取得→0件スコアリングの完全再現テスト", (
     let pipelineError: any;
 
     try {
-      saved = await scoreAndSaveTagged(normalized);
+      saved = await withFastForwardedTimers(() => scoreAndSaveTagged(normalized));
       await deleteLowScoredArticles(5, since);
     } catch (err) {
       pipelineError = err;
@@ -268,7 +269,7 @@ describe("xtech 20件取得→0件スコアリングの完全再現テスト", (
         })),
     );
 
-    const saved = await scoreAndSaveTagged(articlesWithNullDesc);
+    const saved = await withFastForwardedTimers(() => scoreAndSaveTagged(articlesWithNullDesc));
 
     expect(saved).toBe(ARTICLE_COUNT);
 
@@ -292,7 +293,7 @@ describe("xtech 20件取得→0件スコアリングの完全再現テスト", (
         })),
     );
 
-    const saved = await scoreAndSaveTagged(articlesWithEmptyDesc);
+    const saved = await withFastForwardedTimers(() => scoreAndSaveTagged(articlesWithEmptyDesc));
 
     expect(saved).toBe(ARTICLE_COUNT);
   });
@@ -328,7 +329,7 @@ describe("xtech 20件取得→0件スコアリングの完全再現テスト", (
         })),
     );
 
-    const saved = await scoreAndSaveTagged(articlesWithZenkakuDesc);
+    const saved = await withFastForwardedTimers(() => scoreAndSaveTagged(articlesWithZenkakuDesc));
 
     expect(saved).toBe(ARTICLES_WITH_ZENKAKU_COUNT);
   });
@@ -343,7 +344,7 @@ describe("xtech 20件取得→0件スコアリングの完全再現テスト", (
     articles[0].url = "https://xtech.nikkei.com/fallback/1";
     articles[1].url = "https://xtech.nikkei.com/fallback/2";
 
-    const saved = await scoreAndSaveTagged(articles);
+    const saved = await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
 
     expect(saved).toBe(0);
   });

@@ -1,24 +1,43 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { scoreArticles } from "@/lib/llm";
+import { db } from "@/lib/db";
+import { geminiRequestAttempts, geminiRequestSlot } from "@/lib/db/schema";
 
-const { mockGenerateContent } = vi.hoisted(() => ({
+const { mockGenerateContent, mockAgeStartedAttempt } = vi.hoisted(() => ({
   mockGenerateContent: vi.fn(),
+  mockAgeStartedAttempt: vi.fn(),
 }));
 
 vi.mock("@google/generative-ai", () => {
   return {
     GoogleGenerativeAI: class {
       getGenerativeModel = vi.fn().mockReturnValue({
-        generateContent: mockGenerateContent,
+        generateContent: async (prompt: string, options?: { timeout?: number }) => {
+          await mockAgeStartedAttempt();
+          return mockGenerateContent(prompt, options);
+        },
       });
     },
   };
 });
 
 describe("batch-fallback e2e/integration test", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
     process.env.GOOGLE_API_KEY = "test-api-key";
+    await db.delete(geminiRequestAttempts);
+    await db.delete(geminiRequestSlot);
+    mockAgeStartedAttempt.mockImplementation(async () => {
+      // Exercise the real shared limiter without waiting five wall-clock
+      // seconds between mocked provider responses.
+      await db.$client.execute({
+        sql: `UPDATE gemini_request_attempts
+              SET started_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-6 seconds')
+              WHERE id = (SELECT id FROM gemini_request_attempts
+                WHERE outcome = 'started' ORDER BY started_at DESC LIMIT 1)`,
+        args: [],
+      });
+    });
     vi.stubGlobal(
       "setTimeout",
       vi.fn((cb) => cb()),

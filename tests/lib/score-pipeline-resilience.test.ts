@@ -119,7 +119,7 @@ describe("score-pipeline-resilience", () => {
     expect(onScoringError).toHaveBeenCalledWith("database unavailable");
   });
 
-  test("scores consecutive batches in sequence", async () => {
+  test("starts each batch five seconds apart without waiting for the previous response", async () => {
     const firstBatch = Array.from({ length: 20 }, (_, index) => ({
       title: `Article ${index}`,
       description: "Description",
@@ -149,15 +149,23 @@ describe("score-pipeline-resilience", () => {
       failed: [],
     }));
 
-    const scoring = scoreAndSaveTagged(articles, { preferenceSection: "" });
-    await vi.waitFor(() => expect(scoreArticles).toHaveBeenCalledOnce());
-    expect(scoreArticles.mock.calls[0][0]).toHaveLength(20);
+    vi.useFakeTimers();
+    try {
+      const scoring = scoreAndSaveTagged(articles, { preferenceSection: "" });
+      expect(scoreArticles).toHaveBeenCalledOnce();
+      expect(scoreArticles.mock.calls[0][0]).toHaveLength(20);
 
-    resolveFirstBatch(Array.from({ length: 20 }, () => ({}) as never));
-    const savedCount = await scoring;
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(scoreArticles).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(scoreArticles).toHaveBeenCalledTimes(2);
+      expect(scoreArticles.mock.calls[1][0]).toHaveLength(1);
 
-    expect(scoreArticles).toHaveBeenCalledTimes(2);
-    expect(scoreArticles.mock.calls[1][0]).toHaveLength(1);
-    expect(savedCount).toBe(21);
+      resolveFirstBatch(Array.from({ length: 20 }, () => ({}) as never));
+      const savedCount = await scoring;
+      expect(savedCount).toBe(21);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

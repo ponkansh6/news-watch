@@ -1,6 +1,7 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { scoreAndSaveTagged } from "@/lib/score-pipeline";
 import * as gemini from "@/lib/llm";
+import { withFastForwardedTimers } from "../helpers/with-fast-forwarded-timers";
 
 vi.mock("@/lib/llm", () => ({
   scoreArticles: vi.fn().mockImplementation(async (articles) => {
@@ -39,7 +40,7 @@ describe("Japanese batching logic", () => {
       author: "Author",
     }));
 
-    await scoreAndSaveTagged(articles);
+    await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
 
     // Since length is 10 and batch size for Japanese is 8, scoreArticles should be called twice:
     // batch 1: 8 articles, batch 2: 2 articles
@@ -62,7 +63,7 @@ describe("Japanese batching logic", () => {
       author: "Author",
     }));
 
-    await scoreAndSaveTagged(articles);
+    await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
 
     // Default batch size is 20. 25 articles -> batch 1: 20, batch 2: 5
     expect(gemini.scoreArticles).toHaveBeenCalledTimes(2);
@@ -96,7 +97,7 @@ describe("Japanese batching logic", () => {
       },
     ];
 
-    await scoreAndSaveTagged(articles);
+    await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
     // Ratio is 50%, not > 50%, so uses LLM_BATCH_SIZE (20)
     expect(gemini.scoreArticles).toHaveBeenCalledTimes(1);
     expect(vi.mocked(gemini.scoreArticles).mock.calls[0][0].length).toBe(2);
@@ -115,7 +116,7 @@ describe("Japanese batching logic", () => {
       author: "Author",
     }));
 
-    await scoreAndSaveTagged(articles);
+    await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
     // Since > 50% Japanese, batch size is 8 for the *first* slice, but wait:
     // scoreAndSaveTagged slices `group` using `getBatchSize(group.slice(start))`.
     // As items are consumed, remaining items might drop below 50% Japanese!
@@ -135,14 +136,14 @@ describe("Japanese batching logic", () => {
       author: "Author",
     }));
 
-    await scoreAndSaveTagged(articles);
+    await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
     const calls = vi.mocked(gemini.scoreArticles).mock.calls;
     // First batch size should be 8
     expect(calls[0][0].length).toBe(8);
   });
 
   test("handle empty articles list gracefully", async () => {
-    const saved = await scoreAndSaveTagged([]);
+    const saved = await withFastForwardedTimers(() => scoreAndSaveTagged([]));
     expect(saved).toBe(0);
     expect(gemini.scoreArticles).not.toHaveBeenCalled();
   });

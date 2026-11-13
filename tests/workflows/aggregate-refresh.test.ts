@@ -600,7 +600,7 @@ describe("aggregate refresh workflow", () => {
           "job-metric:batch-metric:1:0:2:sdk-call",
         ]);
         expect(metrics[0]).toMatchObject({
-          boundary: "previous_batch_terminal",
+          boundary: "batch_interval_elapsed",
           internalRetryIndex: 1,
           measurement: "sdk_call_before_generateContent_not_http_start",
           elapsedIncludes: "shared_slot_claim_and_attempt_checkpoint",

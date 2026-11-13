@@ -1,6 +1,7 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/fetch-news/route";
+import { withFastForwardedTimers } from "../helpers/with-fast-forwarded-timers";
 
 const refreshJobMocks = vi.hoisted(() => ({
   claimSingleRefresh: vi.fn().mockResolvedValue({
@@ -86,7 +87,7 @@ describe("fetch cap (MAX_ARTICLES = 40)", () => {
       },
     });
 
-    const response = await POST(request);
+    const response = await withFastForwardedTimers(() => POST(request));
     const data = await response.json();
 
     expect(response.status).toBe(200);

@@ -3,6 +3,7 @@
  * "記事の取得→20/20完了と表示&スコアリング済み記事0件"
  */
 import { beforeAll, beforeEach, describe, it, expect, vi } from "vitest";
+import { withFastForwardedTimers } from "../helpers/with-fast-forwarded-timers";
 
 // ── Mock DB (in-memory, isolated) ──────────────────────────────────
 vi.mock("@/lib/db", async (importOriginal) => {
@@ -88,7 +89,7 @@ describe("Scenario 1: LLM returns valid scores (happy path)", () => {
     );
 
     const articles = makeArticles(ARTICLE_COUNT);
-    const savedCount = await scoreAndSaveTagged(articles);
+    const savedCount = await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
 
     expect(savedCount).toBe(ARTICLE_COUNT);
 
@@ -109,7 +110,7 @@ describe("Scenario 2: LLM fails (returns null array)", () => {
     );
 
     const articles = makeArticles(ARTICLE_COUNT);
-    const savedCount = await scoreAndSaveTagged(articles);
+    const savedCount = await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
 
     expect(savedCount).toBe(0);
 
@@ -139,7 +140,7 @@ describe("Scenario 3: deleteLowScoredArticles interaction", () => {
     );
 
     const articles = makeArticles(ARTICLE_COUNT);
-    const savedCount = await scoreAndSaveTagged(articles);
+    const savedCount = await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
 
     expect(savedCount).toBe(ARTICLE_COUNT);
 
@@ -170,7 +171,7 @@ describe("Scenario 3: deleteLowScoredArticles interaction", () => {
 
     const oldDate = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
     const articles = makeArticles(ARTICLE_COUNT, oldDate);
-    await scoreAndSaveTagged(articles);
+    await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
 
     await deleteStaleLowScored(5, 30);
 
@@ -199,7 +200,7 @@ describe("Scenario 4: LLM returns partial results", () => {
     );
 
     const articles = makeArticles(ARTICLE_COUNT);
-    const savedCount = await scoreAndSaveTagged(articles);
+    const savedCount = await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
 
     expect(savedCount).toBe(10);
 
@@ -224,7 +225,7 @@ describe("Scenario 5: sourceIds filter mismatch", () => {
     );
 
     const articles = makeArticles(ARTICLE_COUNT);
-    await scoreAndSaveTagged(articles);
+    await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
 
     const scoredWrongSource = await getScoredArticles(100, ["zenn"]);
     expect(scoredWrongSource.length).toBe(0);
@@ -247,7 +248,7 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
     );
 
     const all = makeArticles(ARTICLE_COUNT);
-    const saved = await scoreAndSaveTagged(all);
+    const saved = await withFastForwardedTimers(() => scoreAndSaveTagged(all));
     await deleteStaleLowScored(5, 30);
 
     const scored = await getScoredArticles(100, ["gnews"]);
@@ -267,7 +268,7 @@ describe("Scenario 6: Full production flow (route.ts simulation)", () => {
     );
 
     const all = makeArticles(ARTICLE_COUNT);
-    const saved = await scoreAndSaveTagged(all);
+    const saved = await withFastForwardedTimers(() => scoreAndSaveTagged(all));
     await deleteStaleLowScored(5, 30);
 
     const scored = await getScoredArticles(100, ["gnews"]);
@@ -293,7 +294,7 @@ describe("Scenario 7: '20件スコアリング完了' but 'スコアリング済
     );
 
     const all = makeArticles(ARTICLE_COUNT);
-    const saved = await scoreAndSaveTagged(all);
+    const saved = await withFastForwardedTimers(() => scoreAndSaveTagged(all));
     await deleteStaleLowScored(5, 30);
 
     expect(saved).toBe(ARTICLE_COUNT);
@@ -320,7 +321,7 @@ describe("Scenario 7: '20件スコアリング完了' but 'スコアリング済
 
     try {
       const all = makeArticles(ARTICLE_COUNT);
-      const saved = await scoreAndSaveTagged(all);
+      const saved = await withFastForwardedTimers(() => scoreAndSaveTagged(all));
 
       expect(saved).toBe(0);
 
@@ -341,7 +342,7 @@ describe("Scenario 8: scoreArticles throws → scoreAndSaveTagged returns 0 and 
 
     const all = makeArticles(ARTICLE_COUNT);
 
-    const saved = await scoreAndSaveTagged(all);
+    const saved = await withFastForwardedTimers(() => scoreAndSaveTagged(all));
     expect(saved).toBe(0);
 
     const allRows = await (dbMod as any).__client.execute("SELECT COUNT(*) as cnt FROM articles");
@@ -365,7 +366,7 @@ describe("Scenario 9: getScoredArticles DB query error → returns empty", () =>
     );
 
     const articles = makeArticles(5);
-    await scoreAndSaveTagged(articles);
+    await withFastForwardedTimers(() => scoreAndSaveTagged(articles));
 
     const scored = await getScoredArticles(100);
     expect(scored.length).toBe(5);

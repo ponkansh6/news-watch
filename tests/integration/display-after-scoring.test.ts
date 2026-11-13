@@ -70,7 +70,11 @@ const CREATE_GEMINI_REQUEST_TABLES_SQL = [
     owner_id TEXT NOT NULL,
     started_at TEXT NOT NULL,
     completed_at TEXT,
-    outcome TEXT NOT NULL DEFAULT 'started'
+    outcome TEXT NOT NULL DEFAULT 'started',
+    owner_token_hash TEXT,
+    lease_kind TEXT,
+    deployment_id TEXT,
+    recovery_after TEXT
   )`,
 ];
 
