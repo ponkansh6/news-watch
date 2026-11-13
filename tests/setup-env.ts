@@ -65,6 +65,10 @@ async function applyMigrations() {
     .filter((f) => f.endsWith(".sql"))
     .sort();
   try {
+    // Keep concurrent repository transactions representative of Turso's WAL
+    // behavior. In rollback-journal mode, independent local clients can hold
+    // readers behind a writer and leave later integration cases locked.
+    await client.execute("PRAGMA journal_mode = WAL");
     for (const file of files) {
       const sql = readFileSync(join(migrationsDir, file), "utf-8");
       const statements = sql

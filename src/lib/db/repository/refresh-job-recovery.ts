@@ -2,6 +2,25 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "../index";
 import { refreshJobBatches, refreshJobs, refreshJobSources } from "../schema";
 
+function isRetryableDatabaseConflict(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = "code" in error ? String(error.code) : "";
+  // libsql batch rolls back an open transaction in its finally block. Avoid
+  // inferring retry safety from error text or transport-level failures.
+  return code === "SQLITE_BUSY" || code === "SQLITE_LOCKED";
+}
+
+async function runRetryableBatch<T>(run: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      if (!isRetryableDatabaseConflict(error) || attempt >= 8) throw error;
+      await new Promise<void>((resolve) => setTimeout(resolve, Math.min(10 * 2 ** attempt, 250)));
+    }
+  }
+}
+
 export type TerminalWorkflowStatus = "completed" | "failed" | "cancelled";
 
 export type ReconcileRefreshJobResult =
@@ -31,8 +50,9 @@ export async function reconcileTerminalRefreshJob(
   expectedWorkflowRunId: string,
   terminalRunStatus: TerminalWorkflowStatus,
   at = new Date().toISOString(),
+  database: typeof db = db,
 ): Promise<ReconcileRefreshJobResult> {
-  const [job] = await db.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+  const [job] = await database.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
   if (!job) return { kind: "not_found" };
   if (
     job.status !== "needs_reconciliation" ||
@@ -41,12 +61,12 @@ export async function reconcileTerminalRefreshJob(
   )
     return { kind: "wrong_state" };
 
-  const sources = await db
+  const sources = await database
     .select()
     .from(refreshJobSources)
     .where(eq(refreshJobSources.jobId, jobId))
     .orderBy(asc(refreshJobSources.ordinal));
-  const unfinishedBatches = await db
+  const unfinishedBatches = await database
     .select({ id: refreshJobBatches.id })
     .from(refreshJobBatches)
     .where(
@@ -130,30 +150,31 @@ export async function reconcileTerminalRefreshJob(
     sources.length,
     ...sources.flatMap((source) => [source.sourceId, source.ordinal]),
   ];
-  const results = await db.$client.batch(
-    [
-      {
-        sql: `UPDATE refresh_job_sources
+  const results = await runRetryableBatch(() =>
+    database.$client.batch(
+      [
+        {
+          sql: `UPDATE refresh_job_sources
               SET status = 'invalidated', cache_invalidated_at = ?, updated_at = ?
               WHERE job_id = ? AND status = 'saved'
                 AND EXISTS (
                   SELECT 1 FROM refresh_jobs
                   WHERE ${jobCondition}
                 )`,
-        args: [at, at, jobId, ...jobConditionArgs],
-      },
-      {
-        sql: `UPDATE refresh_job_sources
+          args: [at, at, jobId, ...jobConditionArgs],
+        },
+        {
+          sql: `UPDATE refresh_job_sources
               SET status = 'failed', error_code = 'workflow-terminated', completed_at = ?, updated_at = ?
               WHERE job_id = ? AND status = 'pending'
                 AND EXISTS (
                   SELECT 1 FROM refresh_jobs
                   WHERE ${jobCondition}
                 )`,
-        args: [at, at, jobId, ...jobConditionArgs],
-      },
-      {
-        sql: `UPDATE refresh_jobs
+          args: [at, at, jobId, ...jobConditionArgs],
+        },
+        {
+          sql: `UPDATE refresh_jobs
               SET status = CASE
                     WHEN ? = 'completed' AND EXISTS (
                       SELECT 1 FROM refresh_job_sources
@@ -176,10 +197,10 @@ export async function reconcileTerminalRefreshJob(
                   SELECT 1 FROM refresh_job_sources
                   WHERE job_id = refresh_jobs.id AND status = 'saved'
                 )`,
-        args: [terminalRunStatus, at, at, ...jobConditionArgs],
-      },
-      {
-        sql: `UPDATE refresh_job_slot
+          args: [terminalRunStatus, at, at, ...jobConditionArgs],
+        },
+        {
+          sql: `UPDATE refresh_job_slot
               SET owner_kind = NULL, owner_id = NULL, owner_token_hash = NULL, acquired_at = NULL
               WHERE id = 1 AND owner_kind = 'job' AND owner_id = ?
                 AND EXISTS (
@@ -196,10 +217,11 @@ export async function reconcileTerminalRefreshJob(
                   SELECT 1 FROM refresh_job_batches
                   WHERE job_id = ? AND status IN ('pending', 'running', 'result_ready', 'unknown')
                 )`,
-        args: [jobId, jobId, expectedWorkflowRunId, jobId, jobId],
-      },
-    ],
-    "write",
+          args: [jobId, jobId, expectedWorkflowRunId, jobId, jobId],
+        },
+      ],
+      "write",
+    ),
   );
 
   if ((results[2]?.rowsAffected ?? 0) !== 1 || (results[3]?.rowsAffected ?? 0) !== 1) {

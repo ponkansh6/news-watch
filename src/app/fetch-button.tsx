@@ -510,7 +510,7 @@ export default function FetchButton({ selectedSource, onSourceChange }: FetchBut
       case "queued":
         return "更新を準備中...";
       case "running":
-        return "全ソースを順番に更新中...";
+        return "全ソースを最大2件ずつ並行して更新中...";
       case "completed":
         return "総合更新が完了しました";
       case "partial":

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { eq, inArray } from "drizzle-orm";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 import { db } from "@/lib/db";
+import * as schema from "@/lib/db/schema";
 import { SOURCE_IDS } from "@/lib/news/registry";
 import {
   bindWorkflowRun,
@@ -270,6 +273,74 @@ describe("refresh job repository", () => {
         nextStart,
       ),
     ).toBe(true);
+  });
+
+  test("allows two ordered active source claims and rejects a third", async () => {
+    const job = await newBoundJob();
+    const [firstSource, secondSource, thirdSource] = SOURCE_IDS;
+    expect(firstSource).toBeDefined();
+    expect(secondSource).toBeDefined();
+    expect(thirdSource).toBeDefined();
+
+    const initialRevision = (await getOwnedRefreshJob(job.job!.id))!.revision;
+    const first = await claimRefreshSource(job.job!.id, job.executionToken!, firstSource!);
+    const second = await claimRefreshSource(job.job!.id, job.executionToken!, secondSource!);
+
+    expect(first?.status).toBe("executing");
+    expect(second?.status).toBe("executing");
+    expect(await claimRefreshSource(job.job!.id, job.executionToken!, thirdSource!)).toBeNull();
+    expect(
+      (await getRefreshJobSources(job.job!.id)).filter(
+        (source) => source.status === "executing" || source.status === "unknown",
+      ),
+    ).toHaveLength(2);
+    expect((await getOwnedRefreshJob(job.job!.id))?.revision).toBe(initialRevision + 2);
+  });
+
+  test("serializes claims and preserves revisions across independent database connections", async () => {
+    const job = await newBoundJob();
+    const [firstSource, secondSource, thirdSource] = SOURCE_IDS;
+    const url = process.env.TURSO_DATABASE_URL;
+    if (!url) throw new Error("isolated test database URL is missing");
+    const clientA = createClient({ url });
+    const clientB = createClient({ url });
+    const databaseA = drizzle({ client: clientA, schema });
+    const databaseB = drizzle({ client: clientB, schema });
+
+    try {
+      const initialRevision = (await getOwnedRefreshJob(job.job!.id))!.revision;
+      const claims = await Promise.all([
+        claimRefreshSource(job.job!.id, job.executionToken!, firstSource!, databaseA),
+        claimRefreshSource(job.job!.id, job.executionToken!, secondSource!, databaseB),
+      ]);
+      expect(claims.map((claim) => claim?.sourceId)).toEqual([firstSource, secondSource]);
+      expect((await getOwnedRefreshJob(job.job!.id))?.revision).toBe(initialRevision + 2);
+      expect(await claimRefreshSource(job.job!.id, job.executionToken!, thirdSource!)).toBeNull();
+
+      const startRevision = (await getOwnedRefreshJob(job.job!.id))!.revision;
+      const started = await Promise.all([
+        recordAdapterStart(
+          job.job!.id,
+          job.executionToken!,
+          firstSource!,
+          claims[0]!.attemptCount,
+          undefined,
+          databaseA,
+        ),
+        recordAdapterStart(
+          job.job!.id,
+          job.executionToken!,
+          secondSource!,
+          claims[1]!.attemptCount,
+          undefined,
+          databaseB,
+        ),
+      ]);
+      expect(started).toEqual([true, true]);
+      expect((await getOwnedRefreshJob(job.job!.id))?.revision).toBe(startRevision + 2);
+    } finally {
+      await Promise.all([clientA.close(), clientB.close()]);
+    }
   });
 
   test("ambiguous source completion is retained and never releases the active slot", async () => {

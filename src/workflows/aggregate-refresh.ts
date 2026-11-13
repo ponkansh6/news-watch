@@ -24,9 +24,19 @@ import {
 
 const MAX_RATE_LIMIT_WAIT_CYCLES = 3;
 const MAX_BATCH_WORKFLOW_CYCLES = 8;
+const MAX_PARALLEL_SOURCE_COLLECTIONS = 2;
 
 function requireCheckpoint(checkpointed: boolean, name: string): void {
   if (!checkpointed) throw new FatalError(`Refresh checkpoint rejected: ${name}`);
+}
+
+function safeWorkflowErrorCode(error: unknown): string {
+  if (!(error instanceof Error)) return "unknown";
+  const errorCode =
+    "code" in error && typeof error.code === "string" && /^[A-Z0-9_-]{1,32}$/.test(error.code)
+      ? error.code
+      : null;
+  return errorCode ?? (error.name.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) || "unknown");
 }
 
 function emitCollectionWorkflowMetric(event: Record<string, string | number>): void {
@@ -59,78 +69,119 @@ export async function aggregateRefreshWorkflow(
 
     const startedAtMs = await capturePresendBoundaryStep(jobId, "collection-start", 0);
     collectionStartedAtMs = startedAtMs;
-    for (const source of sources) {
-      if (source.status === "invalidated" || source.status === "failed") continue;
-      let sourceForAttempt = source;
-      for (let sourceCycle = 0; sourceCycle < 3; sourceCycle++) {
-        if (sourceForAttempt.status === "unknown" || sourceForAttempt.status === "executing") {
-          const recovery = await recoverSourceStep(
-            jobId,
-            executionToken,
-            source.sourceId,
-            sourceForAttempt.attemptCount,
-          );
-          if (recovery.kind === "failed") {
+    let nextSourceIndex = 0;
+    const recencyRefreshes: Promise<unknown>[] = [];
+    const collectNextSource = async (): Promise<void> => {
+      while (nextSourceIndex < sources.length) {
+        const source = sources[nextSourceIndex++]!;
+        if (source.status === "invalidated" || source.status === "failed") continue;
+        let sourceForAttempt = source;
+        for (let sourceCycle = 0; sourceCycle < 3; sourceCycle++) {
+          if (sourceForAttempt.status === "unknown" || sourceForAttempt.status === "executing") {
+            const recovery = await recoverSourceStep(
+              jobId,
+              executionToken,
+              source.sourceId,
+              sourceForAttempt.attemptCount,
+            );
+            if (recovery.kind === "failed") {
+              sourceForAttempt = {
+                ...sourceForAttempt,
+                status: "failed",
+                attemptCount: recovery.attemptCount,
+              };
+              break;
+            }
+            if (recovery.kind !== "retry") {
+              await reconcileJobStep(jobId, executionToken, "source-recovery-not-claimable");
+              throw new FatalError(`Refresh source recovery is not claimable: ${source.sourceId}`);
+            }
+            await sleep(1_000);
+            recoveryWaitRequestedMs += 1_000;
             sourceForAttempt = {
               ...sourceForAttempt,
-              status: "failed",
+              status: "pending",
               attemptCount: recovery.attemptCount,
             };
-            break;
           }
-          if (recovery.kind !== "retry") {
-            await reconcileJobStep(jobId, executionToken, "source-recovery-not-claimable");
-            throw new FatalError(`Refresh source recovery is not claimable: ${source.sourceId}`);
-          }
-          await sleep(1_000);
-          recoveryWaitRequestedMs += 1_000;
-          sourceForAttempt = {
-            ...sourceForAttempt,
-            status: "pending",
-            attemptCount: recovery.attemptCount,
-          };
-        }
 
-        const result =
-          sourceForAttempt.status === "saved"
-            ? {
-                status: "saved" as const,
-                resultCount: sourceForAttempt.resultCount ?? 0,
-                attemptCount: sourceForAttempt.attemptCount,
-              }
-            : await collectSourceCandidatesStep(jobId, executionToken, source.sourceId);
-        if (result.status === "unknown") {
+          let claimWaitCycles = 0;
+          let result =
+            sourceForAttempt.status === "saved"
+              ? {
+                  status: "saved" as const,
+                  resultCount: sourceForAttempt.resultCount ?? 0,
+                  attemptCount: sourceForAttempt.attemptCount,
+                }
+              : await collectSourceCandidatesStep(
+                  jobId,
+                  executionToken,
+                  source.sourceId,
+                  claimWaitCycles,
+                );
+          while (result.status === "deferred") {
+            // A lower-ordinal source may still be committing its claim, or both
+            // slots may be occupied. Wait durably, then reread the source state.
+            if (claimWaitCycles >= 120) {
+              throw new FatalError(`Refresh source claim remained pending: ${source.sourceId}`);
+            }
+            await sleep(25);
+            claimWaitCycles++;
+            result = await collectSourceCandidatesStep(
+              jobId,
+              executionToken,
+              source.sourceId,
+              claimWaitCycles,
+            );
+          }
+          if (result.status === "unknown") {
+            sourceForAttempt = {
+              ...sourceForAttempt,
+              status: "unknown",
+              attemptCount: result.attemptCount,
+            };
+            continue;
+          }
           sourceForAttempt = {
             ...sourceForAttempt,
-            status: "unknown",
+            status: result.status,
             attemptCount: result.attemptCount,
+            resultCount: result.resultCount,
+            errorCode: result.errorCode ?? null,
           };
-          continue;
+          if (result.status === "saved") {
+            // Recency work starts as soon as candidates are durable, while this
+            // worker immediately takes the next source slot.
+            recencyRefreshes.push(
+              refreshSourceRecencyStep(jobId, executionToken, source.sourceId, result.attemptCount),
+            );
+          }
+          break;
         }
-        sourceForAttempt = {
-          ...sourceForAttempt,
-          status: result.status,
-          attemptCount: result.attemptCount,
-          resultCount: result.resultCount,
-          errorCode: result.errorCode ?? null,
-        };
-        if (result.status === "saved") {
-          await refreshSourceRecencyStep(
-            jobId,
-            executionToken,
-            source.sourceId,
-            result.attemptCount,
+        if (sourceForAttempt.status === "unknown" || sourceForAttempt.status === "executing") {
+          await reconcileJobStep(jobId, executionToken, "source-recovery-cycle-limit");
+          throw new FatalError(
+            `Refresh source recovery exceeded its bounded cycle: ${source.sourceId}`,
           );
         }
-        break;
       }
-      if (sourceForAttempt.status === "unknown" || sourceForAttempt.status === "executing") {
-        await reconcileJobStep(jobId, executionToken, "source-recovery-cycle-limit");
-        throw new FatalError(
-          `Refresh source recovery exceeded its bounded cycle: ${source.sourceId}`,
-        );
-      }
-    }
+    };
+    const collectionWorkers = Array.from(
+      { length: Math.min(MAX_PARALLEL_SOURCE_COLLECTIONS, sources.length) },
+      () => collectNextSource(),
+    );
+    const workerResults = await Promise.allSettled(collectionWorkers);
+    const workerFailure = workerResults.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    // Strict recency refreshes are part of the collection boundary. They may
+    // overlap later source fetches, but all must settle before scoring starts.
+    const recencyResults = await Promise.allSettled(recencyRefreshes);
+    if (workerFailure) throw workerFailure.reason;
+    const recencyFailure = recencyResults.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (recencyFailure) throw recencyFailure.reason;
 
     const collectionCompleteAtMs = await capturePresendBoundaryStep(jobId, "collection", 0);
     emitCollectionWorkflowMetric({
@@ -335,6 +386,8 @@ export async function aggregateRefreshWorkflow(
     }
     await reconcileJobStep(jobId, executionToken, "workflow-requires-reconciliation");
     if (error instanceof FatalError) throw error;
-    throw new FatalError("Refresh workflow requires reconciliation");
+    throw new FatalError(
+      `Refresh workflow requires reconciliation (${safeWorkflowErrorCode(error)})`,
+    );
   }
 }

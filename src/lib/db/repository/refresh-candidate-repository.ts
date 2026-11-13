@@ -31,6 +31,7 @@ export interface RefreshCandidateInput {
 }
 
 const DEFAULT_BATCH_SIZE = 50;
+const CANDIDATE_STAGE_BUSY_RETRY_DELAYS_MS = [25, 50, 100, 200, 400, 800] as const;
 
 export interface PendingCandidateSignatureSummary {
   scoringSignature: string;
@@ -114,7 +115,8 @@ function canonicalizeUrl(value: unknown): string {
 }
 
 function stableSources(ids: string[]): SourceId[] {
-  return [...new Set(ids)].filter((id): id is SourceId => SOURCE_IDS.includes(id as SourceId));
+  const knownSources = new Set(ids);
+  return SOURCE_IDS.filter((sourceId) => knownSources.has(sourceId));
 }
 
 function sourcePriority(sourceId: string): number {
@@ -135,6 +137,13 @@ function emitCandidateStageMetric(event: Record<string, string | number>): void 
   }
 }
 
+function isRetryableBusyError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; cause?: unknown };
+  if (candidate.code === "SQLITE_BUSY" || candidate.code === "SQLITE_LOCKED") return true;
+  return candidate.cause !== error && isRetryableBusyError(candidate.cause);
+}
+
 /** Persist selected candidates. Repeated source collection is idempotent by normalized URL. */
 export async function stageRefreshCandidates(
   jobId: string,
@@ -142,6 +151,7 @@ export async function stageRefreshCandidates(
   sourceId: SourceId,
   candidates: RefreshCandidateInput[],
   sourceCheckpoint: { sourceAttemptCount: number; resultCount?: number; savedAt?: string },
+  candidateDb: typeof db = db,
 ): Promise<{ inserted: number; merged: number }> {
   if (!SOURCE_IDS.includes(sourceId)) throw new Error("candidate_source_invalid");
   if (candidates.length > DEFAULT_BATCH_SIZE) throw new Error("candidate_source_budget_exceeded");
@@ -170,166 +180,182 @@ export async function stageRefreshCandidates(
   };
 
   try {
-    const result = await db.transaction(async (tx) => {
-      let transactionInserted = 0;
-      let transactionMerged = 0;
-      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-      if (!job || job.ownerTokenHash !== tokenHash(executionToken))
-        throw new Error("refresh_job_not_owned");
-      if (job.status !== "running") throw new Error("refresh_job_not_active");
+    let result: { inserted: number; merged: number; existingCandidateCount: number };
+    for (let retry = 0; ; retry++) {
+      try {
+        result = await candidateDb.transaction(
+          async (tx) => {
+            let transactionInserted = 0;
+            let transactionMerged = 0;
+            const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+            if (!job || job.ownerTokenHash !== tokenHash(executionToken))
+              throw new Error("refresh_job_not_owned");
+            if (job.status !== "running") throw new Error("refresh_job_not_active");
 
-      const [sourceAttempt] = await tx
-        .select({ status: refreshJobSources.status, attemptCount: refreshJobSources.attemptCount })
-        .from(refreshJobSources)
-        .where(
-          and(
-            eq(refreshJobSources.jobId, jobId),
-            eq(refreshJobSources.sourceId, sourceId),
-            eq(refreshJobSources.status, "executing"),
-            eq(refreshJobSources.attemptCount, sourceCheckpoint.sourceAttemptCount),
-          ),
-        );
-      if (!sourceAttempt) throw new Error("refresh_source_attempt_fenced");
+            const [sourceAttempt] = await tx
+              .select({
+                status: refreshJobSources.status,
+                attemptCount: refreshJobSources.attemptCount,
+              })
+              .from(refreshJobSources)
+              .where(
+                and(
+                  eq(refreshJobSources.jobId, jobId),
+                  eq(refreshJobSources.sourceId, sourceId),
+                  eq(refreshJobSources.status, "executing"),
+                  eq(refreshJobSources.attemptCount, sourceCheckpoint.sourceAttemptCount),
+                ),
+              );
+            if (!sourceAttempt) throw new Error("refresh_source_attempt_fenced");
 
-      if (sourceCheckpoint.resultCount !== undefined) {
-        const checkpoint = await tx
-          .update(refreshJobSources)
-          .set({
-            status: "saved",
-            resultCount: sourceCheckpoint.resultCount,
-            errorCode: null,
-            savedAt: now,
-            completedAt: now,
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(refreshJobSources.jobId, jobId),
-              eq(refreshJobSources.sourceId, sourceId),
-              eq(refreshJobSources.status, "executing"),
-              eq(refreshJobSources.attemptCount, sourceCheckpoint.sourceAttemptCount),
-              sql`${refreshJobSources.adapterStartedAt} IS NOT NULL`,
-            ),
-          )
-          .returning({ sourceId: refreshJobSources.sourceId });
-        if (checkpoint.length !== 1) throw new Error("refresh_source_checkpoint_rejected");
-        await tx
-          .update(refreshJobs)
-          .set({
-            currentSourceId: sourceId,
-            revision: job.revision + 1,
-            updatedAt: now,
-          })
-          .where(eq(refreshJobs.id, jobId));
-      }
+            if (sourceCheckpoint.resultCount !== undefined) {
+              const checkpoint = await tx
+                .update(refreshJobSources)
+                .set({
+                  status: "saved",
+                  resultCount: sourceCheckpoint.resultCount,
+                  errorCode: null,
+                  savedAt: now,
+                  completedAt: now,
+                  updatedAt: now,
+                })
+                .where(
+                  and(
+                    eq(refreshJobSources.jobId, jobId),
+                    eq(refreshJobSources.sourceId, sourceId),
+                    eq(refreshJobSources.status, "executing"),
+                    eq(refreshJobSources.attemptCount, sourceCheckpoint.sourceAttemptCount),
+                    sql`${refreshJobSources.adapterStartedAt} IS NOT NULL`,
+                  ),
+                )
+                .returning({ sourceId: refreshJobSources.sourceId });
+              if (checkpoint.length !== 1) throw new Error("refresh_source_checkpoint_rejected");
+              await tx
+                .update(refreshJobs)
+                .set({
+                  currentSourceId: sourceId,
+                  revision: sql`${refreshJobs.revision} + 1`,
+                  updatedAt: now,
+                })
+                .where(eq(refreshJobs.id, jobId));
+            }
 
-      const existingRows = await tx
-        .select({
-          id: refreshJobCandidates.id,
-          normalizedUrl: refreshJobCandidates.normalizedUrl,
-          sourceIdsJson: refreshJobCandidates.sourceIdsJson,
-          status: refreshJobCandidates.status,
-          representativeSourceId: refreshJobCandidates.representativeSourceId,
-        })
-        .from(refreshJobCandidates)
-        .where(eq(refreshJobCandidates.jobId, jobId));
-      existingCandidateReads++;
-      existingCandidateCount = existingRows.length;
-      const candidatesByUrl = new Map(
-        existingRows.map((row) => [
-          row.normalizedUrl,
-          {
-            ...row,
-            sourceIds: stableSources(JSON.parse(row.sourceIdsJson) as string[]),
+            const existingRows = await tx
+              .select({
+                id: refreshJobCandidates.id,
+                normalizedUrl: refreshJobCandidates.normalizedUrl,
+                sourceIdsJson: refreshJobCandidates.sourceIdsJson,
+                status: refreshJobCandidates.status,
+                representativeSourceId: refreshJobCandidates.representativeSourceId,
+              })
+              .from(refreshJobCandidates)
+              .where(eq(refreshJobCandidates.jobId, jobId));
+            existingCandidateReads++;
+            existingCandidateCount = existingRows.length;
+            const candidatesByUrl = new Map(
+              existingRows.map((row) => [
+                row.normalizedUrl,
+                {
+                  ...row,
+                  sourceIds: stableSources(JSON.parse(row.sourceIdsJson) as string[]),
+                },
+              ]),
+            );
+            const incomingUrls = new Set<string>();
+            for (const input of candidates) {
+              if (input.sourceId !== sourceId) throw new Error("candidate_source_mismatch");
+              incomingUrls.add(canonicalizeUrl(input.payload.url));
+            }
+            const sourceCount = existingRows.filter((row) =>
+              candidatesByUrl.get(row.normalizedUrl)?.sourceIds.includes(sourceId),
+            ).length;
+            const additions = [...incomingUrls].filter(
+              (url) => !candidatesByUrl.get(url)?.sourceIds.includes(sourceId),
+            ).length;
+            if (sourceCount + additions > DEFAULT_BATCH_SIZE)
+              throw new Error("candidate_source_budget_exceeded");
+
+            const [{ maxOrdinal: existingMaxOrdinal }] = await tx
+              .select({ maxOrdinal: max(refreshJobCandidates.ordinal) })
+              .from(refreshJobCandidates)
+              .where(eq(refreshJobCandidates.jobId, jobId));
+            maxOrdinalReads++;
+            let nextOrdinal = (existingMaxOrdinal ?? -1) + 1;
+            for (const input of candidates) {
+              if (input.sourceId !== sourceId) throw new Error("candidate_source_mismatch");
+              const normalizedUrl = canonicalizeUrl(input.payload.url);
+              const row = candidatesByUrl.get(normalizedUrl);
+              if (row) {
+                const sourceIds = stableSources([...row.sourceIds, sourceId]);
+                const useIncoming =
+                  row.status === "pending" &&
+                  sourcePriority(sourceId) < sourcePriority(row.representativeSourceId);
+                await tx
+                  .update(refreshJobCandidates)
+                  .set({
+                    sourceIdsJson: JSON.stringify(sourceIds),
+                    ...(useIncoming
+                      ? {
+                          payloadJson: JSON.stringify(input.payload),
+                          contentHash: input.contentHash,
+                          scoringSignature: input.scoringSignature,
+                          representativeSourceId: sourceId,
+                        }
+                      : {}),
+                    updatedAt: now,
+                  })
+                  .where(eq(refreshJobCandidates.id, row.id));
+                candidatesByUrl.set(normalizedUrl, {
+                  ...row,
+                  sourceIds,
+                  ...(useIncoming ? { representativeSourceId: sourceId } : {}),
+                });
+                transactionMerged++;
+                continue;
+              }
+
+              // Ordinals are globally stable within a job and only used to freeze batch order.
+              const ordinal = nextOrdinal++;
+              const id = randomUUID();
+              await tx.insert(refreshJobCandidates).values({
+                id,
+                jobId,
+                normalizedUrl,
+                payloadJson: JSON.stringify(input.payload),
+                contentHash: input.contentHash,
+                scoringSignature: input.scoringSignature,
+                representativeSourceId: sourceId,
+                sourceIdsJson: JSON.stringify([sourceId]),
+                ordinal,
+                status: "pending",
+                createdAt: now,
+                updatedAt: now,
+              });
+              candidatesByUrl.set(normalizedUrl, {
+                id,
+                normalizedUrl,
+                sourceIdsJson: JSON.stringify([sourceId]),
+                sourceIds: [sourceId],
+                status: "pending",
+                representativeSourceId: sourceId,
+              });
+              transactionInserted++;
+            }
+            return {
+              inserted: transactionInserted,
+              merged: transactionMerged,
+              existingCandidateCount,
+            };
           },
-        ]),
-      );
-      const incomingUrls = new Set<string>();
-      for (const input of candidates) {
-        if (input.sourceId !== sourceId) throw new Error("candidate_source_mismatch");
-        incomingUrls.add(canonicalizeUrl(input.payload.url));
+          { behavior: "immediate" },
+        );
+        break;
+      } catch (error) {
+        const delayMs = CANDIDATE_STAGE_BUSY_RETRY_DELAYS_MS[retry];
+        if (delayMs === undefined || !isRetryableBusyError(error)) throw error;
+        await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
       }
-      const sourceCount = existingRows.filter((row) =>
-        candidatesByUrl.get(row.normalizedUrl)?.sourceIds.includes(sourceId),
-      ).length;
-      const additions = [...incomingUrls].filter(
-        (url) => !candidatesByUrl.get(url)?.sourceIds.includes(sourceId),
-      ).length;
-      if (sourceCount + additions > DEFAULT_BATCH_SIZE)
-        throw new Error("candidate_source_budget_exceeded");
-
-      const [{ maxOrdinal: existingMaxOrdinal }] = await tx
-        .select({ maxOrdinal: max(refreshJobCandidates.ordinal) })
-        .from(refreshJobCandidates)
-        .where(eq(refreshJobCandidates.jobId, jobId));
-      maxOrdinalReads++;
-      let nextOrdinal = (existingMaxOrdinal ?? -1) + 1;
-      for (const input of candidates) {
-        if (input.sourceId !== sourceId) throw new Error("candidate_source_mismatch");
-        const normalizedUrl = canonicalizeUrl(input.payload.url);
-        const row = candidatesByUrl.get(normalizedUrl);
-        if (row) {
-          const sourceIds = stableSources([...row.sourceIds, sourceId]);
-          const useIncoming =
-            row.status === "pending" &&
-            sourcePriority(sourceId) < sourcePriority(row.representativeSourceId);
-          await tx
-            .update(refreshJobCandidates)
-            .set({
-              sourceIdsJson: JSON.stringify(sourceIds),
-              ...(useIncoming
-                ? {
-                    payloadJson: JSON.stringify(input.payload),
-                    contentHash: input.contentHash,
-                    scoringSignature: input.scoringSignature,
-                    representativeSourceId: sourceId,
-                  }
-                : {}),
-              updatedAt: now,
-            })
-            .where(eq(refreshJobCandidates.id, row.id));
-          candidatesByUrl.set(normalizedUrl, {
-            ...row,
-            sourceIds,
-            ...(useIncoming ? { representativeSourceId: sourceId } : {}),
-          });
-          transactionMerged++;
-          continue;
-        }
-
-        // Ordinals are globally stable within a job and only used to freeze batch order.
-        const ordinal = nextOrdinal++;
-        const id = randomUUID();
-        await tx.insert(refreshJobCandidates).values({
-          id,
-          jobId,
-          normalizedUrl,
-          payloadJson: JSON.stringify(input.payload),
-          contentHash: input.contentHash,
-          scoringSignature: input.scoringSignature,
-          representativeSourceId: sourceId,
-          sourceIdsJson: JSON.stringify([sourceId]),
-          ordinal,
-          status: "pending",
-          createdAt: now,
-          updatedAt: now,
-        });
-        candidatesByUrl.set(normalizedUrl, {
-          id,
-          normalizedUrl,
-          sourceIdsJson: JSON.stringify([sourceId]),
-          sourceIds: [sourceId],
-          status: "pending",
-          representativeSourceId: sourceId,
-        });
-        transactionInserted++;
-      }
-      return {
-        inserted: transactionInserted,
-        merged: transactionMerged,
-        existingCandidateCount,
-      };
-    });
+    }
     inserted = result.inserted;
     merged = result.merged;
     existingCandidateCount = result.existingCandidateCount;

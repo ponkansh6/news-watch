@@ -254,6 +254,54 @@ describe("FetchButton", () => {
     expect(within(progress).queryByText(/一覧.*中/)).not.toBeInTheDocument();
   });
 
+  it("shows multiple source rows as running during aggregate collection", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/refresh-jobs" && init?.method === "POST") {
+        return jsonResponse(
+          {
+            jobId: "job-parallel-sources",
+            status: "running",
+            revision: 1,
+            sources: [
+              {
+                sourceId: "zenn",
+                status: "executing",
+                resultCount: null,
+                errorCode: null,
+                cacheInvalidatedAt: null,
+              },
+              {
+                sourceId: "qiita",
+                status: "executing",
+                resultCount: null,
+                errorCode: null,
+                cacheInvalidatedAt: null,
+              },
+            ],
+          },
+          202,
+        );
+      }
+      return jsonResponse({ job: null });
+    });
+
+    render(
+      <RefreshProvider>
+        <FetchButton selectedSource="all" onSourceChange={mockOnSourceChange} />
+      </RefreshProvider>,
+    );
+    await user.click(await screen.findByRole("button", { name: "全ソースを一括更新" }));
+
+    const progress = screen.getByRole("region", { name: "総合更新の進捗" });
+    expect(
+      within(progress).getByText("全ソースを最大2件ずつ並行して更新中..."),
+    ).toBeInTheDocument();
+    expect(within(progress).getByText("Zenn")).toBeInTheDocument();
+    expect(within(progress).getByText("Qiita")).toBeInTheDocument();
+    expect(within(progress).getAllByText("取得・採点中...")).toHaveLength(2);
+  });
+
   it("shows candidate totals during collection and separates scoring failures", async () => {
     const user = userEvent.setup();
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {

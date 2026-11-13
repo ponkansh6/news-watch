@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 import { db } from "@/lib/db";
+import * as schema from "@/lib/db/schema";
 import { SOURCE_IDS } from "@/lib/news/registry";
 import {
   bindWorkflowRun,
@@ -61,6 +64,40 @@ describe("refresh job recovery repository", () => {
     const result = await reconcileTerminalRefreshJob(job.jobId, job.runId, "completed");
 
     expect(result).toMatchObject({ kind: "reconciled", status: "completed" });
+  });
+
+  test("uses the reconciliation CAS across independent database connections", async () => {
+    const job = await heldJob();
+    await markAllSourcesInvalidated(job.jobId);
+    const url = process.env.TURSO_DATABASE_URL;
+    if (!url) throw new Error("isolated test database URL is missing");
+    const clientA = createClient({ url });
+    const clientB = createClient({ url });
+    const databaseA = drizzle({ client: clientA, schema });
+    const databaseB = drizzle({ client: clientB, schema });
+
+    try {
+      const initialRevision = (
+        await db.select().from(refreshJobs).where(eq(refreshJobs.id, job.jobId))
+      )[0]!.revision;
+      const results = await Promise.all([
+        reconcileTerminalRefreshJob(job.jobId, job.runId, "completed", undefined, databaseA),
+        reconcileTerminalRefreshJob(job.jobId, job.runId, "completed", undefined, databaseB),
+      ]);
+
+      expect(results.filter((result) => result.kind === "reconciled")).toHaveLength(1);
+      expect(
+        results.filter((result) => result.kind === "changed" || result.kind === "wrong_state"),
+      ).toHaveLength(1);
+      const saved = (await db.select().from(refreshJobs).where(eq(refreshJobs.id, job.jobId)))[0];
+      expect(saved?.status).toBe("completed");
+      expect(saved?.revision).toBe(initialRevision + 1);
+      expect(
+        (await db.select().from(refreshJobSlot).where(eq(refreshJobSlot.id, 1)))[0]?.ownerId,
+      ).toBeNull();
+    } finally {
+      await Promise.all([clientA.close(), clientB.close()]);
+    }
   });
 
   test("refuses release when the stored snapshot content or order is inconsistent", async () => {

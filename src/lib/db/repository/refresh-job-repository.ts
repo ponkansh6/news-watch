@@ -25,6 +25,7 @@ export type RefreshJobSourceRow = typeof refreshJobSources.$inferSelect;
 
 const ACTIVE_SLOT_ID = 1;
 const SHARED_ADMIN_OWNER = "shared-admin";
+const CLAIM_REVISION_CONFLICT = Symbol("claim revision conflict");
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -41,6 +42,25 @@ function nowIso(): string {
 function sanitizeErrorCode(errorCode: string): string {
   const normalized = errorCode.trim().toLowerCase();
   return /^[a-z0-9_-]{1,64}$/.test(normalized) ? normalized : "unknown_error";
+}
+
+function isRetryableTransactionConflict(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = "code" in error ? String(error.code) : "";
+  // Drizzle's libsql session awaits rollback before rejecting a failed
+  // transaction; only explicit SQLite lock codes are safe to replay here.
+  return code === "SQLITE_BUSY" || code === "SQLITE_LOCKED";
+}
+
+async function withRetryableWrite<T>(write: () => Promise<T>, retries = 8): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await write();
+    } catch (error) {
+      if (!isRetryableTransactionConflict(error) || attempt >= retries) throw error;
+      await new Promise<void>((resolve) => setTimeout(resolve, Math.min(10 * 2 ** attempt, 250)));
+    }
+  }
 }
 
 function isTerminal(status: RefreshJobStatus): boolean {
@@ -240,42 +260,44 @@ export async function bindWorkflowRun(
   workflowRunId: string,
 ): Promise<boolean> {
   const now = nowIso();
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== hashToken(executionToken)) return false;
-    if (!["enqueue_unknown", "queued", "running"].includes(job.status)) return false;
+  return withRetryableWrite(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== hashToken(executionToken)) return false;
+      if (!["enqueue_unknown", "queued", "running"].includes(job.status)) return false;
 
-    const [slot] = await tx
-      .select()
-      .from(refreshJobSlot)
-      .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
-    if (
-      slot?.ownerKind !== "job" ||
-      slot.ownerId !== jobId ||
-      slot.ownerTokenHash !== job.ownerTokenHash
-    )
-      return false;
-    if (job.workflowRunId && job.workflowRunId !== workflowRunId) return false;
-
-    const changed = await tx
-      .update(refreshJobs)
-      .set({
-        workflowRunId,
-        status: "running",
-        startedAt: job.startedAt ?? now,
-        revision: job.revision + 1,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(refreshJobs.id, jobId),
-          eq(refreshJobs.ownerTokenHash, hashToken(executionToken)),
-          or(isNull(refreshJobs.workflowRunId), eq(refreshJobs.workflowRunId, workflowRunId)),
-        ),
+      const [slot] = await tx
+        .select()
+        .from(refreshJobSlot)
+        .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
+      if (
+        slot?.ownerKind !== "job" ||
+        slot.ownerId !== jobId ||
+        slot.ownerTokenHash !== job.ownerTokenHash
       )
-      .returning({ id: refreshJobs.id });
-    return changed.length === 1;
-  });
+        return false;
+      if (job.workflowRunId && job.workflowRunId !== workflowRunId) return false;
+
+      const changed = await tx
+        .update(refreshJobs)
+        .set({
+          workflowRunId,
+          status: "running",
+          startedAt: job.startedAt ?? now,
+          revision: sql`${refreshJobs.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(refreshJobs.id, jobId),
+            eq(refreshJobs.ownerTokenHash, hashToken(executionToken)),
+            or(isNull(refreshJobs.workflowRunId), eq(refreshJobs.workflowRunId, workflowRunId)),
+          ),
+        )
+        .returning({ id: refreshJobs.id });
+      return changed.length === 1;
+    }),
+  );
 }
 
 /** Holds the active slot for manual reconciliation without storing error details. */
@@ -286,37 +308,43 @@ export async function markNeedsReconciliation(
 ): Promise<boolean> {
   const tokenHash = hashToken(executionToken);
   const now = nowIso();
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash || isTerminal(job.status)) return false;
-    const [slot] = await tx
-      .select()
-      .from(refreshJobSlot)
-      .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
-    if (slot?.ownerKind !== "job" || slot.ownerId !== jobId || slot.ownerTokenHash !== tokenHash) {
-      return false;
-    }
-    if (job.status === "needs_reconciliation") return true;
+  return withRetryableWrite(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash || isTerminal(job.status)) return false;
+      const [slot] = await tx
+        .select()
+        .from(refreshJobSlot)
+        .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
+      if (
+        slot?.ownerKind !== "job" ||
+        slot.ownerId !== jobId ||
+        slot.ownerTokenHash !== tokenHash
+      ) {
+        return false;
+      }
+      if (job.status === "needs_reconciliation") return true;
 
-    const changed = await tx
-      .update(refreshJobs)
-      .set({
-        status: "needs_reconciliation",
-        errorCode: sanitizeErrorCode(errorCode),
-        revision: job.revision + 1,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(refreshJobs.id, jobId),
-          eq(refreshJobs.ownerTokenHash, tokenHash),
-          eq(refreshJobs.status, job.status),
-          eq(refreshJobs.revision, job.revision),
-        ),
-      )
-      .returning({ id: refreshJobs.id });
-    return changed.length === 1;
-  });
+      const changed = await tx
+        .update(refreshJobs)
+        .set({
+          status: "needs_reconciliation",
+          errorCode: sanitizeErrorCode(errorCode),
+          revision: sql`${refreshJobs.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(refreshJobs.id, jobId),
+            eq(refreshJobs.ownerTokenHash, tokenHash),
+            eq(refreshJobs.status, job.status),
+            eq(refreshJobs.revision, job.revision),
+          ),
+        )
+        .returning({ id: refreshJobs.id });
+      return changed.length === 1;
+    }),
+  );
 }
 
 /** Returns a job only for its shared owner and secret execution token. */
@@ -331,61 +359,117 @@ export async function getOwnedRefreshJob(
   return job ?? null;
 }
 
-/** Claims a pending source once. Existing executing/unknown rows are never reclaimed. */
+/** Claims a pending source once, while keeping at most two source attempts active. */
 export async function claimRefreshSource(
   jobId: string,
   executionToken: string,
   sourceId: SourceId,
+  database: typeof db = db,
+): Promise<RefreshJobSourceRow | null> {
+  return claimRefreshSourceWithRetry(jobId, executionToken, sourceId, database, 8);
+}
+
+async function claimRefreshSourceWithRetry(
+  jobId: string,
+  executionToken: string,
+  sourceId: SourceId,
+  database: typeof db,
+  retriesRemaining: number,
 ): Promise<RefreshJobSourceRow | null> {
   const now = nowIso();
   const tokenHash = hashToken(executionToken);
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") return null;
-    const [slot] = await tx
-      .select()
-      .from(refreshJobSlot)
-      .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
-    if (slot?.ownerId !== jobId || slot.ownerTokenHash !== tokenHash || slot.ownerKind !== "job") {
-      return null;
-    }
+  try {
+    return await database.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") return null;
+      const [slot] = await tx
+        .select()
+        .from(refreshJobSlot)
+        .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
+      if (
+        slot?.ownerId !== jobId ||
+        slot.ownerTokenHash !== tokenHash ||
+        slot.ownerKind !== "job"
+      ) {
+        return null;
+      }
 
-    const sources = await tx
-      .select()
-      .from(refreshJobSources)
-      .where(eq(refreshJobSources.jobId, jobId))
-      .orderBy(asc(refreshJobSources.ordinal));
-    const firstPending = sources.find((source) => source.status === "pending");
+      const sources = await tx
+        .select()
+        .from(refreshJobSources)
+        .where(eq(refreshJobSources.jobId, jobId))
+        .orderBy(asc(refreshJobSources.ordinal));
+      const firstPending = sources.find((source) => source.status === "pending");
+      const activeCount = sources.filter(
+        (source) => source.status === "executing" || source.status === "unknown",
+      ).length;
+      if (!firstPending || activeCount >= 2) return null;
+      if (firstPending.sourceId !== sourceId) {
+        const requested = sources.find((source) => source.sourceId === sourceId);
+        if (
+          requested?.status === "pending" &&
+          sources.indexOf(requested) > sources.indexOf(firstPending)
+        ) {
+          throw CLAIM_REVISION_CONFLICT;
+        }
+        return null;
+      }
+
+      const claimed = await tx
+        .update(refreshJobSources)
+        .set({
+          status: "executing",
+          attemptCount: sql`${refreshJobSources.attemptCount} + 1`,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(refreshJobSources.jobId, jobId),
+            eq(refreshJobSources.sourceId, sourceId),
+            eq(refreshJobSources.status, "pending"),
+          ),
+        )
+        .returning();
+      if (claimed.length !== 1) return null;
+
+      const revised = await tx
+        .update(refreshJobs)
+        .set({
+          currentSourceId: sourceId,
+          revision: sql`${refreshJobs.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(refreshJobs.id, jobId),
+            eq(refreshJobs.ownerTokenHash, tokenHash),
+            eq(refreshJobs.status, "running"),
+            eq(refreshJobs.revision, job.revision),
+          ),
+        )
+        .returning({ id: refreshJobs.id });
+      if (revised.length !== 1) throw CLAIM_REVISION_CONFLICT;
+      return claimed[0];
+    });
+  } catch (error) {
     if (
-      !firstPending ||
-      firstPending.sourceId !== sourceId ||
-      sources.some((source) => source.status === "executing" || source.status === "unknown")
-    )
-      return null;
-
-    const claimed = await tx
-      .update(refreshJobSources)
-      .set({
-        status: "executing",
-        attemptCount: sql`${refreshJobSources.attemptCount} + 1`,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(refreshJobSources.jobId, jobId),
-          eq(refreshJobSources.sourceId, sourceId),
-          eq(refreshJobSources.status, "pending"),
-        ),
-      )
-      .returning();
-    if (claimed.length !== 1) return null;
-
-    await tx
-      .update(refreshJobs)
-      .set({ currentSourceId: sourceId, revision: job.revision + 1, updatedAt: now })
-      .where(and(eq(refreshJobs.id, jobId), eq(refreshJobs.ownerTokenHash, tokenHash)));
-    return claimed[0];
-  });
+      (error === CLAIM_REVISION_CONFLICT || isRetryableTransactionConflict(error)) &&
+      retriesRemaining > 1
+    ) {
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, Math.min(10 * 2 ** (8 - retriesRemaining), 250)),
+      );
+      return claimRefreshSourceWithRetry(
+        jobId,
+        executionToken,
+        sourceId,
+        database,
+        retriesRemaining - 1,
+      );
+    }
+    if (error === CLAIM_REVISION_CONFLICT) return null;
+    throw error;
+  }
 }
 
 export type RecoverRefreshSourceResult =
@@ -407,39 +491,67 @@ export async function recoverRefreshSource(
 ): Promise<RecoverRefreshSourceResult> {
   const now = nowIso();
   const tokenHash = hashToken(executionToken);
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") {
-      return { kind: "unchanged" };
-    }
-    const [slot] = await tx
-      .select()
-      .from(refreshJobSlot)
-      .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
-    if (slot?.ownerId !== jobId || slot.ownerTokenHash !== tokenHash || slot.ownerKind !== "job") {
-      return { kind: "unchanged" };
-    }
-    const [source] = await tx
-      .select()
-      .from(refreshJobSources)
-      .where(and(eq(refreshJobSources.jobId, jobId), eq(refreshJobSources.sourceId, sourceId)));
-    if (
-      !source ||
-      source.attemptCount !== expectedAttemptCount ||
-      (source.status !== "executing" && source.status !== "unknown")
-    ) {
-      return { kind: "unchanged" };
-    }
+  return withRetryableWrite(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") {
+        return { kind: "unchanged" };
+      }
+      const [slot] = await tx
+        .select()
+        .from(refreshJobSlot)
+        .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
+      if (
+        slot?.ownerId !== jobId ||
+        slot.ownerTokenHash !== tokenHash ||
+        slot.ownerKind !== "job"
+      ) {
+        return { kind: "unchanged" };
+      }
+      const [source] = await tx
+        .select()
+        .from(refreshJobSources)
+        .where(and(eq(refreshJobSources.jobId, jobId), eq(refreshJobSources.sourceId, sourceId)));
+      if (
+        !source ||
+        source.attemptCount !== expectedAttemptCount ||
+        (source.status !== "executing" && source.status !== "unknown")
+      ) {
+        return { kind: "unchanged" };
+      }
 
-    if (source.attemptCount >= maxAttempts) {
+      if (source.attemptCount >= maxAttempts) {
+        const changed = await tx
+          .update(refreshJobSources)
+          .set({
+            status: "failed",
+            errorCode: "source_retry_exhausted",
+            completedAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(refreshJobSources.jobId, jobId),
+              eq(refreshJobSources.sourceId, sourceId),
+              eq(refreshJobSources.attemptCount, expectedAttemptCount),
+              or(
+                eq(refreshJobSources.status, "executing"),
+                eq(refreshJobSources.status, "unknown"),
+              ),
+            ),
+          )
+          .returning({ sourceId: refreshJobSources.sourceId });
+        if (changed.length !== 1) return { kind: "unchanged" };
+        await tx
+          .update(refreshJobs)
+          .set({ revision: sql`${refreshJobs.revision} + 1`, updatedAt: now })
+          .where(and(eq(refreshJobs.id, jobId), eq(refreshJobs.ownerTokenHash, tokenHash)));
+        return { kind: "failed", attemptCount: source.attemptCount };
+      }
+
       const changed = await tx
         .update(refreshJobSources)
-        .set({
-          status: "failed",
-          errorCode: "source_retry_exhausted",
-          completedAt: now,
-          updatedAt: now,
-        })
+        .set({ status: "pending", adapterStartedAt: null, errorCode: null, updatedAt: now })
         .where(
           and(
             eq(refreshJobSources.jobId, jobId),
@@ -452,30 +564,11 @@ export async function recoverRefreshSource(
       if (changed.length !== 1) return { kind: "unchanged" };
       await tx
         .update(refreshJobs)
-        .set({ revision: job.revision + 1, updatedAt: now })
+        .set({ revision: sql`${refreshJobs.revision} + 1`, updatedAt: now })
         .where(and(eq(refreshJobs.id, jobId), eq(refreshJobs.ownerTokenHash, tokenHash)));
-      return { kind: "failed", attemptCount: source.attemptCount };
-    }
-
-    const changed = await tx
-      .update(refreshJobSources)
-      .set({ status: "pending", adapterStartedAt: null, errorCode: null, updatedAt: now })
-      .where(
-        and(
-          eq(refreshJobSources.jobId, jobId),
-          eq(refreshJobSources.sourceId, sourceId),
-          eq(refreshJobSources.attemptCount, expectedAttemptCount),
-          or(eq(refreshJobSources.status, "executing"), eq(refreshJobSources.status, "unknown")),
-        ),
-      )
-      .returning({ sourceId: refreshJobSources.sourceId });
-    if (changed.length !== 1) return { kind: "unchanged" };
-    await tx
-      .update(refreshJobs)
-      .set({ revision: job.revision + 1, updatedAt: now })
-      .where(and(eq(refreshJobs.id, jobId), eq(refreshJobs.ownerTokenHash, tokenHash)));
-    return { kind: "retry", attemptCount: source.attemptCount };
-  });
+      return { kind: "retry", attemptCount: source.attemptCount };
+    }),
+  );
 }
 
 /** Persists the true adapter-call boundary timestamp before calling an adapter. */
@@ -485,36 +578,39 @@ export async function recordAdapterStart(
   sourceId: SourceId,
   sourceAttemptCount: number,
   startedAt = nowIso(),
+  database: typeof db = db,
 ): Promise<boolean> {
   const tokenHash = hashToken(executionToken);
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") return false;
-    const [slot] = await tx
-      .select()
-      .from(refreshJobSlot)
-      .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
-    if (slot?.ownerId !== jobId || slot.ownerTokenHash !== tokenHash) return false;
-    const changed = await tx
-      .update(refreshJobSources)
-      .set({ adapterStartedAt: startedAt, updatedAt: startedAt })
-      .where(
-        and(
-          eq(refreshJobSources.jobId, jobId),
-          eq(refreshJobSources.sourceId, sourceId),
-          eq(refreshJobSources.status, "executing"),
-          eq(refreshJobSources.attemptCount, sourceAttemptCount),
-          isNull(refreshJobSources.adapterStartedAt),
-        ),
-      )
-      .returning({ sourceId: refreshJobSources.sourceId });
-    if (changed.length !== 1) return false;
-    await tx
-      .update(refreshJobs)
-      .set({ revision: job.revision + 1, updatedAt: startedAt })
-      .where(and(eq(refreshJobs.id, jobId), eq(refreshJobs.ownerTokenHash, tokenHash)));
-    return true;
-  });
+  return withRetryableWrite(() =>
+    database.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") return false;
+      const [slot] = await tx
+        .select()
+        .from(refreshJobSlot)
+        .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
+      if (slot?.ownerId !== jobId || slot.ownerTokenHash !== tokenHash) return false;
+      const changed = await tx
+        .update(refreshJobSources)
+        .set({ adapterStartedAt: startedAt, updatedAt: startedAt })
+        .where(
+          and(
+            eq(refreshJobSources.jobId, jobId),
+            eq(refreshJobSources.sourceId, sourceId),
+            eq(refreshJobSources.status, "executing"),
+            eq(refreshJobSources.attemptCount, sourceAttemptCount),
+            isNull(refreshJobSources.adapterStartedAt),
+          ),
+        )
+        .returning({ sourceId: refreshJobSources.sourceId });
+      if (changed.length !== 1) return false;
+      await tx
+        .update(refreshJobs)
+        .set({ revision: sql`${refreshJobs.revision} + 1`, updatedAt: startedAt })
+        .where(and(eq(refreshJobs.id, jobId), eq(refreshJobs.ownerTokenHash, tokenHash)));
+      return true;
+    }),
+  );
 }
 
 /** Checks ownership and source state immediately before adapter invocation. */
@@ -526,30 +622,36 @@ export async function canStartRefreshSource(
   _now?: string,
 ): Promise<boolean> {
   const tokenHash = hashToken(executionToken);
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") return false;
-    const [slot] = await tx
-      .select()
-      .from(refreshJobSlot)
-      .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
-    if (slot?.ownerId !== jobId || slot.ownerTokenHash !== tokenHash || slot.ownerKind !== "job") {
-      return false;
-    }
-    const [source] = await tx
-      .select()
-      .from(refreshJobSources)
-      .where(
-        and(
-          eq(refreshJobSources.jobId, jobId),
-          eq(refreshJobSources.sourceId, sourceId),
-          eq(refreshJobSources.status, "executing"),
-          eq(refreshJobSources.attemptCount, sourceAttemptCount),
-          isNull(refreshJobSources.adapterStartedAt),
-        ),
-      );
-    return Boolean(source);
-  });
+  return withRetryableWrite(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") return false;
+      const [slot] = await tx
+        .select()
+        .from(refreshJobSlot)
+        .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
+      if (
+        slot?.ownerId !== jobId ||
+        slot.ownerTokenHash !== tokenHash ||
+        slot.ownerKind !== "job"
+      ) {
+        return false;
+      }
+      const [source] = await tx
+        .select()
+        .from(refreshJobSources)
+        .where(
+          and(
+            eq(refreshJobSources.jobId, jobId),
+            eq(refreshJobSources.sourceId, sourceId),
+            eq(refreshJobSources.status, "executing"),
+            eq(refreshJobSources.attemptCount, sourceAttemptCount),
+            isNull(refreshJobSources.adapterStartedAt),
+          ),
+        );
+      return Boolean(source);
+    }),
+  );
 }
 
 /** Records successful persistence; cache invalidation remains a separate checkpoint. */
@@ -652,33 +754,35 @@ async function updateOwnedSource(
   patch: Partial<typeof refreshJobSources.$inferInsert>,
 ): Promise<boolean> {
   const tokenHash = hashToken(executionToken);
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") return false;
-    const [slot] = await tx
-      .select()
-      .from(refreshJobSlot)
-      .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
-    if (slot?.ownerId !== jobId || slot.ownerTokenHash !== tokenHash) return false;
-    const changed = await tx
-      .update(refreshJobSources)
-      .set(patch)
-      .where(
-        and(
-          eq(refreshJobSources.jobId, jobId),
-          eq(refreshJobSources.sourceId, sourceId),
-          eq(refreshJobSources.attemptCount, sourceAttemptCount),
-          eq(refreshJobSources.status, expectedStatus),
-        ),
-      )
-      .returning({ sourceId: refreshJobSources.sourceId });
-    if (changed.length !== 1) return false;
-    await tx
-      .update(refreshJobs)
-      .set({ revision: job.revision + 1, updatedAt: nowIso() })
-      .where(and(eq(refreshJobs.id, jobId), eq(refreshJobs.ownerTokenHash, tokenHash)));
-    return true;
-  });
+  return withRetryableWrite(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash || job.status !== "running") return false;
+      const [slot] = await tx
+        .select()
+        .from(refreshJobSlot)
+        .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
+      if (slot?.ownerId !== jobId || slot.ownerTokenHash !== tokenHash) return false;
+      const changed = await tx
+        .update(refreshJobSources)
+        .set(patch)
+        .where(
+          and(
+            eq(refreshJobSources.jobId, jobId),
+            eq(refreshJobSources.sourceId, sourceId),
+            eq(refreshJobSources.attemptCount, sourceAttemptCount),
+            eq(refreshJobSources.status, expectedStatus),
+          ),
+        )
+        .returning({ sourceId: refreshJobSources.sourceId });
+      if (changed.length !== 1) return false;
+      await tx
+        .update(refreshJobs)
+        .set({ revision: sql`${refreshJobs.revision} + 1`, updatedAt: nowIso() })
+        .where(and(eq(refreshJobs.id, jobId), eq(refreshJobs.ownerTokenHash, tokenHash)));
+      return true;
+    }),
+  );
 }
 
 export async function getRefreshJobSources(jobId: string): Promise<RefreshJobSourceRow[]> {
@@ -698,71 +802,77 @@ export async function finishRefreshJob(
 ): Promise<boolean> {
   const tokenHash = hashToken(executionToken);
   const now = nowIso();
-  return db.transaction(async (tx) => {
-    const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
-    if (!job || job.ownerTokenHash !== tokenHash) return false;
-    // Workflow delivery may repeat after the terminal write committed but its
-    // acknowledgement was lost. A same-state call is a safe no-op even if a
-    // newer job now owns the global slot.
-    if (isTerminal(job.status)) return job.status === status;
-    if (job.status === "needs_reconciliation") return false;
-    const [slot] = await tx
-      .select()
-      .from(refreshJobSlot)
-      .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
-    if (slot?.ownerKind !== "job" || slot.ownerId !== jobId || slot.ownerTokenHash !== tokenHash) {
-      return false;
-    }
-    const sources = await tx
-      .select()
-      .from(refreshJobSources)
-      .where(eq(refreshJobSources.jobId, jobId));
-    if (
-      sources.some((source) => ["executing", "saved", "unknown"].includes(source.status)) ||
-      ((status === "completed" || status === "partial") &&
-        sources.some((source) => source.status !== "invalidated" && source.status !== "failed"))
-    )
-      return false;
-
-    const changed = await tx
-      .update(refreshJobs)
-      .set({
-        status,
-        errorCode: errorCode ?? null,
-        completedAt: now,
-        revision: job.revision + 1,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(refreshJobs.id, jobId),
-          eq(refreshJobs.ownerTokenHash, tokenHash),
-          eq(refreshJobs.status, job.status),
-        ),
+  return withRetryableWrite(() =>
+    db.transaction(async (tx) => {
+      const [job] = await tx.select().from(refreshJobs).where(eq(refreshJobs.id, jobId));
+      if (!job || job.ownerTokenHash !== tokenHash) return false;
+      // Workflow delivery may repeat after the terminal write committed but its
+      // acknowledgement was lost. A same-state call is a safe no-op even if a
+      // newer job now owns the global slot.
+      if (isTerminal(job.status)) return job.status === status;
+      if (job.status === "needs_reconciliation") return false;
+      const [slot] = await tx
+        .select()
+        .from(refreshJobSlot)
+        .where(eq(refreshJobSlot.id, ACTIVE_SLOT_ID));
+      if (
+        slot?.ownerKind !== "job" ||
+        slot.ownerId !== jobId ||
+        slot.ownerTokenHash !== tokenHash
+      ) {
+        return false;
+      }
+      const sources = await tx
+        .select()
+        .from(refreshJobSources)
+        .where(eq(refreshJobSources.jobId, jobId));
+      if (
+        sources.some((source) => ["executing", "saved", "unknown"].includes(source.status)) ||
+        ((status === "completed" || status === "partial") &&
+          sources.some((source) => source.status !== "invalidated" && source.status !== "failed"))
       )
-      .returning({ id: refreshJobs.id });
-    if (changed.length !== 1) return false;
+        return false;
 
-    await tx
-      .update(refreshJobSlot)
-      .set({
-        ownerKind: null,
-        ownerId: null,
-        ownerTokenHash: null,
-        acquiredAt: null,
-        leaseKind: null,
-        deploymentId: null,
-        recoveryAfter: null,
-      })
-      .where(
-        and(
-          eq(refreshJobSlot.id, ACTIVE_SLOT_ID),
-          eq(refreshJobSlot.ownerId, jobId),
-          eq(refreshJobSlot.ownerTokenHash, tokenHash),
-        ),
-      );
-    return true;
-  });
+      const changed = await tx
+        .update(refreshJobs)
+        .set({
+          status,
+          errorCode: errorCode ?? null,
+          completedAt: now,
+          revision: sql`${refreshJobs.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(refreshJobs.id, jobId),
+            eq(refreshJobs.ownerTokenHash, tokenHash),
+            eq(refreshJobs.status, job.status),
+          ),
+        )
+        .returning({ id: refreshJobs.id });
+      if (changed.length !== 1) return false;
+
+      await tx
+        .update(refreshJobSlot)
+        .set({
+          ownerKind: null,
+          ownerId: null,
+          ownerTokenHash: null,
+          acquiredAt: null,
+          leaseKind: null,
+          deploymentId: null,
+          recoveryAfter: null,
+        })
+        .where(
+          and(
+            eq(refreshJobSlot.id, ACTIVE_SLOT_ID),
+            eq(refreshJobSlot.ownerId, jobId),
+            eq(refreshJobSlot.ownerTokenHash, tokenHash),
+          ),
+        );
+      return true;
+    }),
+  );
 }
 
 /** Returns the active shared slot without releasing or expiring it. */

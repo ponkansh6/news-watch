@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import * as schema from "@/lib/db/schema";
 import {
   claimRefreshSource,
   markRefreshSourceUnknown,
@@ -212,6 +215,88 @@ describe("refresh candidate repository", () => {
     expect(rows[0]?.scoringSignature).toBe("signature-v1");
     expect(JSON.parse(rows[0]!.payloadJson)).not.toHaveProperty("preferenceSection");
     expect(rows[0]?.contentHash).toBe("hash-1");
+  });
+
+  test("merges a shared URL and enforces each source budget during concurrent staging", async () => {
+    const job = await newJob();
+    const firstSource = SOURCE_IDS[0]!;
+    const secondSource = SOURCE_IDS[1]!;
+    const firstClaim = await claimRefreshSource(job.id, job.token, firstSource);
+    const secondClaim = await claimRefreshSource(job.id, job.token, secondSource);
+    expect(firstClaim?.attemptCount).toBe(1);
+    expect(secondClaim?.attemptCount).toBe(1);
+    expect(await recordAdapterStart(job.id, job.token, firstSource, firstClaim!.attemptCount)).toBe(
+      true,
+    );
+    expect(
+      await recordAdapterStart(job.id, job.token, secondSource, secondClaim!.attemptCount),
+    ).toBe(true);
+
+    const inputsFor = (sourceId: typeof firstSource, offset: number) => [
+      {
+        ...candidate(offset, sourceId),
+        payload: { ...candidate(offset, sourceId).payload, url: "https://EXAMPLE.com:443/shared" },
+      },
+      ...Array.from({ length: 49 }, (_, index) => candidate(offset + index + 1, sourceId)),
+    ];
+    const firstClient = createClient({ url: process.env.TURSO_DATABASE_URL! });
+    const secondClient = createClient({ url: process.env.TURSO_DATABASE_URL! });
+    // Concurrent writers must be able to commit while the other connection has
+    // completed reads; rollback-journal mode can make a reader block that commit.
+    const journalMode = await firstClient.execute("PRAGMA journal_mode=WAL");
+    expect(String(journalMode.rows[0]?.journal_mode)).toBe("wal");
+    const firstDb = drizzle({ client: firstClient, schema });
+    const secondDb = drizzle({ client: secondClient, schema });
+    let firstResult: Awaited<ReturnType<typeof stageRefreshCandidates>>;
+    let secondResult: Awaited<ReturnType<typeof stageRefreshCandidates>>;
+    try {
+      const stageResults = await Promise.allSettled([
+        stageRefreshCandidates(
+          job.id,
+          job.token,
+          firstSource,
+          inputsFor(firstSource, 0),
+          { sourceAttemptCount: firstClaim!.attemptCount, resultCount: 50 },
+          firstDb,
+        ),
+        stageRefreshCandidates(
+          job.id,
+          job.token,
+          secondSource,
+          inputsFor(secondSource, 100),
+          { sourceAttemptCount: secondClaim!.attemptCount, resultCount: 50 },
+          secondDb,
+        ),
+      ]);
+      const firstOutcome = stageResults[0]!;
+      const secondOutcome = stageResults[1]!;
+      if (firstOutcome.status === "rejected") throw firstOutcome.reason;
+      if (secondOutcome.status === "rejected") throw secondOutcome.reason;
+      firstResult = firstOutcome.value;
+      secondResult = secondOutcome.value;
+    } finally {
+      await Promise.all([firstClient.close(), secondClient.close()]);
+    }
+
+    expect(firstResult.inserted + firstResult.merged).toBe(50);
+    expect(secondResult.inserted + secondResult.merged).toBe(50);
+    const rows = await listRefreshJobCandidates(job.id, job.token);
+    expect(rows).toHaveLength(99);
+    expect(rows.map((row) => row.ordinal)).toEqual(Array.from({ length: 99 }, (_, i) => i));
+    const shared = rows.find((row) => row.normalizedUrl === "https://example.com/shared");
+    expect(shared?.representativeSourceId).toBe(firstSource);
+    expect(JSON.parse(shared!.sourceIdsJson)).toEqual([firstSource, secondSource]);
+    const checkpoints = await db
+      .select({
+        sourceId: refreshJobSources.sourceId,
+        status: refreshJobSources.status,
+        resultCount: refreshJobSources.resultCount,
+      })
+      .from(refreshJobSources)
+      .where(eq(refreshJobSources.jobId, job.id));
+    expect(checkpoints).toHaveLength(SOURCE_IDS.length);
+    expect(checkpoints.filter((row) => row.status === "saved")).toHaveLength(2);
+    expect(checkpoints.filter((row) => row.resultCount === 50)).toHaveLength(2);
   });
 
   test("updates the transaction-local URL map for duplicates within one input", async () => {

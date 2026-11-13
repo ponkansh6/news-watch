@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { createClient } from "@libsql/client";
 import { and, eq, inArray, like } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { articles, refreshJobSlot, refreshJobs } from "@/lib/db/schema";
@@ -34,7 +35,11 @@ vi.mock("@/lib/llm", async (importOriginal) => {
 
 type FixtureItem = { index: number; url: string };
 type FixtureOverlap = "none" | "half" | "all";
-type FixtureMode = { candidatesPerSource: number; overlap: FixtureOverlap };
+type FixtureMode = {
+  candidatesPerSource: number;
+  overlap: FixtureOverlap;
+  adapterDelayMs?: number;
+};
 type MetricEvent = Record<string, unknown>;
 type AdapterShape = {
   fetch: (limit?: number) => Promise<unknown[]>;
@@ -119,7 +124,7 @@ async function runWorkflowSample(mode: FixtureMode): Promise<number> {
 
   const result = await aggregateRefreshWorkflow(job.id, executionToken);
   expect(result).toEqual({ status: "completed", failedSources: 0 });
-  expect(adapterCallOrder).toEqual(SOURCE_IDS);
+  expect([...adapterCallOrder].sort()).toEqual([...SOURCE_IDS].sort());
   expect(observedMetrics.workflow).toHaveLength(1);
   expect(observedMetrics.source).toHaveLength(SOURCE_IDS.length);
   expect(observedMetrics.stage).toHaveLength(SOURCE_IDS.length);
@@ -186,7 +191,14 @@ async function cleanupMeasurementData(): Promise<void> {
 }
 
 describe("aggregate refresh local multi-source collection measurement", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
+    const walClient = createClient({ url: process.env.TURSO_DATABASE_URL! });
+    try {
+      const journalMode = await walClient.execute("PRAGMA journal_mode=WAL");
+      expect(String(journalMode.rows[0]?.journal_mode)).toBe("wal");
+    } finally {
+      await walClient.close();
+    }
     mockState.scoreArticlesById.mockImplementation(async (candidates: Array<{ id: string }>) =>
       candidates.map(({ id }) => ({
         id,
@@ -210,6 +222,9 @@ describe("aggregate refresh local multi-source collection measurement", () => {
       };
       adapter.fetchForWorkflow = async () => {
         adapterCallOrder.push(sourceId);
+        if (activeFixture.adapterDelayMs) {
+          await new Promise<void>((resolve) => setTimeout(resolve, activeFixture.adapterDelayMs));
+        }
         return fixtureItems(sourceId, activeFixture);
       };
       adapter.toArticle = (raw, selectedSource) => {
@@ -322,5 +337,52 @@ describe("aggregate refresh local multi-source collection measurement", () => {
       );
     },
     180_000,
+  );
+
+  it.skipIf(!benchmarkEnabled)(
+    "compares delayed serial-equivalent and two-worker collection time with HTTP and DB measured separately",
+    async () => {
+      const mode: FixtureMode = {
+        candidatesPerSource: 0,
+        overlap: "none",
+        adapterDelayMs: 80,
+      };
+      await runWorkflowSample(mode);
+      const sourceMetrics = observedMetrics.source;
+      expect(sourceMetrics).toHaveLength(SOURCE_IDS.length);
+      const sumMetric = (field: string) =>
+        sourceMetrics.reduce((total, metric) => total + Number(metric[field] ?? 0), 0);
+      const sequentialHttpMs = sumMetric("adapterRequestElapsedMs");
+      const sequentialDbMs = sumMetric("checkpointMs") + sumMetric("stageMs");
+      const sequentialSourceWorkMs = sumMetric("elapsedMs");
+      const sequentialOtherMs = Math.max(
+        0,
+        sequentialSourceWorkMs - sequentialHttpMs - sequentialDbMs,
+      );
+      const sequentialBaselineMs = sequentialHttpMs + sequentialDbMs + sequentialOtherMs;
+      const parallelCollectionMs = Number(observedMetrics.workflow[0]?.collectionElapsedMs);
+
+      expect(sequentialHttpMs).toBeGreaterThan(0);
+      expect(sequentialDbMs).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(parallelCollectionMs)).toBe(true);
+      console.log(
+        JSON.stringify({
+          benchmark: "controlled-delay-serial-equivalent-vs-two-worker-collection",
+          sourceCount: SOURCE_IDS.length,
+          adapterDelayMs: mode.adapterDelayMs,
+          sequentialBaselineMs,
+          sequentialHttpMs,
+          sequentialDbMs,
+          sequentialOtherMs,
+          parallelCollectionMs,
+          parallelSpeedupVsSerialEquivalent: Number(
+            (sequentialBaselineMs / Math.max(1, parallelCollectionMs)).toFixed(2),
+          ),
+          caveat:
+            "Serial baseline is the sum of per-source elapsed time from the same controlled-delay fixture, with HTTP request, checkpoint/staging DB time, and remaining source work reported separately; local DB work and workflow dispatch differ from production Turso/runtime behavior.",
+        }),
+      );
+    },
+    30_000,
   );
 });

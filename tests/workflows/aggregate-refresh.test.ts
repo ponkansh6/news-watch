@@ -194,17 +194,115 @@ describe("aggregate refresh workflow", () => {
     mocks.sleep.mockResolvedValue(undefined);
   });
 
-  it("collects sources sequentially without the obsolete 70-second source gate", async () => {
+  it("collects sources with at most two concurrent workers without the obsolete 70-second source gate", async () => {
     const result = await aggregateRefreshWorkflow("job-id", "execution-token");
     expect(result).toEqual({ status: "completed", failedSources: 0 });
-    expect(mocks.collectRefreshCandidates.mock.calls.map((call) => call[0])).toEqual(SOURCE_IDS);
+    expect(mocks.collectRefreshCandidates.mock.calls.map((call) => call[0]).sort()).toEqual(
+      [...SOURCE_IDS].sort(),
+    );
     expect(
       mocks.collectRefreshCandidates.mock.calls.every((call) => call[3].strictAdapterErrors),
     ).toBe(true);
-    expect(mocks.refreshStagedSourceRecency.mock.calls.map((call) => call[2])).toEqual(SOURCE_IDS);
+    expect(mocks.refreshStagedSourceRecency.mock.calls.map((call) => call[2]).sort()).toEqual(
+      [...SOURCE_IDS].sort(),
+    );
     expect(mocks.sleep).not.toHaveBeenCalled();
     expect(mocks.revalidateTag).toHaveBeenCalledTimes(SOURCE_IDS.length);
     expect(mocks.finishRefreshJob).toHaveBeenCalledWith("job-id", "execution-token", "completed");
+  });
+
+  it("replenishes a freed collection slot while the other source is still running", async () => {
+    const gates = new Map<SourceId, { promise: Promise<void>; resolve: () => void }>();
+    const startWaiters = new Map<SourceId, () => void>();
+    const started = new Set<SourceId>();
+    let activeCollections = 0;
+    let maximumActiveCollections = 0;
+    for (const sourceId of SOURCE_IDS) {
+      let resolve!: () => void;
+      const promise = new Promise<void>((done) => {
+        resolve = done;
+      });
+      gates.set(sourceId, { promise, resolve });
+    }
+    mocks.collectRefreshCandidates.mockImplementation(async (sourceId: SourceId) => {
+      activeCollections += 1;
+      maximumActiveCollections = Math.max(maximumActiveCollections, activeCollections);
+      started.add(sourceId);
+      startWaiters.get(sourceId)?.();
+      try {
+        await gates.get(sourceId)!.promise;
+        const row = sourceRows.find((item) => item.sourceId === sourceId)!;
+        row.status = "saved";
+        row.resultCount = 0;
+        return { fetched: 0, selected: 0, deferred: 0, signature: "sig" };
+      } finally {
+        activeCollections -= 1;
+      }
+    });
+    const waitForStart = (sourceId: SourceId) =>
+      started.has(sourceId)
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => startWaiters.set(sourceId, resolve));
+
+    const workflow = aggregateRefreshWorkflow("job-id", "execution-token");
+    await Promise.all([waitForStart(SOURCE_IDS[0]!), waitForStart(SOURCE_IDS[1]!)]);
+    gates.get(SOURCE_IDS[0]!)!.resolve();
+    await waitForStart(SOURCE_IDS[2]!);
+    expect(started.has(SOURCE_IDS[1]!)).toBe(true);
+    expect(started.has(SOURCE_IDS[2]!)).toBe(true);
+    expect(maximumActiveCollections).toBe(2);
+    for (const sourceId of SOURCE_IDS) gates.get(sourceId)!.resolve();
+    await workflow;
+  });
+
+  it("keeps other collection workers moving while one source recovers an unknown outcome", async () => {
+    const uncertainSource = SOURCE_IDS[0]!;
+    const laterSource = SOURCE_IDS[2]!;
+    let releaseRecovery!: () => void;
+    const recoveryGate = new Promise<void>((resolve) => {
+      releaseRecovery = resolve;
+    });
+    const started = new Set<SourceId>();
+    let signalRecoveryStarted!: () => void;
+    const recoveryStarted = new Promise<void>((resolve) => {
+      signalRecoveryStarted = resolve;
+    });
+    mocks.sleep.mockImplementationOnce(async () => {
+      signalRecoveryStarted();
+      await recoveryGate;
+    });
+    mocks.collectRefreshCandidates.mockImplementation(async (sourceId: SourceId) => {
+      started.add(sourceId);
+      if (sourceId === uncertainSource && !mocks.markRefreshSourceUnknown.mock.calls.length) {
+        sourceRows.find((row) => row.sourceId === sourceId)!.status = "unknown";
+        throw new Error("ambiguous source outcome");
+      } else {
+        sourceRows.find((row) => row.sourceId === sourceId)!.status = "saved";
+      }
+      return { fetched: 1, selected: 1, deferred: 0, signature: "sig" };
+    });
+    mocks.recoverRefreshSource.mockImplementation(async (...args) => {
+      const row = sourceRows.find((item) => item.sourceId === args[2])!;
+      row.status = "pending";
+      signalRecoveryStarted();
+      return {
+        kind: "retry" as const,
+        attemptCount: args[3],
+      };
+    });
+
+    const workflow = aggregateRefreshWorkflow("job-id", "execution-token");
+    await recoveryStarted;
+    await vi.waitFor(() => expect(started.has(laterSource)).toBe(true));
+    releaseRecovery();
+    await workflow;
+    expect(mocks.recoverRefreshSource).toHaveBeenCalledWith(
+      "job-id",
+      "execution-token",
+      uncertainSource,
+      1,
+      2,
+    );
   });
 
   it("replays recency refresh for an already saved source without fetching again", async () => {
@@ -213,10 +311,17 @@ describe("aggregate refresh workflow", () => {
 
     await aggregateRefreshWorkflow("job-id", "execution-token");
 
-    expect(mocks.collectRefreshCandidates.mock.calls.map((call) => call[0])).toEqual(
-      SOURCE_IDS.slice(1),
+    expect(mocks.collectRefreshCandidates.mock.calls.map((call) => call[0]).sort()).toEqual(
+      SOURCE_IDS.slice(1).sort(),
     );
-    expect(mocks.refreshStagedSourceRecency.mock.calls.map((call) => call[2])).toEqual(SOURCE_IDS);
+    expect(mocks.refreshStagedSourceRecency.mock.calls.map((call) => call[2]).sort()).toEqual(
+      [...SOURCE_IDS].sort(),
+    );
+
+    const collectionCount = mocks.collectRefreshCandidates.mock.calls.length;
+    for (const source of sourceRows) source.status = "saved";
+    await aggregateRefreshWorkflow("job-id", "execution-token");
+    expect(mocks.collectRefreshCandidates).toHaveBeenCalledTimes(collectionCount);
   });
 
   it("does not complete when durable recency refresh fails", async () => {

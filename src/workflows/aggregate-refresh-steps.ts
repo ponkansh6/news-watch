@@ -59,7 +59,7 @@ type RefreshSnapshot = {
 };
 
 type SourceRunResult = {
-  status: "saved" | "failed" | "unknown";
+  status: "saved" | "failed" | "unknown" | "deferred";
   resultCount: number;
   attemptCount: number;
   errorCode?: string;
@@ -136,6 +136,7 @@ export async function collectSourceCandidatesStep(
   jobId: string,
   executionToken: string,
   sourceId: SourceId,
+  _claimWaitCycle = 0,
 ): Promise<SourceRunResult> {
   "use step";
   const claim = await claimRefreshSource(jobId, executionToken, sourceId);
@@ -161,6 +162,13 @@ export async function collectSourceCandidatesStep(
         resultCount: source.resultCount ?? 0,
         attemptCount: source.attemptCount,
         errorCode: source.errorCode ?? undefined,
+      };
+    }
+    if (source?.status === "pending") {
+      return {
+        status: "deferred",
+        resultCount: 0,
+        attemptCount: source.attemptCount,
       };
     }
     throw new FatalError(`Refresh source is not safely claimable: ${sourceId}`);
