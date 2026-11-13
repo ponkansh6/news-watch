@@ -57,6 +57,7 @@ export async function scoreAndSaveTagged(
     batches.push(articles.slice(start, start + batchSize));
   }
 
+  const GEMINI_BATCH_START_INTERVAL_MS = 5_000;
   let completed = 0;
   let failed = 0;
   const reportProgress = (isFailure: boolean) => {
@@ -70,12 +71,11 @@ export async function scoreAndSaveTagged(
   for (const batch of batches) {
     while (active.size >= LLM_BATCH_CONCURRENCY) await Promise.race(active);
     if (lastRequestStartedAt !== undefined) {
-      const waitMs = 5_000 - (Date.now() - lastRequestStartedAt);
+      const waitMs = GEMINI_BATCH_START_INTERVAL_MS - (Date.now() - lastRequestStartedAt);
       if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
     lastRequestStartedAt = Date.now();
-    let task!: Promise<void>;
-    task = scoreAndSaveBatch(
+    const task = scoreAndSaveBatch(
       batch,
       preferenceSection,
       signature,
