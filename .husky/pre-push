@@ -5,13 +5,13 @@
 #   Phase 0: 未コミット変更ガード（既存・最優先・blocking）
 #   Phase 1（常時・2 レーン並列）: レーン A (preflight→format→security→smoke)
 #                                    | レーン B (unit+coverage)
-#   Phase 2（条件付き・advisory）: 本番スキーマ drift
+#   Phase 2（通常 push・blocking）: 本番スキーマ drift
 #
 # 設計原則:
 #   - vitest は 1 回だけ回す（--coverage 版は素の run より +3.6s しか違わない）
 #   - pnpm ラッパーを挟まない（1 呼び出し約 0.52s）
 #   - 独立な検査は並列。ログはレーンごとに分離し、失敗したものだけ全文表示
-#   - 環境/ネットワーク依存の検査は blocking にしない（push 可否の根拠にならない）
+#   - 認証済み本番 DB のスキーマ不一致はデプロイ事故につながるため blocking
 #   - このマシンは物理 2 コア（Intel i3-10110U, HT で nproc=4）。
 #     3 並列で実測 wall 46.9s、2 レーン（A: preflight→smoke 直列 / B: coverage）
 #     で実測 wall 46.4s。速度は同着だが、2 レーンはピークメモリが半分になり
@@ -161,7 +161,7 @@ changed_match() { printf '%s\n' "$CHANGED" | grep -qE "$1"; }
 # だけの patch bump、pnpm-workspace.yaml の overrides 変更など）。
 # scripts/check-coverage-tiers.mjs は Tier 閾値（95/85/80%）の定義本体なので
 # その変更自体がテスト結果の合否基準を変える。
-NEED_TEST=0; NEED_SMOKE=0; NEED_DRIFT=0
+NEED_TEST=0; NEED_SMOKE=0; NEED_DRIFT=1
 if changed_match '^(src/|tests/|scripts/check-coverage-tiers\.mjs$|vitest\.config\.ts$|tsconfig\.json$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.npmrc$|drizzle\.config\.ts$)'; then
   NEED_TEST=1
 fi
@@ -173,10 +173,6 @@ fi
 if changed_match '^(src/|public/|next\.config\.ts$|postcss\.config\.|tsconfig\.json$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|scripts/smoke-test\.sh$)'; then
   NEED_SMOKE=1
 fi
-if changed_match '^src/lib/db/(schema\.ts$|migrations/)'; then
-  NEED_DRIFT=1
-fi
-
 N_CHANGED=$(printf '%s\n' "$CHANGED" | grep -c . || true)
 printf '[pre-push] tip=%s  changed=%s files\n' "$(git rev-parse --short "$TIP")" "$N_CHANGED"
 printf '[pre-push] plan: preflight=1 unit+coverage=%s smoke=%s drift=%s\n\n' \
@@ -278,27 +274,29 @@ if [ "$FAIL" -ne 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Phase 2 — 本番スキーマ drift（advisory のみ）
-#    「push しようとしているコード」ではなく「本番 DB の状態」を見る検査。
-#    ネットワークと .env.local の有無に依存し開発者ごとに挙動が変わるため、
-#    push をブロックしない（問題8: 旧実装は set -e が無いのに最後のコマンドの
-#    exit code がフックの exit code になっていたため、ネットワーク/認証の
-#    都合で push がブロックされ得た）。CI 側（secrets あり）を blocking の正とする。
+# 3. Phase 2 — 本番スキーマ drift（通常 push で blocking）
+#    接続先に認証して比較するため、接続/認証エラーも安全側に倒して push を止める。
+#    push 時に認証情報が無い場合も検査不能として push を止める。
 # ---------------------------------------------------------------------------
-if [ "$NEED_DRIFT" = "1" ] && [ -f "$ROOT/.env.local" ]; then
+if [ "$NEED_DRIFT" = "1" ]; then
   echo ""
-  echo "[pre-push] Phase 2: 本番スキーマ drift (advisory)"
-  TURSO_URL=$(grep -E "^TURSO_DATABASE_URL=" "$ROOT/.env.local" | head -1 | cut -d= -f2-)
-  TURSO_TOKEN=$(grep -E "^TURSO_AUTH_TOKEN=" "$ROOT/.env.local" | head -1 | cut -d= -f2-)
-  if [ -n "$TURSO_URL" ] && [ -n "$TURSO_TOKEN" ]; then
-    if ! TURSO_DATABASE_URL="$TURSO_URL" TURSO_AUTH_TOKEN="$TURSO_TOKEN" bash scripts/check-prod-schema.sh; then
-      printf '\n[warn] 本番スキーマに drift の可能性があります。\n'
-      printf '       `drizzle-kit push` は未宣言テーブルを削除候補にするため実行しないでください。\n'
-      printf '       追加のみの SQL migration をレビュー後、`pnpm run db:migrate` で適用してください。\n'
-      printf '       別履歴の DB では、対象 tag を確認し `pnpm run db:apply-additive -- <tag>` を使ってください。\n'
-      printf '       この操作は共有 migration ledger を変更しません。\n'
-      printf '       ネットワーク/認証に依存するため push はブロックしません。\n\n'
-    fi
+  echo "[pre-push] Phase 2: 本番スキーマ drift (blocking)"
+  TURSO_URL=${TURSO_DATABASE_URL:-}
+  TURSO_TOKEN=${TURSO_AUTH_TOKEN:-}
+  if [ -f "$ROOT/.env.local" ]; then
+    [ -n "$TURSO_URL" ] || TURSO_URL=$(grep -E '^TURSO_DATABASE_URL=' "$ROOT/.env.local" | head -1 | cut -d= -f2-)
+    [ -n "$TURSO_TOKEN" ] || TURSO_TOKEN=$(grep -E '^TURSO_AUTH_TOKEN=' "$ROOT/.env.local" | head -1 | cut -d= -f2-)
+  fi
+  if [ -z "$TURSO_URL" ] || [ -z "$TURSO_TOKEN" ]; then
+    echo "[pre-push] Turso credentials are required for production schema verification; refusing to push."
+    echo "           Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN in the environment or .env.local."
+    exit 1
+  fi
+  if ! TURSO_DATABASE_URL="$TURSO_URL" TURSO_AUTH_TOKEN="$TURSO_TOKEN" bash scripts/check-prod-schema.sh; then
+    printf '\n[pre-push] 本番スキーマ検査に失敗しました。push を中止します。\n'
+    printf '          接続/認証を確認し、schema drift はレビュー済み migration で解消してください。\n'
+    printf '          `drizzle-kit push` は実行しないでください。\n\n'
+    exit 1
   fi
 fi
 
